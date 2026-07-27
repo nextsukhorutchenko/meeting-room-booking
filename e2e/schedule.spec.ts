@@ -1,7 +1,15 @@
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
-import {DateTime} from 'luxon';
-import {expect, officeMonday, roomByName, test} from './fixtures';
+import {
+  DEMO_USER,
+  expect,
+  officeMonday,
+  officeSlot,
+  officeTodayLabel,
+  roomByName,
+  TASK_9_BOOKING_PREFIX,
+  test,
+} from './fixtures';
 
 const artifactsDirectory = resolve(
   '.superpowers/sdd/2026-07-27-meeting-room-booking-implementation/' +
@@ -17,12 +25,27 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
   page,
 }) => {
   const room = await roomByName(database, 'Oak');
+  const organizer = await database.user.findUniqueOrThrow({
+    where: {normalizedEmail: DEMO_USER.email},
+  });
+  const weekStart = officeMonday();
+  const layoutBookingTitle = `${TASK_9_BOOKING_PREFIX}layout-booking`;
+  const layoutBookingStart = officeSlot(weekStart, 0, 10);
+  await database.booking.create({
+    data: {
+      endsAt: layoutBookingStart.plus({minutes: 30}).toJSDate(),
+      roomId: room.id,
+      startsAt: layoutBookingStart.toJSDate(),
+      title: layoutBookingTitle,
+      userId: organizer.id,
+    },
+  });
   const scheduleResponse = page.waitForResponse((response) =>
     response.url().includes(`/api/rooms/${room.id}/schedule`) &&
     response.status() === 200,
   );
 
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${officeMonday()}`);
+  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
   await scheduleResponse;
 
   await expect(page.getByRole('heading', {name: 'Schedule'})).toBeVisible();
@@ -36,20 +59,21 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
   await expect(page.getByText('Floor 1', {exact: true})).toBeVisible();
   await expect(page.getByText('6 people', {exact: true})).toBeVisible();
 
-  const today = DateTime.now().toFormat('ccc, LLL d');
+  const today = officeTodayLabel();
   await expect(
     page.getByRole('columnheader', {name: new RegExp(today, 'i')}),
   ).toHaveAttribute('aria-current', 'date');
 
-  const layout = await page.evaluate(() => {
+  const booking = page.getByRole('article', {name: layoutBookingTitle});
+  await expect(booking).toBeVisible();
+  const layout = await booking.evaluate((bookingElement) => {
     const navigation = document.querySelector('.app-nav');
     const account = document.querySelector('.app-account');
-    const booking = document.querySelector('.booking-block');
-    const bookingTitle = booking?.querySelector('strong');
-    const bookingMeta = booking?.querySelector('.booking-block-meta');
+    const bookingTitle = bookingElement.querySelector('strong');
+    const bookingMeta = bookingElement.querySelector('.booking-block-meta');
     const navRect = navigation?.getBoundingClientRect();
     const accountRect = account?.getBoundingClientRect();
-    const bookingRect = booking?.getBoundingClientRect();
+    const bookingRect = bookingElement.getBoundingClientRect();
     const titleRect = bookingTitle?.getBoundingClientRect();
     const metaRect = bookingMeta?.getBoundingClientRect();
 

@@ -21,6 +21,7 @@ type ScheduleBooking = {
 };
 
 type WeekGridProps = {
+  bookingEnabled: boolean;
   bookings: ScheduleBooking[];
   loading: boolean;
   officeTimeZone: string;
@@ -49,6 +50,7 @@ function overlapsSlot(
 }
 
 export function WeekGrid({
+  bookingEnabled,
   bookings,
   loading,
   officeTimeZone,
@@ -154,7 +156,8 @@ export function WeekGrid({
                   const occupied = bookings.some((booking) =>
                     overlapsSlot(booking, startsAt, endsAt),
                   );
-                  const bookable = startsAt > now && !occupied;
+                  const bookable =
+                    bookingEnabled && startsAt > now && !occupied;
                   return (
                     <div
                       className="schedule-slot"

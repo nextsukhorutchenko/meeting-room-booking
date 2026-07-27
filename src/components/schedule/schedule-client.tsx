@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {Spinner} from '../ui/spinner';
@@ -46,6 +47,11 @@ type ApiResponse<T> = {
   error?: {message?: string};
 };
 
+type ScheduleLoadState =
+  | {key: string; status: 'loading'}
+  | {data: Schedule; key: string; status: 'success'}
+  | {error: string; key: string; status: 'error'};
+
 const officeTimeZone = 'Europe/Kyiv';
 
 function currentOfficeWeek(): string {
@@ -78,12 +84,14 @@ export function ScheduleClient() {
   );
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsError, setRoomsError] = useState('');
-  const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleState, setScheduleState] =
+    useState<ScheduleLoadState | null>(null);
   const [selection, setSelection] = useState<BookingSelection | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const selectedRoomIdRef = useRef(selectedRoomId);
+  const weekStartRef = useRef(weekStart);
+  const scheduleRequestSequence = useRef(0);
 
   const updateUrl = useCallback((
     roomId: string,
@@ -96,6 +104,11 @@ export function ScheduleClient() {
     parameters.set('weekStart', nextWeekStart);
     router.replace(`/schedule?${parameters.toString()}`, {scroll: false});
   }, [router]);
+
+  useEffect(() => {
+    selectedRoomIdRef.current = selectedRoomId;
+    weekStartRef.current = weekStart;
+  }, [selectedRoomId, weekStart]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -115,12 +128,19 @@ export function ScheduleClient() {
         if (!response.ok || !body.data) {
           throw new Error(body.error?.message ?? 'Unable to load rooms.');
         }
+        if (controller.signal.aborted) {
+          return;
+        }
         setRooms(body.data);
-        const roomId = body.data.some((room) => room.id === selectedRoomId) ?
-          selectedRoomId :
+        const currentRoomId = selectedRoomIdRef.current;
+        const roomId = body.data.some((room) => room.id === currentRoomId) ?
+          currentRoomId :
           body.data[0]?.id ?? '';
         setSelectedRoomId(roomId);
-        updateUrl(roomId, weekStart);
+        if (roomId !== currentRoomId) {
+          setSelection(null);
+        }
+        updateUrl(roomId, weekStartRef.current);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
@@ -137,46 +157,63 @@ export function ScheduleClient() {
     }
     void loadRooms();
     return () => controller.abort();
-  }, [minCapacity, selectedRoomId, updateUrl, weekStart]);
+  }, [minCapacity, updateUrl]);
+
+  const activeScheduleKey = selectedRoomId ?
+    `${selectedRoomId}:${weekStart}:${refreshKey}` :
+    '';
 
   useEffect(() => {
     if (!selectedRoomId) {
       return;
     }
     const controller = new AbortController();
+    const requestSequence = ++scheduleRequestSequence.current;
+    const requestKey = activeScheduleKey;
     async function loadSchedule() {
-      setScheduleLoading(true);
-      setScheduleError('');
+      setScheduleState({key: requestKey, status: 'loading'});
       try {
         const response = await fetch(
           `/api/rooms/${selectedRoomId}/schedule?weekStart=${weekStart}`,
           {signal: controller.signal},
         );
         const body = await response.json() as ApiResponse<Schedule>;
+        if (
+          controller.signal.aborted ||
+          requestSequence !== scheduleRequestSequence.current
+        ) {
+          return;
+        }
         if (!response.ok || !body.data) {
           throw new Error(
             body.error?.message ?? 'Unable to load the schedule.',
           );
         }
-        setSchedule(body.data);
+        setScheduleState({
+          data: body.data,
+          key: requestKey,
+          status: 'success',
+        });
       } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
+        if (
+          controller.signal.aborted ||
+          requestSequence !== scheduleRequestSequence.current ||
+          (error instanceof DOMException && error.name === 'AbortError')
+        ) {
           return;
         }
-        setScheduleError(
-          error instanceof Error ?
+        setScheduleState({
+          error: error instanceof Error ?
             error.message :
             'Unable to load the schedule.',
-        );
-      } finally {
-        if (!controller.signal.aborted) {
-          setScheduleLoading(false);
-        }
+          key: requestKey,
+          status: 'error',
+        });
       }
     }
     void loadSchedule();
     return () => controller.abort();
-  }, [refreshKey, selectedRoomId, weekStart]);
+  }, [activeScheduleKey, selectedRoomId, weekStart]);
 
   useEffect(() => {
     if (!toastMessage) {
@@ -186,6 +223,19 @@ export function ScheduleClient() {
     return () => window.clearTimeout(timeout);
   }, [toastMessage]);
 
+  const isCurrentSchedule = scheduleState?.key === activeScheduleKey;
+  const schedule = isCurrentSchedule && scheduleState.status === 'success' ?
+    scheduleState.data :
+    null;
+  const scheduleError =
+    isCurrentSchedule && scheduleState.status === 'error' ?
+      scheduleState.error :
+      '';
+  const scheduleLoading = Boolean(
+    selectedRoomId &&
+    (!isCurrentSchedule || scheduleState.status === 'loading'),
+  );
+
   const selectedRoom = useMemo(
     () => rooms.find((room) => room.id === selectedRoomId) ??
       schedule?.room ??
@@ -194,6 +244,7 @@ export function ScheduleClient() {
   );
 
   function changeRoom(roomId: string) {
+    setSelection(null);
     setSelectedRoomId(roomId);
     updateUrl(roomId, weekStart);
   }
@@ -202,12 +253,14 @@ export function ScheduleClient() {
     const nextWeek = DateTime.fromISO(weekStart, {zone: officeTimeZone})
       .plus({weeks})
       .toFormat('yyyy-LL-dd');
+    setSelection(null);
     setWeekStart(nextWeek);
     updateUrl(selectedRoomId, nextWeek);
   }
 
   function goToToday() {
     const currentWeek = currentOfficeWeek();
+    setSelection(null);
     setWeekStart(currentWeek);
     updateUrl(selectedRoomId, currentWeek);
   }
@@ -280,6 +333,7 @@ export function ScheduleClient() {
               ''}
           </p>
           <WeekGrid
+            bookingEnabled={schedule !== null}
             bookings={schedule?.bookings ?? []}
             loading={scheduleLoading || roomsLoading}
             officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}

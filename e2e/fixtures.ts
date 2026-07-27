@@ -5,7 +5,8 @@ import {
   test as base,
   type Page,
 } from '@playwright/test';
-import {DateTime} from 'luxon';
+
+export {officeMonday, officeSlot, officeTodayLabel} from './office-time';
 
 export const DEMO_USER = {
   email: 'organizer@example.test',
@@ -31,27 +32,6 @@ export function createE2eDatabase(): PrismaClient {
   return new PrismaClient({
     adapter: new PrismaPg({connectionString: readTestDatabaseUrl()}),
   });
-}
-
-export function officeMonday(
-  weeksFromCurrent = 0,
-  now = DateTime.now().setZone('Europe/Kyiv'),
-): string {
-  return now
-    .startOf('week')
-    .plus({weeks: weeksFromCurrent})
-    .toFormat('yyyy-LL-dd');
-}
-
-export function officeSlot(
-  weekStart: string,
-  dayOffset: number,
-  hour: number,
-  minute = 0,
-): DateTime {
-  return DateTime.fromISO(weekStart, {zone: 'Europe/Kyiv'})
-    .plus({days: dayOffset})
-    .set({hour, minute, second: 0, millisecond: 0});
 }
 
 export async function loginAsDemoUser(page: Page): Promise<void> {
