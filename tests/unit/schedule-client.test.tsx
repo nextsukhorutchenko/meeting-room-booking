@@ -7,7 +7,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {DateTime} from 'luxon';
+import {DateTime, Settings} from 'luxon';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ScheduleClient} from '../../src/components/schedule/schedule-client';
 
@@ -97,8 +97,10 @@ function requestUrl(input: RequestInfo | URL): string {
 
 describe('ScheduleClient request state', () => {
   const fetchMock = vi.fn();
+  const originalNow = Settings.now;
 
   beforeEach(() => {
+    Settings.now = () => Date.UTC(2026, 7, 3, 6);
     navigation.router.replace.mockReset();
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
@@ -106,6 +108,7 @@ describe('ScheduleClient request state', () => {
 
   afterEach(() => {
     cleanup();
+    Settings.now = originalNow;
     vi.unstubAllGlobals();
   });
 
@@ -156,6 +159,9 @@ describe('ScheduleClient request state', () => {
       );
     });
     expect(await screen.findByText('Active booking')).toBeVisible();
+    expect(
+      screen.getAllByRole('button', {name: /^Book /}).length,
+    ).toBeGreaterThan(0);
 
     await act(async () => {
       oldScheduleJson.resolve(
@@ -193,6 +199,9 @@ describe('ScheduleClient request state', () => {
 
     render(<ScheduleClient />);
     expect(await screen.findByText('Previously loaded')).toBeVisible();
+    expect(
+      screen.getAllByRole('button', {name: /^Book /}).length,
+    ).toBeGreaterThan(0);
 
     await userEvent.setup().click(
       screen.getByRole('button', {name: 'Next week'}),
@@ -215,5 +224,82 @@ describe('ScheduleClient request state', () => {
     expect(
       screen.queryAllByRole('button', {name: /^Book /}),
     ).toHaveLength(0);
+  });
+
+  it('withholds a same-key schedule while a filtered room reactivates', async () => {
+    const restoredSchedule = deferred<Response>();
+    let roomRequestCount = 0;
+    let scheduleRequestCount = 0;
+    let staleBookingAtRestoredRequest = false;
+    let bookButtonsAtRestoredRequest = -1;
+
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        roomRequestCount += 1;
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url === '/api/rooms?minCapacity=9') {
+        return Promise.resolve(jsonResponse({data: []}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        if (scheduleRequestCount === 1) {
+          return Promise.resolve(
+            scheduleResponse('2026-08-03', 'Prior Oak booking'),
+          );
+        }
+        staleBookingAtRestoredRequest =
+          screen.queryByText('Prior Oak booking') !== null;
+        bookButtonsAtRestoredRequest =
+          screen.queryAllByRole('button', {name: /^Book /}).length;
+        return restoredSchedule.promise;
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ScheduleClient />);
+    expect(await screen.findByText('Prior Oak booking')).toBeVisible();
+    expect(
+      screen.getAllByRole('button', {name: /^Book /}).length,
+    ).toBeGreaterThan(0);
+
+    const capacity = screen.getByRole('spinbutton', {
+      name: 'Minimum capacity',
+    });
+    const user = userEvent.setup();
+    await user.type(capacity, '9');
+
+    expect(
+      await screen.findByText('No rooms match this capacity'),
+    ).toBeVisible();
+    expect(screen.queryByText('Prior Oak booking')).not.toBeInTheDocument();
+    expect(
+      screen.queryAllByRole('button', {name: /^Book /}),
+    ).toHaveLength(0);
+
+    await user.clear(capacity);
+    await waitFor(() => {
+      expect(scheduleRequestCount).toBe(2);
+    });
+
+    expect(roomRequestCount).toBe(2);
+    expect(staleBookingAtRestoredRequest).toBe(false);
+    expect(bookButtonsAtRestoredRequest).toBe(0);
+    expect(screen.queryByText('Prior Oak booking')).not.toBeInTheDocument();
+    expect(
+      screen.queryAllByRole('button', {name: /^Book /}),
+    ).toHaveLength(0);
+
+    await act(async () => {
+      restoredSchedule.resolve(
+        scheduleResponse('2026-08-03', 'Restored Oak booking'),
+      );
+    });
+
+    expect(await screen.findByText('Restored Oak booking')).toBeVisible();
+    expect(
+      screen.getAllByRole('button', {name: /^Book /}).length,
+    ).toBeGreaterThan(0);
   });
 });

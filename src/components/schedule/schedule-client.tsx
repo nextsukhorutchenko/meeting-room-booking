@@ -138,6 +138,8 @@ export function ScheduleClient() {
           body.data[0]?.id ?? '';
         setSelectedRoomId(roomId);
         if (roomId !== currentRoomId) {
+          scheduleRequestSequence.current += 1;
+          setScheduleState(null);
           setSelection(null);
         }
         updateUrl(roomId, weekStartRef.current);
