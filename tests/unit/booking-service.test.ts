@@ -32,6 +32,17 @@ const baseInput: CreateBookingInput = {
   endsAt: new Date('2026-07-28T07:00:00.000Z'),
 };
 
+function encodeOpaqueCursor(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function encodeOversizedValidCursor(): string {
+  return Buffer.from(`${' '.repeat(400)}${JSON.stringify({
+    startsAt: '2026-07-28T06:00:00.000Z',
+    id: 'booking-a',
+  })}`, 'utf8').toString('base64url');
+}
+
 type ExistingBooking = {
   roomId: string;
   startsAt: Date;
@@ -352,7 +363,41 @@ describe('DefaultBookingService', () => {
       ['invalid now', {now: new Date(Number.NaN)}],
       ['blank user', {userId: ' '}],
       ['invalid cursor alphabet', {cursor: 'not+a+cursor'}],
+      ['otherwise valid cursor with invalid alphabet padding', {
+        cursor: `${encodeOpaqueCursor({
+          startsAt: '2026-07-28T06:00:00.000Z',
+          id: 'booking-a',
+        })}=`,
+      }],
       ['invalid cursor payload', {cursor: 'bm90LWpzb24'}],
+      ['oversized otherwise valid cursor text', {
+        cursor: encodeOversizedValidCursor(),
+      }],
+      ['cursor with an extra key', {
+        cursor: encodeOpaqueCursor({
+          startsAt: '2026-07-28T06:00:00.000Z',
+          id: 'booking-a',
+          unexpected: 'private-value',
+        }),
+      }],
+      ['cursor with an invalid timestamp', {
+        cursor: encodeOpaqueCursor({
+          startsAt: 'not-a-timestamp',
+          id: 'booking-a',
+        }),
+      }],
+      ['cursor with an empty id', {
+        cursor: encodeOpaqueCursor({
+          startsAt: '2026-07-28T06:00:00.000Z',
+          id: '',
+        }),
+      }],
+      ['cursor with an oversized id', {
+        cursor: encodeOpaqueCursor({
+          startsAt: '2026-07-28T06:00:00.000Z',
+          id: 'x'.repeat(256),
+        }),
+      }],
       ['extra input', {unexpected: 'private-value'}],
     ])('rejects %s with a stable sanitized error', async (_name, override) => {
       const {repository, service} = createService();
@@ -373,6 +418,8 @@ describe('DefaultBookingService', () => {
       });
       expect(JSON.stringify(error)).not.toContain('private-value');
       expect(repository.listCalls).toBe(0);
+      expect(repository.transactionCalls).toBe(0);
+      expect(repository.events).toEqual([]);
     });
   });
 

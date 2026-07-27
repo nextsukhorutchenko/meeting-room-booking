@@ -25,6 +25,21 @@ let userId: string;
 let roomId: string;
 let userSequence = 0;
 
+function encodeOpaqueCursor(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function encodeOversizedValidCursor(): string {
+  return Buffer.from(`${' '.repeat(400)}${JSON.stringify({
+    startsAt: '2026-07-28T06:00:00.000Z',
+    id: 'booking-a',
+  })}`, 'utf8').toString('base64url');
+}
+
+function task11BookingId(suffix: string): string {
+  return `task-11-history-${process.pid}-${userSequence}-${suffix}`;
+}
+
 function get(path: string, sessionCookie?: string): Promise<Response> {
   const headers = sessionCookie ? {cookie: sessionCookie} : undefined;
   return getBookings(new NextRequest(
@@ -98,10 +113,72 @@ describe.sequential('my bookings API', () => {
   it.each([
     ['/api/me/bookings', 'missing scope'],
     ['/api/me/bookings?scope=all', 'unknown scope'],
+    [
+      '/api/me/bookings?scope=future&scope=past',
+      'duplicate scope',
+    ],
     ['/api/me/bookings?scope=future&limit=0', 'zero limit'],
     ['/api/me/bookings?scope=future&limit=1.5', 'fractional limit'],
     ['/api/me/bookings?scope=future&limit=abc', 'non-numeric limit'],
+    [
+      '/api/me/bookings?scope=future&limit=2&limit=3',
+      'duplicate limit',
+    ],
     ['/api/me/bookings?scope=future&cursor=not+a+cursor', 'invalid cursor'],
+    [
+      `/api/me/bookings?scope=future&cursor=${encodeOpaqueCursor({
+        startsAt: '2026-07-28T06:00:00.000Z',
+        id: 'booking-a',
+      })}=`,
+      'otherwise valid cursor with invalid alphabet padding',
+    ],
+    [
+      `/api/me/bookings?scope=future&cursor=${
+        encodeOpaqueCursor({
+          startsAt: '2026-07-28T06:00:00.000Z',
+          id: 'booking-a',
+        })
+      }&cursor=${
+        encodeOpaqueCursor({
+          startsAt: '2026-07-28T06:00:00.000Z',
+          id: 'booking-b',
+        })
+      }`,
+      'duplicate cursor',
+    ],
+    [
+      `/api/me/bookings?scope=future&cursor=${encodeOpaqueCursor({
+        startsAt: '2026-07-28T06:00:00.000Z',
+        id: 'booking-a',
+        private: 'value',
+      })}`,
+      'cursor with an extra key',
+    ],
+    [
+      `/api/me/bookings?scope=future&cursor=${encodeOpaqueCursor({
+        startsAt: 'not-a-timestamp',
+        id: 'booking-a',
+      })}`,
+      'cursor with an invalid timestamp',
+    ],
+    [
+      `/api/me/bookings?scope=future&cursor=${encodeOpaqueCursor({
+        startsAt: '2026-07-28T06:00:00.000Z',
+        id: '',
+      })}`,
+      'cursor with an empty id',
+    ],
+    [
+      `/api/me/bookings?scope=future&cursor=${encodeOpaqueCursor({
+        startsAt: '2026-07-28T06:00:00.000Z',
+        id: 'x'.repeat(256),
+      })}`,
+      'cursor with an oversized id',
+    ],
+    [
+      `/api/me/bookings?scope=future&cursor=${encodeOversizedValidCursor()}`,
+      'oversized otherwise valid cursor text',
+    ],
     ['/api/me/bookings?scope=future&extra=private', 'unknown query'],
   ])('returns one sanitized validation contract for %s (%s)', async (path) => {
     const response = await get(path, cookie);
@@ -201,5 +278,91 @@ describe.sequential('my bookings API', () => {
       ...second.items.map((item: {id: string}) => item.id),
     ];
     expect(new Set(combinedIds).size).toBe(4);
+  });
+
+  it('paginates equal future starts and applies cancellation by scope', async () => {
+    const now = DateTime.now().toUTC();
+    const futureStartsAt = now.plus({days: 3}).startOf('hour');
+    const pastStartsAt = now.minus({days: 3}).startOf('hour');
+    const activeFutureIds = ['10-a', '20-b', '30-c', '40-d'].map(
+      task11BookingId,
+    );
+    const cancelledFutureId = task11BookingId('05-cancelled-future');
+    const cancelledPastId = task11BookingId('cancelled-past');
+    await testDb.booking.createMany({
+      data: [
+        ...activeFutureIds.map((id) => ({
+          id,
+          roomId,
+          userId,
+          title: id,
+          startsAt: futureStartsAt.toJSDate(),
+          endsAt: futureStartsAt.plus({minutes: 30}).toJSDate(),
+        })),
+        {
+          id: cancelledFutureId,
+          roomId,
+          userId,
+          title: cancelledFutureId,
+          startsAt: futureStartsAt.toJSDate(),
+          endsAt: futureStartsAt.plus({minutes: 30}).toJSDate(),
+          cancelledAt: now.toJSDate(),
+        },
+        {
+          id: cancelledPastId,
+          roomId,
+          userId,
+          title: cancelledPastId,
+          startsAt: pastStartsAt.toJSDate(),
+          endsAt: pastStartsAt.plus({minutes: 30}).toJSDate(),
+          cancelledAt: pastStartsAt.plus({hours: 1}).toJSDate(),
+        },
+      ],
+    });
+
+    const firstResponse = await get(
+      '/api/me/bookings?scope=future&limit=2',
+      cookie,
+    );
+    expect(firstResponse.status).toBe(200);
+    const first = (await firstResponse.json()).data;
+    expect(first.items.map((item: {id: string}) => item.id)).toEqual(
+      activeFutureIds.slice(0, 2),
+    );
+    expect(first.nextCursor).toEqual(expect.any(String));
+
+    const secondResponse = await get(
+      `/api/me/bookings?scope=future&limit=2&cursor=${
+        encodeURIComponent(first.nextCursor)
+      }`,
+      cookie,
+    );
+    expect(secondResponse.status).toBe(200);
+    const second = (await secondResponse.json()).data;
+    expect(second.items.map((item: {id: string}) => item.id)).toEqual(
+      activeFutureIds.slice(2),
+    );
+    expect(second.nextCursor).toBeNull();
+
+    const combinedIds = [
+      ...first.items.map((item: {id: string}) => item.id),
+      ...second.items.map((item: {id: string}) => item.id),
+    ];
+    expect(combinedIds).toEqual(activeFutureIds);
+    expect(new Set(combinedIds).size).toBe(activeFutureIds.length);
+    expect(combinedIds).not.toContain(cancelledFutureId);
+
+    const pastResponse = await get(
+      '/api/me/bookings?scope=past&limit=20',
+      cookie,
+    );
+    expect(pastResponse.status).toBe(200);
+    const past = (await pastResponse.json()).data;
+    expect(past.items).toEqual([
+      expect.objectContaining({
+        id: cancelledPastId,
+        status: 'cancelled',
+      }),
+    ]);
   });
 });
