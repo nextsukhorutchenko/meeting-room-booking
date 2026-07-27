@@ -1,0 +1,1 @@
+CREATE DATABASE meeting_room_booking_test;
