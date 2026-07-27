@@ -138,7 +138,8 @@ test('@booking a history row opens and highlights the correct schedule booking',
   await page.getByRole('link', {name: title}).click();
 
   await expect(page).toHaveURL(
-    `/schedule?roomId=${room.id}&weekStart=${weekStart}&bookingId=${id}`,
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}&bookingId=${id}`,
   );
   await expect(page.getByRole('article', {name: new RegExp(title)}))
     .toHaveAttribute('data-highlighted', 'true');

@@ -1,6 +1,7 @@
 import {redirect} from 'next/navigation';
 import {AppHeader} from '../../components/app/app-header';
 import {ScheduleClient} from '../../components/schedule/schedule-client';
+import {readAppEnv} from '../../lib/config/env';
 import {getOptionalUser} from '../../modules/auth/auth.service';
 
 export default async function SchedulePage() {
@@ -8,6 +9,11 @@ export default async function SchedulePage() {
   if (!user) {
     redirect('/login');
   }
+  const {
+    officeCloseHour,
+    officeOpenHour,
+    officeTimeZone,
+  } = readAppEnv();
 
   return (
     <>
@@ -19,7 +25,11 @@ export default async function SchedulePage() {
             <h1>Schedule</h1>
           </div>
         </div>
-        <ScheduleClient />
+        <ScheduleClient
+          officeCloseHour={officeCloseHour}
+          officeOpenHour={officeOpenHour}
+          officeTimeZone={officeTimeZone}
+        />
       </main>
     </>
   );

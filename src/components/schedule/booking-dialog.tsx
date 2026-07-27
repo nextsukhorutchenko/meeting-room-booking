@@ -12,6 +12,7 @@ export type BookingSelection = {
   roomName: string;
   startsAt: string;
   timeLabel: string;
+  timeZoneLabel: string;
 };
 
 type ErrorBody = {
@@ -118,7 +119,7 @@ export function BookingDialog({
             </p>
             <p>
               <Clock3 aria-hidden="true" />
-              {selection.timeLabel}
+              {selection.timeLabel} {selection.timeZoneLabel}
             </p>
           </div>
           {formError ? (

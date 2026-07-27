@@ -12,14 +12,15 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ScheduleClient} from '../../src/components/schedule/schedule-client';
 
 const navigation = vi.hoisted(() => ({
-  router: {replace: vi.fn()},
+  router: {push: vi.fn(), replace: vi.fn()},
+  searchParams: new URLSearchParams(
+    'roomId=oak&weekStart=2026-08-03',
+  ),
 }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => navigation.router,
-  useSearchParams: () => new URLSearchParams(
-    'roomId=oak&weekStart=2026-08-03',
-  ),
+  useSearchParams: () => navigation.searchParams,
 }));
 
 type Deferred<T> = {
@@ -95,12 +96,23 @@ function requestUrl(input: RequestInfo | URL): string {
   return typeof input === 'string' ? input : input.toString();
 }
 
+function renderScheduleClient() {
+  return render(
+    <ScheduleClient
+      officeCloseHour={19}
+      officeOpenHour={9}
+      officeTimeZone="Europe/Kyiv"
+    />,
+  );
+}
+
 describe('ScheduleClient request state', () => {
   const fetchMock = vi.fn();
   const originalNow = Settings.now;
 
   beforeEach(() => {
     Settings.now = () => Date.UTC(2026, 7, 3, 6);
+    navigation.router.push.mockReset();
     navigation.router.replace.mockReset();
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
@@ -135,7 +147,7 @@ describe('ScheduleClient request state', () => {
       throw new Error(`Unexpected request: ${url}`);
     });
 
-    render(<ScheduleClient />);
+    renderScheduleClient();
     await waitFor(() => {
       expect(oldResponse.json).toHaveBeenCalledOnce();
     });
@@ -197,7 +209,7 @@ describe('ScheduleClient request state', () => {
       throw new Error(`Unexpected request: ${url}`);
     });
 
-    render(<ScheduleClient />);
+    renderScheduleClient();
     expect(await screen.findByText('Previously loaded')).toBeVisible();
     expect(
       screen.getAllByRole('button', {name: /^Book /}).length,
@@ -258,7 +270,7 @@ describe('ScheduleClient request state', () => {
       throw new Error(`Unexpected request: ${url}`);
     });
 
-    render(<ScheduleClient />);
+    renderScheduleClient();
     expect(await screen.findByText('Prior Oak booking')).toBeVisible();
     expect(
       screen.getAllByRole('button', {name: /^Book /}).length,
@@ -340,7 +352,7 @@ describe('ScheduleClient request state', () => {
       throw new Error(`Unexpected request: ${url}`);
     });
 
-    render(<ScheduleClient />);
+    renderScheduleClient();
     const block = await screen.findByRole('article', {
       name: /Cancellation timing/,
     });

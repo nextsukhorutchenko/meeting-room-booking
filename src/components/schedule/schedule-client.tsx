@@ -9,7 +9,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
+import {getBrowserTimeZone} from '../../lib/time/browser-zone';
 import {
   CancelBookingDialog,
   type CancellationSelection,
@@ -20,6 +22,7 @@ import {
   BookingDialog,
   type BookingSelection,
 } from './booking-dialog';
+import {DaySchedule} from './day-schedule';
 import {ScheduleToolbar} from './schedule-toolbar';
 import {TimezoneLabel} from './timezone-label';
 import {WeekGrid} from './week-grid';
@@ -56,35 +59,86 @@ type ScheduleLoadState =
   | {data: Schedule; key: string; status: 'success'}
   | {error: string; key: string; status: 'error'};
 
-const officeTimeZone = 'Europe/Kyiv';
+type ScheduleClientProps = {
+  officeCloseHour: number;
+  officeOpenHour: number;
+  officeTimeZone: string;
+};
 
-function currentOfficeWeek(): string {
+function currentOfficeWeek(officeTimeZone: string): string {
   return DateTime.now()
     .setZone(officeTimeZone)
     .startOf('week')
     .toFormat('yyyy-LL-dd');
 }
 
-function normalizeWeekStart(value: string | null): string {
+function normalizeWeekStart(
+  value: string | null,
+  officeTimeZone: string,
+): string {
   if (!value) {
-    return currentOfficeWeek();
+    return currentOfficeWeek(officeTimeZone);
   }
   const parsed = DateTime.fromISO(value, {zone: officeTimeZone});
   return parsed.isValid && parsed.weekday === 1 ?
     parsed.toFormat('yyyy-LL-dd') :
-    currentOfficeWeek();
+    currentOfficeWeek(officeTimeZone);
 }
 
-export function ScheduleClient() {
+function defaultDay(
+  weekStart: string,
+  officeTimeZone: string,
+): string {
+  const week = DateTime.fromISO(weekStart, {zone: officeTimeZone});
+  const today = DateTime.now().setZone(officeTimeZone).startOf('day');
+  return today >= week && today < week.plus({days: 7}) ?
+    today.toFormat('yyyy-LL-dd') :
+    weekStart;
+}
+
+function normalizeDay(
+  value: string | null,
+  weekStart: string,
+  officeTimeZone: string,
+): string {
+  if (!value) {
+    return defaultDay(weekStart, officeTimeZone);
+  }
+  const week = DateTime.fromISO(weekStart, {zone: officeTimeZone});
+  const parsed = DateTime.fromISO(value, {zone: officeTimeZone});
+  return parsed.isValid && parsed >= week && parsed < week.plus({days: 7}) ?
+    parsed.toFormat('yyyy-LL-dd') :
+    defaultDay(weekStart, officeTimeZone);
+}
+
+function subscribeToBrowserTimeZone(): () => void {
+  return () => undefined;
+}
+
+export function ScheduleClient({
+  officeCloseHour,
+  officeOpenHour,
+  officeTimeZone,
+}: ScheduleClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const initialWeekStart = normalizeWeekStart(
+    searchParams.get('weekStart'),
+    officeTimeZone,
+  );
   const [minCapacity, setMinCapacity] = useState('');
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState(
     searchParams.get('roomId') ?? '',
   );
-  const [weekStart, setWeekStart] = useState(
-    normalizeWeekStart(searchParams.get('weekStart')),
+  const [weekStart, setWeekStart] = useState(initialWeekStart);
+  const [selectedDay, setSelectedDay] = useState(
+    normalizeDay(searchParams.get('day'), initialWeekStart, officeTimeZone),
+  );
+  const userTimeZone = useSyncExternalStore(
+    subscribeToBrowserTimeZone,
+    getBrowserTimeZone,
+    () => officeTimeZone,
   );
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsError, setRoomsError] = useState('');
@@ -99,6 +153,7 @@ export function ScheduleClient() {
     useState<string | null>(null);
   const selectedRoomIdRef = useRef(selectedRoomId);
   const weekStartRef = useRef(weekStart);
+  const selectedDayRef = useRef(selectedDay);
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
   const linkedBookingId = searchParams.get('bookingId');
@@ -107,16 +162,24 @@ export function ScheduleClient() {
   const updateUrl = useCallback((
     roomId: string,
     nextWeekStart: string,
+    nextDay: string,
+    history: 'push' | 'replace',
   ) => {
     const parameters = new URLSearchParams();
     if (roomId) {
       parameters.set('roomId', roomId);
     }
     parameters.set('weekStart', nextWeekStart);
+    parameters.set('day', nextDay);
     if (linkedBookingIdRef.current) {
       parameters.set('bookingId', linkedBookingIdRef.current);
     }
-    router.replace(`/schedule?${parameters.toString()}`, {scroll: false});
+    const url = `/schedule?${parameters.toString()}`;
+    if (history === 'push') {
+      router.push(url, {scroll: false});
+    } else {
+      router.replace(url, {scroll: false});
+    }
   }, [router]);
 
   useEffect(() => {
@@ -126,7 +189,46 @@ export function ScheduleClient() {
   useEffect(() => {
     selectedRoomIdRef.current = selectedRoomId;
     weekStartRef.current = weekStart;
-  }, [selectedRoomId, weekStart]);
+    selectedDayRef.current = selectedDay;
+  }, [selectedDay, selectedRoomId, weekStart]);
+
+  useEffect(() => {
+    const nextWeekStart = normalizeWeekStart(
+      searchParams.get('weekStart'),
+      officeTimeZone,
+    );
+    const nextDay = normalizeDay(
+      searchParams.get('day'),
+      nextWeekStart,
+      officeTimeZone,
+    );
+    const nextRoomId = searchParams.get('roomId');
+    const roomChanged = Boolean(
+      nextRoomId && nextRoomId !== selectedRoomIdRef.current,
+    );
+    const weekChanged = nextWeekStart !== weekStartRef.current;
+    const dayChanged = nextDay !== selectedDayRef.current;
+
+    if (roomChanged && nextRoomId) {
+      setSelectedRoomId(nextRoomId);
+    }
+    if (weekChanged) {
+      setWeekStart(nextWeekStart);
+    }
+    if (dayChanged) {
+      setSelectedDay(nextDay);
+    }
+    if (roomChanged || weekChanged) {
+      preserveScheduleOnRefreshRef.current = false;
+      setPreservedScheduleKey(null);
+      scheduleRequestSequence.current += 1;
+      setScheduleState(null);
+    }
+    if (roomChanged || weekChanged || dayChanged) {
+      setCancellation(null);
+      setSelection(null);
+    }
+  }, [officeTimeZone, searchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -162,7 +264,12 @@ export function ScheduleClient() {
           setScheduleState(null);
           setSelection(null);
         }
-        updateUrl(roomId, weekStartRef.current);
+        updateUrl(
+          roomId,
+          weekStartRef.current,
+          selectedDayRef.current,
+          'replace',
+        );
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
@@ -275,6 +382,11 @@ export function ScheduleClient() {
       null,
     [rooms, schedule, selectedRoomId],
   );
+  const selectedDayHasBookings = schedule?.bookings.some((booking) =>
+    DateTime.fromISO(booking.startsAt)
+      .setZone(schedule.officeTimeZone)
+      .toFormat('yyyy-LL-dd') === selectedDay,
+  ) ?? false;
 
   function changeRoom(roomId: string) {
     linkedBookingIdRef.current = null;
@@ -283,7 +395,7 @@ export function ScheduleClient() {
     setCancellation(null);
     setSelection(null);
     setSelectedRoomId(roomId);
-    updateUrl(roomId, weekStart);
+    updateUrl(roomId, weekStart, selectedDay, 'push');
   }
 
   function changeWeek(weeks: number) {
@@ -291,23 +403,55 @@ export function ScheduleClient() {
     const nextWeek = DateTime.fromISO(weekStart, {zone: officeTimeZone})
       .plus({weeks})
       .toFormat('yyyy-LL-dd');
+    const nextDay = DateTime.fromISO(selectedDay, {zone: officeTimeZone})
+      .plus({weeks})
+      .toFormat('yyyy-LL-dd');
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
     setSelection(null);
     setWeekStart(nextWeek);
-    updateUrl(selectedRoomId, nextWeek);
+    setSelectedDay(nextDay);
+    updateUrl(selectedRoomId, nextWeek, nextDay, 'push');
+  }
+
+  function changeDay(value: string) {
+    const nextDayValue = DateTime.fromISO(value, {zone: officeTimeZone});
+    if (!nextDayValue.isValid) {
+      return;
+    }
+    linkedBookingIdRef.current = null;
+    const nextDay = nextDayValue.toFormat('yyyy-LL-dd');
+    const nextWeek = nextDayValue.startOf('week').toFormat('yyyy-LL-dd');
+    preserveScheduleOnRefreshRef.current = false;
+    setPreservedScheduleKey(null);
+    setCancellation(null);
+    setSelection(null);
+    setWeekStart(nextWeek);
+    setSelectedDay(nextDay);
+    updateUrl(selectedRoomId, nextWeek, nextDay, 'push');
+  }
+
+  function moveDay(days: number) {
+    const nextDay = DateTime.fromISO(selectedDay, {zone: officeTimeZone})
+      .plus({days})
+      .toFormat('yyyy-LL-dd');
+    changeDay(nextDay);
   }
 
   function goToToday() {
     linkedBookingIdRef.current = null;
-    const currentWeek = currentOfficeWeek();
+    const today = DateTime.now()
+      .setZone(officeTimeZone)
+      .toFormat('yyyy-LL-dd');
+    const currentWeek = currentOfficeWeek(officeTimeZone);
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
     setSelection(null);
     setWeekStart(currentWeek);
-    updateUrl(selectedRoomId, currentWeek);
+    setSelectedDay(today);
+    updateUrl(selectedRoomId, currentWeek, today, 'push');
   }
 
   function handleCreated() {
@@ -330,12 +474,16 @@ export function ScheduleClient() {
     <section aria-label="Room schedule" className="schedule-workspace">
       <ScheduleToolbar
         minCapacity={minCapacity}
+        onDayChange={changeDay}
         onMinCapacityChange={setMinCapacity}
+        onNextDay={() => moveDay(1)}
         onNextWeek={() => changeWeek(1)}
+        onPreviousDay={() => moveDay(-1)}
         onPreviousWeek={() => changeWeek(-1)}
         onRoomChange={changeRoom}
         onToday={goToToday}
         rooms={rooms}
+        selectedDay={selectedDay}
         selectedRoomId={selectedRoomId}
         weekStart={weekStart}
       />
@@ -357,7 +505,10 @@ export function ScheduleClient() {
           <span className="room-meta-placeholder">Select a room</span>
         )}
         <TimezoneLabel
+          officeCloseHour={officeCloseHour}
+          officeOpenHour={officeOpenHour}
           officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
+          userTimeZone={userTimeZone}
         />
       </div>
 
@@ -383,22 +534,51 @@ export function ScheduleClient() {
       {selectedRoom ? (
         <div className="schedule-grid-shell">
           <p className="empty-schedule-note">
-            {schedule?.bookings.length === 0 && !scheduleLoading ?
-              'No bookings this week' :
-              ''}
+            <span className="desktop-schedule">
+              {schedule?.bookings.length === 0 && !scheduleLoading ?
+                'No bookings this week' :
+                ''}
+            </span>
+            <span className="mobile-schedule">
+              {!selectedDayHasBookings && !scheduleLoading ?
+                'No bookings this day' :
+                ''}
+            </span>
           </p>
-          <WeekGrid
-            bookingEnabled={schedule !== null}
-            bookings={schedule?.bookings ?? []}
-            highlightedBookingId={linkedBookingId}
-            loading={scheduleLoading || roomsLoading}
-            officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
-            onCancelBooking={setCancellation}
-            onSelectSlot={setSelection}
-            roomId={selectedRoom.id}
-            roomName={selectedRoom.name}
-            weekStart={weekStart}
-          />
+          <div className="desktop-schedule">
+            <WeekGrid
+              bookingEnabled={schedule !== null}
+              bookings={schedule?.bookings ?? []}
+              highlightedBookingId={linkedBookingId}
+              loading={scheduleLoading || roomsLoading}
+              officeCloseHour={officeCloseHour}
+              officeOpenHour={officeOpenHour}
+              officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
+              onCancelBooking={setCancellation}
+              onSelectSlot={setSelection}
+              roomId={selectedRoom.id}
+              roomName={selectedRoom.name}
+              userTimeZone={userTimeZone}
+              weekStart={weekStart}
+            />
+          </div>
+          <div className="mobile-schedule">
+            <DaySchedule
+              bookingEnabled={schedule !== null}
+              bookings={schedule?.bookings ?? []}
+              day={selectedDay}
+              highlightedBookingId={linkedBookingId}
+              loading={scheduleLoading || roomsLoading}
+              officeCloseHour={officeCloseHour}
+              officeOpenHour={officeOpenHour}
+              officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
+              onCancelBooking={setCancellation}
+              onSelectSlot={setSelection}
+              roomId={selectedRoom.id}
+              roomName={selectedRoom.name}
+              userTimeZone={userTimeZone}
+            />
+          </div>
           {scheduleLoading || roomsLoading ? (
             <div className="schedule-loading-overlay">
               <Spinner />

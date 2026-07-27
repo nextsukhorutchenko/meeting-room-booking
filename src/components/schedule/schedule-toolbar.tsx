@@ -6,24 +6,32 @@ import {RoomFilter, type RoomOption} from './room-filter';
 
 type ScheduleToolbarProps = {
   minCapacity: string;
+  onDayChange(value: string): void;
+  onNextDay(): void;
   onMinCapacityChange(value: string): void;
   onNextWeek(): void;
+  onPreviousDay(): void;
   onPreviousWeek(): void;
   onRoomChange(roomId: string): void;
   onToday(): void;
   rooms: RoomOption[];
+  selectedDay: string;
   selectedRoomId: string;
   weekStart: string;
 };
 
 export function ScheduleToolbar({
   minCapacity,
+  onDayChange,
+  onNextDay,
   onMinCapacityChange,
   onNextWeek,
+  onPreviousDay,
   onPreviousWeek,
   onRoomChange,
   onToday,
   rooms,
+  selectedDay,
   selectedRoomId,
   weekStart,
 }: ScheduleToolbarProps) {
@@ -42,7 +50,7 @@ export function ScheduleToolbar({
         rooms={rooms}
         selectedRoomId={selectedRoomId}
       />
-      <div className="week-controls">
+      <div className="week-controls desktop-week-controls">
         <button
           aria-label="Previous week"
           className="icon-button"
@@ -66,6 +74,34 @@ export function ScheduleToolbar({
           <ChevronRight aria-hidden="true" />
         </button>
         <p className="week-label" aria-live="polite">{weekLabel}</p>
+      </div>
+      <div className="mobile-day-controls">
+        <button
+          aria-label="Previous day"
+          className="icon-button"
+          onClick={onPreviousDay}
+          title="Previous day"
+          type="button"
+        >
+          <ChevronLeft aria-hidden="true" />
+        </button>
+        <label className="control-field day-picker-field">
+          <span>Day</span>
+          <input
+            onChange={(event) => onDayChange(event.target.value)}
+            type="date"
+            value={selectedDay}
+          />
+        </label>
+        <button
+          aria-label="Next day"
+          className="icon-button"
+          onClick={onNextDay}
+          title="Next day"
+          type="button"
+        >
+          <ChevronRight aria-hidden="true" />
+        </button>
       </div>
     </div>
   );

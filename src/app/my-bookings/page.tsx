@@ -1,6 +1,7 @@
 import {redirect} from 'next/navigation';
 import {AppHeader} from '../../components/app/app-header';
 import {BookingList} from '../../components/bookings/booking-list';
+import {readAppEnv} from '../../lib/config/env';
 import {getOptionalUser} from '../../modules/auth/auth.service';
 
 export default async function MyBookingsPage() {
@@ -8,6 +9,7 @@ export default async function MyBookingsPage() {
   if (!user) {
     redirect('/login');
   }
+  const {officeTimeZone} = readAppEnv();
 
   return (
     <>
@@ -17,7 +19,7 @@ export default async function MyBookingsPage() {
           <p className="schedule-eyebrow">Personal</p>
           <h1>My Bookings</h1>
         </div>
-        <BookingList />
+        <BookingList officeTimeZone={officeTimeZone} />
       </main>
     </>
   );

@@ -73,6 +73,10 @@ function requestUrl(input: RequestInfo | URL): URL {
   );
 }
 
+function renderBookingList() {
+  return render(<BookingList officeTimeZone="Europe/Kyiv" />);
+}
+
 describe('BookingList', () => {
   const fetchMock = vi.fn();
 
@@ -94,7 +98,7 @@ describe('BookingList', () => {
       return scope === 'future' ? future.promise : past.promise;
     });
 
-    render(<BookingList />);
+    renderBookingList();
     expect(
       within(screen.getByRole('region', {name: 'Upcoming bookings'}))
         .getByText('Loading upcoming bookings'),
@@ -123,7 +127,7 @@ describe('BookingList', () => {
       );
     });
 
-    render(<BookingList />);
+    renderBookingList();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'History unavailable',
@@ -155,7 +159,7 @@ describe('BookingList', () => {
       }));
     });
 
-    render(<BookingList />);
+    renderBookingList();
     const past = screen.getByRole('region', {name: 'Past bookings'});
     expect(await within(past).findByText('Booking past-1')).toBeVisible();
 
@@ -196,7 +200,7 @@ describe('BookingList', () => {
       }));
     });
 
-    render(<BookingList />);
+    renderBookingList();
     const past = screen.getByRole('region', {name: 'Past bookings'});
     const loadMore = await within(past).findByRole('button', {
       name: 'Load more past bookings',
@@ -222,12 +226,13 @@ describe('BookingList', () => {
       }));
     });
 
-    render(<BookingList />);
+    renderBookingList();
 
     expect(await screen.findByRole('link', {name: 'Roadmap review'}))
       .toHaveAttribute(
         'href',
-        '/schedule?roomId=oak&weekStart=2026-08-03&bookingId=linked-booking',
+        '/schedule?roomId=oak&weekStart=2026-08-03&day=2026-08-04' +
+        '&bookingId=linked-booking',
       );
   });
 
@@ -249,7 +254,7 @@ describe('BookingList', () => {
       }));
     });
 
-    render(<BookingList />);
+    renderBookingList();
     const user = userEvent.setup();
     await user.click(
       await screen.findByRole('button', {name: 'Cancel Cancel me'}),

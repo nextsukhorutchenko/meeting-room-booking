@@ -1,6 +1,7 @@
 'use client';
 
 import {DateTime} from 'luxon';
+import {formatInUserZone} from '../../lib/time/browser-zone';
 import {BookingBlock} from './booking-block';
 import type {BookingSelection} from './booking-dialog';
 
@@ -8,10 +9,9 @@ export const SCHEDULE_LAYOUT = {
   slotMinutes: 30,
   slotHeightPx: 36,
   dayCount: 7,
-  officeSlots: 20,
 } as const;
 
-type ScheduleBooking = {
+export type ScheduleBooking = {
   id: string;
   title: string;
   startsAt: string;
@@ -25,20 +25,34 @@ type WeekGridProps = {
   bookings: ScheduleBooking[];
   highlightedBookingId: string | null;
   loading: boolean;
+  officeCloseHour: number;
+  officeOpenHour: number;
   officeTimeZone: string;
   onCancelBooking(booking: {id: string; title: string}): void;
   onSelectSlot(selection: BookingSelection): void;
   roomId: string;
   roomName: string;
+  userTimeZone: string;
   weekStart: string;
 };
 
-const officeOpenHour = 9;
+const timeOptions: Intl.DateTimeFormatOptions = {
+  hour: '2-digit',
+  hourCycle: 'h23',
+  minute: '2-digit',
+};
 
-function slotLabel(slot: number): string {
-  return DateTime.fromObject({hour: officeOpenHour})
-    .plus({minutes: slot * SCHEDULE_LAYOUT.slotMinutes})
-    .toFormat('HH:mm');
+function timeLabel(instant: DateTime, userTimeZone: string): string {
+  return formatInUserZone(instant.toJSDate(), userTimeZone, timeOptions);
+}
+
+function dateLabel(instant: DateTime, userTimeZone: string): string {
+  return formatInUserZone(instant.toJSDate(), userTimeZone, {
+    day: 'numeric',
+    month: 'long',
+    weekday: 'long',
+    year: 'numeric',
+  });
 }
 
 function overlapsSlot(
@@ -56,11 +70,14 @@ export function WeekGrid({
   bookings,
   highlightedBookingId,
   loading,
+  officeCloseHour,
+  officeOpenHour,
   officeTimeZone,
   onCancelBooking,
   onSelectSlot,
   roomId,
   roomName,
+  userTimeZone,
   weekStart,
 }: WeekGridProps) {
   const week = DateTime.fromISO(weekStart, {zone: officeTimeZone});
@@ -69,9 +86,12 @@ export function WeekGrid({
     {length: SCHEDULE_LAYOUT.dayCount},
     (_, index) => week.plus({days: index}),
   );
-  const gridHeight =
-    SCHEDULE_LAYOUT.officeSlots * SCHEDULE_LAYOUT.slotHeightPx;
-  const currentMinutes = now.hour * 60 + now.minute - officeOpenHour * 60;
+  const officeSlots =
+    (officeCloseHour - officeOpenHour) * 60 /
+    SCHEDULE_LAYOUT.slotMinutes;
+  const gridHeight = officeSlots * SCHEDULE_LAYOUT.slotHeightPx;
+  const currentMinutes =
+    now.hour * 60 + now.minute - officeOpenHour * 60;
   const currentTop =
     currentMinutes / SCHEDULE_LAYOUT.slotMinutes *
     SCHEDULE_LAYOUT.slotHeightPx;
@@ -87,9 +107,12 @@ export function WeekGrid({
       aria-busy={loading}
       className="week-grid"
       role="grid"
+      style={{gridTemplateRows: `3.5rem ${gridHeight}px`}}
     >
       <div aria-hidden="true" className="schedule-corner">
-        GMT{week.toFormat('ZZ')}
+        {formatInUserZone(week.toJSDate(), userTimeZone, {
+          timeZoneName: 'short',
+        }).split(' ').at(-1)}
       </div>
       <div className="schedule-day-headers" role="row">
         {days.map((day) => {
@@ -114,7 +137,7 @@ export function WeekGrid({
         style={{height: gridHeight}}
       >
         {Array.from(
-          {length: SCHEDULE_LAYOUT.officeSlots},
+          {length: officeSlots},
           (_, slot) => (
             <div
               className="schedule-time-row"
@@ -122,11 +145,24 @@ export function WeekGrid({
               key={slot}
               style={{height: SCHEDULE_LAYOUT.slotHeightPx}}
             >
-              {slot % 2 === 0 ? slotLabel(slot) : null}
+              {slot % 2 === 0 ?
+                timeLabel(
+                  week.set({
+                    hour: officeOpenHour,
+                    minute: slot * SCHEDULE_LAYOUT.slotMinutes,
+                  }),
+                  userTimeZone,
+                ) :
+                null}
             </div>
           ),
         )}
-        <span className="schedule-end-time">19:00</span>
+        <span className="schedule-end-time">
+          {timeLabel(
+            week.set({hour: officeCloseHour, minute: 0}),
+            userTimeZone,
+          )}
+        </span>
       </div>
       <div className="schedule-days" style={{height: gridHeight}} role="row">
         {days.map((day, dayIndex) => {
@@ -148,7 +184,7 @@ export function WeekGrid({
               role="gridcell"
             >
               {Array.from(
-                {length: SCHEDULE_LAYOUT.officeSlots},
+                {length: officeSlots},
                 (_, slot) => {
                   const startsAt = day.startOf('day').set({
                     hour: officeOpenHour,
@@ -162,6 +198,11 @@ export function WeekGrid({
                   );
                   const bookable =
                     bookingEnabled && startsAt > now && !occupied;
+                  const userStartLabel = timeLabel(
+                    startsAt,
+                    userTimeZone,
+                  );
+                  const userEndLabel = timeLabel(endsAt, userTimeZone);
                   return (
                     <div
                       className="schedule-slot"
@@ -171,21 +212,21 @@ export function WeekGrid({
                       {bookable ? (
                         <button
                           aria-label={
-                            `Book ${day.toFormat('cccc, LLLL d')} at ` +
-                            `${startsAt.toFormat('HH:mm')} in ${roomName}`
+                            `Book ${dateLabel(startsAt, userTimeZone)} at ` +
+                            `${userStartLabel} in ${roomName}`
                           }
                           className="free-slot-button"
                           onClick={() => onSelectSlot({
-                            dateLabel: day.toFormat('cccc, LLLL d, yyyy'),
-                            endsAt: endsAt.toISO() ?? '',
+                            dateLabel: dateLabel(startsAt, userTimeZone),
+                            endsAt: endsAt.toUTC().toISO() ?? '',
                             roomId,
                             roomName,
-                            startsAt: startsAt.toISO() ?? '',
+                            startsAt: startsAt.toUTC().toISO() ?? '',
                             timeLabel:
-                              `${startsAt.toFormat('HH:mm')}-` +
-                              endsAt.toFormat('HH:mm'),
+                              `${userStartLabel}-${userEndLabel}`,
+                            timeZoneLabel: userTimeZone,
                           })}
-                          title={`Book ${startsAt.toFormat('HH:mm')}`}
+                          title={`Book ${userStartLabel}`}
                           type="button"
                         />
                       ) : null}
@@ -202,6 +243,9 @@ export function WeekGrid({
                   startsAt.hour * 60 + startsAt.minute -
                   officeOpenHour * 60;
                 const durationMinutes = endsAt.diff(startsAt, 'minutes').minutes;
+                const bookingTimeLabel =
+                  `${timeLabel(startsAt, userTimeZone)}-` +
+                  timeLabel(endsAt, userTimeZone);
                 return (
                   <BookingBlock
                     authorName={booking.author.name}
@@ -214,6 +258,7 @@ export function WeekGrid({
                     isOwn={booking.isOwn}
                     key={booking.id}
                     onCancel={onCancelBooking}
+                    timeLabel={bookingTimeLabel}
                     title={booking.title}
                     top={
                       startMinutes / SCHEDULE_LAYOUT.slotMinutes *

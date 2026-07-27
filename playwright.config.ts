@@ -41,13 +41,40 @@ export default defineConfig({
       testMatch: '**/auth.setup.ts',
     },
     {
-      name: 'desktop',
+      name: 'desktop-kyiv',
       dependencies: ['auth-setup'],
-      testIgnore: ['**/seed.spec.ts', '**/smoke.spec.ts'],
+      testIgnore: [
+        '**/mobile.spec.ts',
+        '**/seed.spec.ts',
+        '**/smoke.spec.ts',
+      ],
       use: {
         ...devices['Desktop Chrome'],
         storageState: authStatePath,
+        timezoneId: 'Europe/Kyiv',
         viewport: {width: 1440, height: 900},
+      },
+    },
+    {
+      name: 'desktop-new-york',
+      dependencies: ['auth-setup'],
+      testMatch: '**/timezone.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: authStatePath,
+        timezoneId: 'America/New_York',
+        viewport: {width: 1440, height: 900},
+      },
+    },
+    {
+      name: 'mobile-kyiv',
+      dependencies: ['auth-setup'],
+      testMatch: '**/mobile.spec.ts',
+      use: {
+        ...devices['Pixel 7'],
+        storageState: authStatePath,
+        timezoneId: 'Europe/Kyiv',
+        viewport: {width: 390, height: 844},
       },
     },
     {

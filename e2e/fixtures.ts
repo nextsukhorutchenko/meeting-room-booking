@@ -17,6 +17,7 @@ export const DEMO_USER = {
 export const TASK_9_BOOKING_PREFIX = 'task-9-e2e-';
 export const TASK_10_BOOKING_PREFIX = 'task-10-e2e-';
 export const TASK_11_BOOKING_PREFIX = 'task-11-e2e-';
+export const TASK_12_BOOKING_PREFIX = 'task-12-e2e-';
 
 function readTestDatabaseUrl(): string {
   const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -62,6 +63,8 @@ export async function clearTaskBookings(
         {id: {startsWith: TASK_10_BOOKING_PREFIX}},
         {title: {startsWith: TASK_11_BOOKING_PREFIX}},
         {id: {startsWith: TASK_11_BOOKING_PREFIX}},
+        {title: {startsWith: TASK_12_BOOKING_PREFIX}},
+        {id: {startsWith: TASK_12_BOOKING_PREFIX}},
       ],
     },
   });

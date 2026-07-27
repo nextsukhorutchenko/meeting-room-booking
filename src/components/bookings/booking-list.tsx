@@ -10,7 +10,12 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
+import {
+  formatInUserZone,
+  getBrowserTimeZone,
+} from '../../lib/time/browser-zone';
 import type {
   BookingListItem,
   BookingPage,
@@ -37,7 +42,10 @@ type ApiResponse = {
 };
 
 const pageSize = 20;
-const officeTimeZone = 'Europe/Kyiv';
+
+function subscribeToBrowserTimeZone(): () => void {
+  return () => undefined;
+}
 
 function initialState(): SectionState {
   return {
@@ -88,7 +96,12 @@ function errorMessage(body: ApiResponse, fallback: string): string {
     fallback;
 }
 
-function bookingUrl(booking: BookingListItem): string {
+function bookingUrl(
+  booking: BookingListItem,
+  officeTimeZone: string,
+): string {
+  const officeStart = DateTime.fromISO(booking.startsAt)
+    .setZone(officeTimeZone);
   const weekStart = DateTime.fromISO(booking.startsAt)
     .setZone(officeTimeZone)
     .startOf('week')
@@ -96,20 +109,37 @@ function bookingUrl(booking: BookingListItem): string {
   const parameters = new URLSearchParams({
     roomId: booking.room.id,
     weekStart,
+    day: officeStart.toFormat('yyyy-LL-dd'),
     bookingId: booking.id,
   });
   return `/schedule?${parameters.toString()}`;
 }
 
-function formattedTime(booking: BookingListItem): {
+function formattedTime(
+  booking: BookingListItem,
+  userTimeZone: string,
+): {
   date: string;
   time: string;
 } {
-  const start = DateTime.fromISO(booking.startsAt).setZone(officeTimeZone);
-  const end = DateTime.fromISO(booking.endsAt).setZone(officeTimeZone);
   return {
-    date: start.toFormat('ccc, LLL d'),
-    time: `${start.toFormat('HH:mm')}-${end.toFormat('HH:mm')}`,
+    date: formatInUserZone(booking.startsAt, userTimeZone, {
+      day: 'numeric',
+      month: 'short',
+      weekday: 'short',
+    }),
+    time:
+      formatInUserZone(booking.startsAt, userTimeZone, {
+        hour: '2-digit',
+        hourCycle: 'h23',
+        minute: '2-digit',
+      }) +
+      '-' +
+      formatInUserZone(booking.endsAt, userTimeZone, {
+        hour: '2-digit',
+        hourCycle: 'h23',
+        minute: '2-digit',
+      }),
   };
 }
 
@@ -149,18 +179,22 @@ type BookingSectionProps = {
   emptyText: string;
   heading: string;
   loadingText: string;
+  officeTimeZone: string;
   onCancel?(booking: CancellationSelection): void;
   onLoadMore(): void;
   state: SectionState;
+  userTimeZone: string;
 };
 
 function BookingSection({
   emptyText,
   heading,
   loadingText,
+  officeTimeZone,
   onCancel,
   onLoadMore,
   state,
+  userTimeZone,
 }: BookingSectionProps) {
   return (
     <section aria-label={heading} className="booking-history-section">
@@ -185,7 +219,7 @@ function BookingSection({
       {state.items.length > 0 ? (
         <ul className="booking-list">
           {state.items.map((booking) => {
-            const time = formattedTime(booking);
+            const time = formattedTime(booking, userTimeZone);
             return (
               <li
                 className="booking-list-row"
@@ -198,7 +232,9 @@ function BookingSection({
                     <span>{time.time}</span>
                   </time>
                   <div className="booking-list-details">
-                    <Link href={bookingUrl(booking)}>{booking.title}</Link>
+                    <Link href={bookingUrl(booking, officeTimeZone)}>
+                      {booking.title}
+                    </Link>
                     <span>{booking.room.name}</span>
                   </div>
                 </div>
@@ -246,12 +282,21 @@ function BookingSection({
   );
 }
 
-export function BookingList() {
+type BookingListProps = {
+  officeTimeZone: string;
+};
+
+export function BookingList({officeTimeZone}: BookingListProps) {
   const [future, setFuture] = useState<SectionState>(initialState);
   const [past, setPast] = useState<SectionState>(initialState);
   const [cancellation, setCancellation] =
     useState<CancellationSelection | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const userTimeZone = useSyncExternalStore(
+    subscribeToBrowserTimeZone,
+    getBrowserTimeZone,
+    () => officeTimeZone,
+  );
   const loadMorePending = useRef<Record<Scope, boolean>>({
     future: false,
     past: false,
@@ -367,16 +412,20 @@ export function BookingList() {
         emptyText="No upcoming bookings"
         heading="Upcoming bookings"
         loadingText="Loading upcoming bookings"
+        officeTimeZone={officeTimeZone}
         onCancel={setCancellation}
         onLoadMore={() => void loadMore('future', future, setFuture)}
         state={future}
+        userTimeZone={userTimeZone}
       />
       <BookingSection
         emptyText="No past bookings"
         heading="Past bookings"
         loadingText="Loading past bookings"
+        officeTimeZone={officeTimeZone}
         onLoadMore={() => void loadMore('past', past, setPast)}
         state={past}
+        userTimeZone={userTimeZone}
       />
       {cancellation ? (
         <CancelBookingDialog

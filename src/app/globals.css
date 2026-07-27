@@ -180,6 +180,11 @@ select:disabled {
   border-bottom: 1px solid #d9ded9;
 }
 
+.mobile-day-controls,
+.mobile-schedule {
+  display: none;
+}
+
 .room-filter,
 .week-controls,
 .room-context,
@@ -331,10 +336,14 @@ select:disabled {
 
 .schedule-grid-shell {
   position: relative;
-  min-width: 58rem;
+  min-width: 0;
   border-top: 1px solid #ccd4ce;
   border-bottom: 1px solid #ccd4ce;
   background: #ffffff;
+}
+
+.schedule-grid-shell > div.desktop-schedule {
+  min-width: 58rem;
 }
 
 .week-grid {
@@ -343,6 +352,18 @@ select:disabled {
   grid-template-rows: 3.5rem 45rem;
   width: 100%;
   min-width: 58rem;
+}
+
+.day-schedule {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  width: 100%;
+  min-height: 48.375rem;
+}
+
+.day-schedule .schedule-day-headers,
+.day-schedule .schedule-days {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .schedule-corner {
@@ -506,8 +527,13 @@ select:disabled {
   line-height: 1;
 }
 
-.booking-block-meta > span:first-child {
+.booking-block-meta > span:not(.booking-time-label) {
   min-width: 0;
+}
+
+.booking-time-label {
+  flex: none;
+  font-weight: 700;
 }
 
 .booking-block.booking-own {
@@ -1019,7 +1045,7 @@ select:disabled {
   }
 
   .schedule-page {
-    overflow-x: auto;
+    overflow-x: hidden;
     padding: 1.25rem 1rem;
   }
 
@@ -1045,10 +1071,12 @@ select:disabled {
   .schedule-toolbar {
     align-items: stretch;
     flex-direction: column;
+    gap: 1rem;
   }
 
   .room-filter {
     align-items: stretch;
+    flex-direction: column;
   }
 
   .control-field {
@@ -1061,11 +1089,45 @@ select:disabled {
     min-width: 0;
   }
 
-  .week-controls {
-    justify-content: flex-start;
+  .desktop-week-controls,
+  .desktop-schedule {
+    display: none;
   }
 
-  .week-label {
-    text-align: left;
+  .mobile-day-controls,
+  .mobile-schedule {
+    display: grid;
+  }
+
+  .mobile-day-controls {
+    grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+    align-items: end;
+    gap: 0.5rem;
+  }
+
+  .day-picker-field input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .room-context {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 5rem;
+  }
+
+  .room-meta {
+    flex-wrap: wrap;
+    row-gap: 0.45rem;
+  }
+
+  .schedule-grid-shell {
+    width: 100%;
+  }
+
+  .schedule-loading-overlay {
+    inset: 3.375rem 0 0 3.75rem;
   }
 }
