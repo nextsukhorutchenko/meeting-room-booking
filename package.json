@@ -14,18 +14,20 @@
     "test:e2e": "playwright test --config playwright.config.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed",
+    "db:seed": "tsx prisma/seed.ts",
     "db:reset:test": "tsx scripts/reset-test-db.ts"
   },
   "engines": {
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
     "argon2": "^0.45.1",
     "lucide-react": "^1.27.0",
     "luxon": "^3.7.2",
     "next": "16.2.12",
+    "pg": "^8.16.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
