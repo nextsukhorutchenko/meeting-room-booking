@@ -2,12 +2,9 @@ import 'dotenv/config';
 import {PrismaPg} from '@prisma/adapter-pg';
 import {PrismaClient} from '@prisma/client';
 import {seedRooms} from './room-seed';
+import {readTestSeedDatabaseUrl} from './test-seed-url';
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('DATABASE_URL must be set to seed the development database');
-}
-
+const databaseUrl = readTestSeedDatabaseUrl();
 const prisma = new PrismaClient({
   adapter: new PrismaPg({connectionString: databaseUrl}),
 });
