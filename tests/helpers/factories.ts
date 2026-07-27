@@ -1,10 +1,32 @@
-import type {Room, User} from '@prisma/client';
+import type {Booking, Room, User} from '@prisma/client';
 import {normalizeEmail} from '../../src/modules/auth/email';
 import {hashPassword} from '../../src/modules/auth/password';
+import type {CreateBookingInput} from '../../src/modules/bookings/booking.types';
 import {testDb} from './database';
 
+let bookingSequence = 0;
 let roomSequence = 0;
 let userSequence = 0;
+
+export async function createBookingFixture(
+  input: Pick<CreateBookingInput, 'roomId' | 'userId'> &
+    Partial<Omit<CreateBookingInput, 'roomId' | 'userId'>> & {
+      cancelledAt?: Date | null;
+    },
+): Promise<Booking> {
+  bookingSequence += 1;
+
+  return testDb.booking.create({
+    data: {
+      roomId: input.roomId,
+      userId: input.userId,
+      title: input.title ?? `Test booking ${bookingSequence}`,
+      startsAt: input.startsAt ?? new Date('2026-07-28T06:00:00.000Z'),
+      endsAt: input.endsAt ?? new Date('2026-07-28T07:00:00.000Z'),
+      cancelledAt: input.cancelledAt,
+    },
+  });
+}
 
 export async function createRoomFixture(
   overrides: Partial<{name: string; floor: number; capacity: number}> = {},
