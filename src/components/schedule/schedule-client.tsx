@@ -10,6 +10,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  CancelBookingDialog,
+  type CancellationSelection,
+} from '../bookings/cancel-booking-dialog';
 import {Spinner} from '../ui/spinner';
 import {Toast} from '../ui/toast';
 import {
@@ -87,11 +91,16 @@ export function ScheduleClient() {
   const [scheduleState, setScheduleState] =
     useState<ScheduleLoadState | null>(null);
   const [selection, setSelection] = useState<BookingSelection | null>(null);
+  const [cancellation, setCancellation] =
+    useState<CancellationSelection | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [preservedScheduleKey, setPreservedScheduleKey] =
+    useState<string | null>(null);
   const selectedRoomIdRef = useRef(selectedRoomId);
   const weekStartRef = useRef(weekStart);
   const scheduleRequestSequence = useRef(0);
+  const preserveScheduleOnRefreshRef = useRef(false);
 
   const updateUrl = useCallback((
     roomId: string,
@@ -138,6 +147,8 @@ export function ScheduleClient() {
           body.data[0]?.id ?? '';
         setSelectedRoomId(roomId);
         if (roomId !== currentRoomId) {
+          preserveScheduleOnRefreshRef.current = false;
+          setPreservedScheduleKey(null);
           scheduleRequestSequence.current += 1;
           setScheduleState(null);
           setSelection(null);
@@ -173,7 +184,9 @@ export function ScheduleClient() {
     const requestSequence = ++scheduleRequestSequence.current;
     const requestKey = activeScheduleKey;
     async function loadSchedule() {
-      setScheduleState({key: requestKey, status: 'loading'});
+      if (!preserveScheduleOnRefreshRef.current) {
+        setScheduleState({key: requestKey, status: 'loading'});
+      }
       try {
         const response = await fetch(
           `/api/rooms/${selectedRoomId}/schedule?weekStart=${weekStart}`,
@@ -191,6 +204,8 @@ export function ScheduleClient() {
             body.error?.message ?? 'Unable to load the schedule.',
           );
         }
+        preserveScheduleOnRefreshRef.current = false;
+        setPreservedScheduleKey(null);
         setScheduleState({
           data: body.data,
           key: requestKey,
@@ -204,6 +219,8 @@ export function ScheduleClient() {
         ) {
           return;
         }
+        preserveScheduleOnRefreshRef.current = false;
+        setPreservedScheduleKey(null);
         setScheduleState({
           error: error instanceof Error ?
             error.message :
@@ -226,9 +243,14 @@ export function ScheduleClient() {
   }, [toastMessage]);
 
   const isCurrentSchedule = scheduleState?.key === activeScheduleKey;
-  const schedule = isCurrentSchedule && scheduleState.status === 'success' ?
-    scheduleState.data :
-    null;
+  const isPreservedSchedule =
+    scheduleState?.key === preservedScheduleKey &&
+    scheduleState.status === 'success';
+  const schedule =
+    (isCurrentSchedule || isPreservedSchedule) &&
+    scheduleState.status === 'success' ?
+      scheduleState.data :
+      null;
   const scheduleError =
     isCurrentSchedule && scheduleState.status === 'error' ?
       scheduleState.error :
@@ -246,6 +268,9 @@ export function ScheduleClient() {
   );
 
   function changeRoom(roomId: string) {
+    preserveScheduleOnRefreshRef.current = false;
+    setPreservedScheduleKey(null);
+    setCancellation(null);
     setSelection(null);
     setSelectedRoomId(roomId);
     updateUrl(roomId, weekStart);
@@ -255,6 +280,9 @@ export function ScheduleClient() {
     const nextWeek = DateTime.fromISO(weekStart, {zone: officeTimeZone})
       .plus({weeks})
       .toFormat('yyyy-LL-dd');
+    preserveScheduleOnRefreshRef.current = false;
+    setPreservedScheduleKey(null);
+    setCancellation(null);
     setSelection(null);
     setWeekStart(nextWeek);
     updateUrl(selectedRoomId, nextWeek);
@@ -262,14 +290,27 @@ export function ScheduleClient() {
 
   function goToToday() {
     const currentWeek = currentOfficeWeek();
+    preserveScheduleOnRefreshRef.current = false;
+    setPreservedScheduleKey(null);
+    setCancellation(null);
     setSelection(null);
     setWeekStart(currentWeek);
     updateUrl(selectedRoomId, currentWeek);
   }
 
   function handleCreated() {
+    preserveScheduleOnRefreshRef.current = false;
+    setPreservedScheduleKey(null);
     setSelection(null);
     setToastMessage('Booking created');
+    setRefreshKey((key) => key + 1);
+  }
+
+  function handleCancelled() {
+    preserveScheduleOnRefreshRef.current = true;
+    setPreservedScheduleKey(activeScheduleKey);
+    setCancellation(null);
+    setToastMessage('Booking cancelled');
     setRefreshKey((key) => key + 1);
   }
 
@@ -339,6 +380,7 @@ export function ScheduleClient() {
             bookings={schedule?.bookings ?? []}
             loading={scheduleLoading || roomsLoading}
             officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
+            onCancelBooking={setCancellation}
             onSelectSlot={setSelection}
             roomId={selectedRoom.id}
             roomName={selectedRoom.name}
@@ -357,6 +399,13 @@ export function ScheduleClient() {
         onCreated={handleCreated}
         selection={selection}
       />
+      {cancellation ? (
+        <CancelBookingDialog
+          booking={cancellation}
+          onCancelled={handleCancelled}
+          onClose={() => setCancellation(null)}
+        />
+      ) : null}
       {toastMessage ? <Toast message={toastMessage} /> : null}
     </section>
   );

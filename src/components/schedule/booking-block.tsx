@@ -1,17 +1,21 @@
-import {UserRoundCheck} from 'lucide-react';
+import {CalendarX2, UserRoundCheck} from 'lucide-react';
 
 type BookingBlockProps = {
   authorName: string;
+  bookingId: string;
   height: number;
   isOwn: boolean;
+  onCancel(booking: {id: string; title: string}): void;
   title: string;
   top: number;
 };
 
 export function BookingBlock({
   authorName,
+  bookingId,
   height,
   isOwn,
+  onCancel,
   title,
   top,
 }: BookingBlockProps) {
@@ -31,6 +35,17 @@ export function BookingBlock({
           </span>
         ) : null}
       </div>
+      {isOwn ? (
+        <button
+          aria-label={`Cancel ${title}`}
+          className="booking-cancel-button"
+          onClick={() => onCancel({id: bookingId, title})}
+          title="Cancel booking"
+          type="button"
+        >
+          <CalendarX2 aria-hidden="true" />
+        </button>
+      ) : null}
     </article>
   );
 }

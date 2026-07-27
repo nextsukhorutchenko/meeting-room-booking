@@ -302,4 +302,71 @@ describe('ScheduleClient request state', () => {
       screen.getAllByRole('button', {name: /^Book /}).length,
     ).toBeGreaterThan(0);
   });
+
+  it('keeps a cancelled block until the active schedule refetch completes', async () => {
+    const refreshedSchedule = deferred<Response>();
+    let scheduleRequestCount = 0;
+    const initialSchedule = scheduleBody(
+      '2026-08-03',
+      'Cancellation timing',
+    );
+    const emptySchedule = {
+      data: {
+        ...initialSchedule.data,
+        bookings: [],
+      },
+    };
+
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        return scheduleRequestCount === 1 ?
+          Promise.resolve(jsonResponse(initialSchedule)) :
+          refreshedSchedule.promise;
+      }
+      if (
+        url === '/api/bookings/cancellation-timing' &&
+        init?.method === 'DELETE'
+      ) {
+        return Promise.resolve(jsonResponse(undefined, 204));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ScheduleClient />);
+    const block = await screen.findByRole('article', {
+      name: /Cancellation timing/,
+    });
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole('button', {name: 'Cancel Cancellation timing'}),
+    );
+    await user.click(
+      screen.getByRole('button', {name: 'Cancel booking'}),
+    );
+    await waitFor(() => {
+      expect(scheduleRequestCount).toBe(2);
+    });
+
+    expect(
+      screen.queryByRole('dialog', {name: 'Cancel booking'}),
+    ).not.toBeInTheDocument();
+    expect(block).toBeVisible();
+
+    await act(async () => {
+      refreshedSchedule.resolve(jsonResponse(emptySchedule));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Cancellation timing'))
+        .not.toBeInTheDocument();
+    });
+  });
 });

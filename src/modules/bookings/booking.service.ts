@@ -16,12 +16,17 @@ import {createBookingSchema} from './booking.schemas';
 import type {
   BookingService,
   BookingView,
+  CancelBookingInput,
   CreatedBooking,
   CreateBookingInput,
 } from './booking.types';
 import {validateBookingInterval} from './interval';
 
 export interface BookingTransaction {
+  cancelOwnedActive(input: CancelBookingInput): Promise<number>;
+  findCancellationMetadata(
+    bookingId: string,
+  ): Promise<{userId: string; cancelledAt: Date | null} | null>;
   lockRoom(roomId: string): Promise<boolean>;
   findActiveOverlap(input: {
     roomId: string;
@@ -70,6 +75,22 @@ function bookingConflictError(): DomainError {
   });
 }
 
+function bookingForbiddenError(): DomainError {
+  return new DomainError({
+    code: 'BOOKING_FORBIDDEN',
+    message: 'You can only cancel your own bookings.',
+    status: 403,
+  });
+}
+
+function bookingNotFoundError(): DomainError {
+  return new DomainError({
+    code: 'BOOKING_NOT_FOUND',
+    message: 'Booking not found.',
+    status: 404,
+  });
+}
+
 function serviceUnavailableError(): DomainError {
   return new DomainError({
     code: 'SERVICE_UNAVAILABLE',
@@ -101,6 +122,42 @@ export class DefaultBookingService implements BookingService {
       env: AppEnv;
     },
   ) {}
+
+  async cancel(input: CancelBookingInput): Promise<void> {
+    try {
+      await this.dependencies.repository.withTransaction(
+        async (transaction) => {
+          const updated = await transaction.cancelOwnedActive(input);
+          if (updated > 0) {
+            return;
+          }
+
+          const booking = await transaction.findCancellationMetadata(
+            input.bookingId,
+          );
+          if (!booking) {
+            throw bookingNotFoundError();
+          }
+          if (booking.userId !== input.userId) {
+            throw bookingForbiddenError();
+          }
+          if (booking.cancelledAt !== null) {
+            return;
+          }
+
+          const retried = await transaction.cancelOwnedActive(input);
+          if (retried === 0) {
+            throw serviceUnavailableError();
+          }
+        },
+      );
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      throw serviceUnavailableError();
+    }
+  }
 
   async create(input: CreateBookingInput): Promise<BookingView> {
     const parsed = createBookingSchema.safeParse(input);
@@ -161,6 +218,30 @@ type TransactionDatabase = Pick<
 
 class PrismaBookingTransaction implements BookingTransaction {
   constructor(private readonly transaction: TransactionDatabase) {}
+
+  async cancelOwnedActive(input: CancelBookingInput): Promise<number> {
+    const result = await this.transaction.booking.updateMany({
+      where: {
+        id: input.bookingId,
+        userId: input.userId,
+        cancelledAt: null,
+      },
+      data: {cancelledAt: input.cancelledAt},
+    });
+    return result.count;
+  }
+
+  async findCancellationMetadata(
+    bookingId: string,
+  ): Promise<{userId: string; cancelledAt: Date | null} | null> {
+    return this.transaction.booking.findUnique({
+      where: {id: bookingId},
+      select: {
+        userId: true,
+        cancelledAt: true,
+      },
+    });
+  }
 
   async lockRoom(roomId: string): Promise<boolean> {
     const lockedRooms = await this.transaction.$queryRaw<Array<{id: string}>>`
@@ -253,4 +334,10 @@ export async function createBooking(
   input: CreateBookingInput,
 ): Promise<BookingView> {
   return (await getDefaultService()).create(input);
+}
+
+export async function cancelBooking(
+  input: CancelBookingInput,
+): Promise<void> {
+  return (await getDefaultService()).cancel(input);
 }

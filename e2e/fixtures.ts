@@ -15,6 +15,7 @@ export const DEMO_USER = {
 } as const;
 
 export const TASK_9_BOOKING_PREFIX = 'task-9-e2e-';
+export const TASK_10_BOOKING_PREFIX = 'task-10-e2e-';
 
 function readTestDatabaseUrl(): string {
   const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -49,11 +50,16 @@ export async function roomByName(
   return database.room.findUniqueOrThrow({where: {name}});
 }
 
-export async function clearTask9Bookings(
+export async function clearTaskBookings(
   database: PrismaClient,
 ): Promise<void> {
   await database.booking.deleteMany({
-    where: {title: {startsWith: TASK_9_BOOKING_PREFIX}},
+    where: {
+      OR: [
+        {title: {startsWith: TASK_9_BOOKING_PREFIX}},
+        {title: {startsWith: TASK_10_BOOKING_PREFIX}},
+      ],
+    },
   });
 }
 
@@ -64,9 +70,9 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   database: async ({}, run) => {
     const database = createE2eDatabase();
-    await clearTask9Bookings(database);
+    await clearTaskBookings(database);
     await run(database);
-    await clearTask9Bookings(database);
+    await clearTaskBookings(database);
     await database.$disconnect();
   },
 });

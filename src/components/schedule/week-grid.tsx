@@ -25,6 +25,7 @@ type WeekGridProps = {
   bookings: ScheduleBooking[];
   loading: boolean;
   officeTimeZone: string;
+  onCancelBooking(booking: {id: string; title: string}): void;
   onSelectSlot(selection: BookingSelection): void;
   roomId: string;
   roomName: string;
@@ -54,6 +55,7 @@ export function WeekGrid({
   bookings,
   loading,
   officeTimeZone,
+  onCancelBooking,
   onSelectSlot,
   roomId,
   roomName,
@@ -201,12 +203,14 @@ export function WeekGrid({
                 return (
                   <BookingBlock
                     authorName={booking.author.name}
+                    bookingId={booking.id}
                     height={
                       durationMinutes / SCHEDULE_LAYOUT.slotMinutes *
                       SCHEDULE_LAYOUT.slotHeightPx
                     }
                     isOwn={booking.isOwn}
                     key={booking.id}
+                    onCancel={onCancelBooking}
                     title={booking.title}
                     top={
                       startMinutes / SCHEDULE_LAYOUT.slotMinutes *

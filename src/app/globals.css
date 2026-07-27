@@ -226,7 +226,9 @@ select:disabled {
 .icon-button:focus-visible,
 .today-button:focus-visible,
 .secondary-button:focus-visible,
-.free-slot-button:focus-visible {
+.free-slot-button:focus-visible,
+.booking-cancel-button:focus-visible,
+.destructive-button:focus-visible {
   outline: 2px solid #2f7652;
   outline-offset: 2px;
 }
@@ -511,7 +513,35 @@ select:disabled {
 .booking-block.booking-own {
   border-left-color: #2f7652;
   background: #e7f3eb;
+  padding-right: 2rem;
   color: #194e35;
+}
+
+.booking-cancel-button {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 1px solid #8bb49a;
+  border-radius: 0.25rem;
+  background: #f7fbf8;
+  color: #286547;
+  transform: translateY(-50%);
+}
+
+.booking-cancel-button:hover {
+  border-color: #b7574c;
+  background: #fff2ef;
+  color: #9a3e34;
+}
+
+.booking-cancel-button svg {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 .booking-owner-label {
@@ -681,8 +711,54 @@ select:disabled {
 
 .dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.65rem;
+}
+
+.cancellation-dialog-copy {
+  margin: 0;
+  color: #445148;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.cancellation-dialog-copy strong {
+  color: #17211b;
+}
+
+.destructive-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  border: 1px solid #a7443a;
+  border-radius: 0.375rem;
+  background: #a7443a;
+  padding: 0.5rem 0.8rem;
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.destructive-button:hover {
+  border-color: #8e352d;
+  background: #8e352d;
+}
+
+.destructive-button:disabled {
+  border-color: #c7aaa6;
+  background: #c7aaa6;
+}
+
+.destructive-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.cancellation-spinner {
+  animation: spin 0.8s linear infinite;
 }
 
 .toast {

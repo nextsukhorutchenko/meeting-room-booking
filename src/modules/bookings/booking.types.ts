@@ -6,6 +6,12 @@ export type CreateBookingInput = {
   endsAt: Date;
 };
 
+export type CancelBookingInput = {
+  bookingId: string;
+  userId: string;
+  cancelledAt: Date;
+};
+
 export type CreatedBooking = {
   id: string;
   roomId: string;
@@ -32,5 +38,6 @@ export type BookingView = {
 };
 
 export interface BookingService {
+  cancel(input: CancelBookingInput): Promise<void>;
   create(input: CreateBookingInput): Promise<BookingView>;
 }

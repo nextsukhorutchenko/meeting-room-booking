@@ -36,13 +36,24 @@ type ExistingBooking = {
   cancelledAt: Date | null;
 };
 
+type CancellationBooking = {
+  userId: string;
+  cancelledAt: Date | null;
+};
+
 class InMemoryBookingRepository implements BookingRepository {
   readonly createdInputs: CreateBookingInput[] = [];
   readonly events: string[] = [];
   readonly rooms = new Set(['room-1']);
   readonly existingBookings: ExistingBooking[] = [];
+  readonly cancellationBookings = new Map<string, CancellationBooking>();
+  cancelOwnedActiveOverride?: (
+    input: {bookingId: string; userId: string; cancelledAt: Date},
+    attempt: number,
+  ) => number;
   transactionCalls = 0;
   private bookingSequence = 0;
+  private cancelAttempt = 0;
 
   async withTransaction<T>(
     operation: (transaction: BookingTransaction) => Promise<T>,
@@ -81,6 +92,28 @@ class InMemoryBookingRepository implements BookingRepository {
           endsAt: input.endsAt,
           author: {id: input.userId, name: 'Ada'},
         };
+      },
+      cancelOwnedActive: async (input) => {
+        this.events.push('cancel-owned-active');
+        this.cancelAttempt += 1;
+        if (this.cancelOwnedActiveOverride) {
+          return this.cancelOwnedActiveOverride(input, this.cancelAttempt);
+        }
+        const booking = this.cancellationBookings.get(input.bookingId);
+        if (
+          !booking ||
+          booking.userId !== input.userId ||
+          booking.cancelledAt !== null
+        ) {
+          return 0;
+        }
+        booking.cancelledAt = input.cancelledAt;
+        return 1;
+      },
+      findCancellationMetadata: async (bookingId) => {
+        this.events.push('find-cancellation-metadata');
+        const booking = this.cancellationBookings.get(bookingId);
+        return booking ? {...booking} : null;
       },
     });
   }
@@ -129,6 +162,205 @@ async function expectDomainError(
 }
 
 describe('DefaultBookingService', () => {
+  describe('cancel', () => {
+    const cancelledAt = new Date('2026-07-27T08:30:00.000Z');
+
+    it('soft-cancels an active booking owned by the caller', async () => {
+      const {repository, service} = createService();
+      repository.cancellationBookings.set('booking-1', {
+        userId: 'user-1',
+        cancelledAt: null,
+      });
+
+      await expect(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      })).resolves.toBeUndefined();
+
+      expect(repository.cancellationBookings.get('booking-1')).toEqual({
+        userId: 'user-1',
+        cancelledAt,
+      });
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+      ]);
+    });
+
+    it('returns a stable not-found error after one metadata lookup', async () => {
+      const {repository, service} = createService();
+
+      await expect(service.cancel({
+        bookingId: 'missing-booking',
+        userId: 'user-1',
+        cancelledAt,
+      })).rejects.toMatchObject({
+        code: 'BOOKING_NOT_FOUND',
+        message: 'Booking not found.',
+        status: 404,
+      });
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+        'find-cancellation-metadata',
+      ]);
+    });
+
+    it('forbids cancellation owned by another user', async () => {
+      const {repository, service} = createService();
+      repository.cancellationBookings.set('booking-1', {
+        userId: 'user-2',
+        cancelledAt: null,
+      });
+
+      await expect(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      })).rejects.toMatchObject({
+        code: 'BOOKING_FORBIDDEN',
+        message: 'You can only cancel your own bookings.',
+        status: 403,
+      });
+      expect(repository.cancellationBookings.get('booking-1')).toEqual({
+        userId: 'user-2',
+        cancelledAt: null,
+      });
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+        'find-cancellation-metadata',
+      ]);
+    });
+
+    it('treats repeated owner cancellation as idempotent success', async () => {
+      const originalCancellation = new Date('2026-07-27T08:00:00.000Z');
+      const {repository, service} = createService();
+      repository.cancellationBookings.set('booking-1', {
+        userId: 'user-1',
+        cancelledAt: originalCancellation,
+      });
+
+      await expect(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      })).resolves.toBeUndefined();
+
+      expect(repository.cancellationBookings.get('booking-1')?.cancelledAt)
+        .toBe(originalCancellation);
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+        'find-cancellation-metadata',
+      ]);
+    });
+
+    it('retries one owned-active race outcome without a second lookup', async () => {
+      const {repository, service} = createService();
+      repository.cancellationBookings.set('booking-1', {
+        userId: 'user-1',
+        cancelledAt: null,
+      });
+      repository.cancelOwnedActiveOverride = (input, attempt) => {
+        if (attempt === 1) {
+          return 0;
+        }
+        const booking = repository.cancellationBookings.get(input.bookingId);
+        if (booking) {
+          booking.cancelledAt = input.cancelledAt;
+        }
+        return 1;
+      };
+
+      await expect(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      })).resolves.toBeUndefined();
+
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+        'find-cancellation-metadata',
+        'cancel-owned-active',
+      ]);
+    });
+
+    it('returns a stable failure when an owned-active retry loses again', async () => {
+      const {repository, service} = createService();
+      repository.cancellationBookings.set('booking-1', {
+        userId: 'user-1',
+        cancelledAt: null,
+      });
+      repository.cancelOwnedActiveOverride = () => 0;
+
+      await expect(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      })).rejects.toMatchObject({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Service unavailable',
+        status: 503,
+      });
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+        'find-cancellation-metadata',
+        'cancel-owned-active',
+      ]);
+    });
+
+    it('preserves DomainError identity from the cancellation transaction', async () => {
+      const expected = new DomainError({
+        code: 'BOOKING_FORBIDDEN',
+        message: 'Stable forbidden',
+        status: 403,
+      });
+      const {service} = createService({
+        repository: new RejectingBookingRepository(expected),
+      });
+
+      const actual = await expectDomainError(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      }));
+
+      expect(actual).toBe(expected);
+    });
+
+    it('sanitizes cancellation infrastructure failures', async () => {
+      const infrastructureError = Object.assign(
+        new Error('database private-host failed; password=secret'),
+        {detail: 'private-driver-detail'},
+      );
+      const {service} = createService({
+        repository: new RejectingBookingRepository(infrastructureError),
+      });
+
+      const error = await expectDomainError(service.cancel({
+        bookingId: 'booking-1',
+        userId: 'user-1',
+        cancelledAt,
+      }));
+
+      expect(error).not.toBe(infrastructureError);
+      expect(error).toMatchObject({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Service unavailable',
+        status: 503,
+        fields: undefined,
+      });
+      expect(error).not.toHaveProperty('cause');
+      expect(JSON.stringify(error)).not.toMatch(
+        /private-host|password=secret|private-driver-detail/,
+      );
+    });
+  });
+
   it('trims the title before the atomic insert and returns a booking view', async () => {
     const {repository, service} = createService();
 
