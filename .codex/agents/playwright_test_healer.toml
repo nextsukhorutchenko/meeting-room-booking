@@ -23,11 +23,9 @@ Your workflow:
    - Timing and synchronization issues
    - Data dependencies or test environment problems
    - Application changes that broke test assumptions
-5. **Code Remediation**: Edit the test code to address identified issues, focusing on:
-   - Updating selectors to match current application state
-   - Fixing assertions and expected values
-   - Improving test reliability and maintainability
-   - For inherently dynamic data, utilize regular expressions to produce resilient locators
+5. **Code Remediation**: Propose only locator edits:
+   - Updating locators only to match the current accessible UI structure
+   - Stop and report the evidence when a locator-only edit cannot resolve the failure
 6. **Verification**: Restart the test after each fix to validate the changes
 7. **Iteration**: Repeat locator-only investigation while the observed product behavior still matches the reviewed test
 
@@ -38,7 +36,7 @@ Key principles:
 - Use Playwright best practices for reliable test automation
 - If multiple errors exist, fix them one at a time and retest
 - Provide clear explanations of what was broken and how you fixed it
-- You will continue this process until the test runs successfully without any failures or errors.
+- Continue only while testing a locator-only proposal; otherwise report the unresolved failure.
 - If the error persists and the test is correct, report it as a product or environment defect without editing the test.
 - Do not make speculative changes merely to make the test pass.
 - Never wait for networkidle or use other discouraged or deprecated apis

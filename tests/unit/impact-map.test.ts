@@ -62,6 +62,19 @@ describe('selectImpactedTests', () => {
     });
   });
 
+  it('accepts only unscored A and M records for mapped paths', () => {
+    expect(selectImpactedTests([
+      'M\tsrc/modules/auth/auth.service.ts',
+      'A\tsrc\\modules\\auth\\verification.service.ts',
+    ])).toEqual({
+      mode: 'selected',
+      tags: ['@auth', '@critical'],
+      reasons: [
+        'src/modules/auth/** affects authentication and critical access flows',
+      ],
+    });
+  });
+
   it('deduplicates and deterministically orders tags and reasons', () => {
     expect(selectImpactedTests([
       './src/lib/time/office-time.ts',
@@ -159,6 +172,46 @@ describe('selectImpactedTests', () => {
       ],
     });
   });
+
+  it('falls back for copied files with a valid similarity score', () => {
+    expect(selectImpactedTests([
+      'C075\tsrc/modules/auth/auth.service.ts\t' +
+        'src/modules/auth/auth-copy.service.ts',
+    ])).toEqual({
+      mode: 'full',
+      reasons: [
+        'Copied path requires full E2E: ' +
+          'src/modules/auth/auth.service.ts -> ' +
+          'src/modules/auth/auth-copy.service.ts',
+      ],
+    });
+  });
+
+  it.each([
+    ['M100\tsrc/modules/auth/auth.service.ts', 'M100'],
+    ['A50\tsrc/modules/auth/auth.service.ts', 'A50'],
+    ['M', 'M'],
+    ['A\tsrc/modules/auth/auth.service.ts\textra.ts', 'A'],
+    ['D100\tsrc/modules/auth/auth.service.ts', 'D100'],
+    ['D\tsrc/one.ts\tsrc/two.ts', 'D'],
+    ['R\tsrc/one.ts\tsrc/two.ts', 'R'],
+    ['R101\tsrc/one.ts\tsrc/two.ts', 'R101'],
+    ['R-1\tsrc/one.ts\tsrc/two.ts', 'R-1'],
+    ['R100\tsrc/one.ts', 'R100'],
+    ['R100\tsrc/one.ts\tsrc/two.ts\tsrc/three.ts', 'R100'],
+    ['C\tsrc/one.ts\tsrc/two.ts', 'C'],
+    ['C101\tsrc/one.ts\tsrc/two.ts', 'C101'],
+    ['C100\tsrc/one.ts', 'C100'],
+    ['T\tsrc/modules/auth/auth.service.ts', 'T'],
+    ['X100\tsrc/modules/auth/auth.service.ts', 'X100'],
+  ])('fails closed for malformed name-status %s', (input, status) => {
+    expect(selectImpactedTests([input])).toEqual({
+      mode: 'full',
+      reasons: expect.arrayContaining([
+        expect.stringContaining(`Git status ${status} requires full E2E`),
+      ]),
+    });
+  });
 });
 
 function runSelector(
@@ -221,6 +274,20 @@ describe('select-impacted-tests CLI', () => {
         ],
       },
     });
+  });
+
+  it.each([
+    'M100\tsrc\\modules\\auth\\auth.service.ts\n',
+    'A50\tsrc/modules/auth/auth.service.ts\n',
+    'R101\tsrc/one.ts\tsrc/two.ts\n',
+    'C100\tsrc/one.ts\n',
+  ])('emits full JSON for malformed stdin %j', (input) => {
+    const result = runSelector([], input);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.decision).toMatchObject({mode: 'full'});
+    expect(result.decision).not.toHaveProperty('grep');
   });
 
   it('emits a full decision without grep for a schema change', () => {

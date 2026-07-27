@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
-    "test:impact": "vitest run tests/unit/impact-map.test.ts tests/unit/pr-impact-reporter.test.ts",
+    "test:impact": "vitest run tests/unit/impact-map.test.ts tests/unit/pr-impact-reporter.test.ts tests/unit/playwright-agent-contract.test.ts",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts --no-file-parallelism",
     "test:e2e": "playwright test --config playwright.config.ts",

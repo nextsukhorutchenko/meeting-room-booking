@@ -52,7 +52,13 @@ test('@booking Load more appends equal-time past records without duplicates', as
   const organizer = await database.user.findUniqueOrThrow({
     where: {normalizedEmail: DEMO_USER.email},
   });
-  const pastStart = officeSlot(officeMonday(-1), 4, 10);
+  const pastEnd = new Date(Date.now() - 60_000);
+  const pastStart = new Date(pastEnd.getTime() - 30 * 60_000);
+  const expectedIds = Array.from(
+    {length: 22},
+    (_, index) =>
+      `${TASK_11_BOOKING_PREFIX}past-${index.toString().padStart(2, '0')}`,
+  ).reverse();
   await database.booking.createMany({
     data: Array.from({length: 22}, (_, index) => ({
       id: `${TASK_11_BOOKING_PREFIX}past-${index.toString().padStart(2, '0')}`,
@@ -61,8 +67,8 @@ test('@booking Load more appends equal-time past records without duplicates', as
       title: index === 21 ?
         'X'.repeat(100) :
         `${TASK_11_BOOKING_PREFIX}past-${index.toString().padStart(2, '0')}`,
-      startsAt: pastStart.toUTC().toJSDate(),
-      endsAt: pastStart.plus({minutes: 30}).toUTC().toJSDate(),
+      startsAt: pastStart,
+      endsAt: pastEnd,
     })),
   });
 
@@ -72,6 +78,10 @@ test('@booking Load more appends equal-time past records without duplicates', as
     `[data-booking-id^="${TASK_11_BOOKING_PREFIX}"]`,
   );
   await expect(taskRows).toHaveCount(20);
+  const firstPageIds = await taskRows.evaluateAll((rows) =>
+    rows.map((row) => row.getAttribute('data-booking-id')),
+  );
+  expect(firstPageIds).toEqual(expectedIds.slice(0, 20));
 
   await past.getByRole('button', {name: 'Load more past bookings'}).click();
 
@@ -79,6 +89,7 @@ test('@booking Load more appends equal-time past records without duplicates', as
   const ids = await taskRows.evaluateAll((rows) =>
     rows.map((row) => row.getAttribute('data-booking-id')),
   );
+  expect(ids).toEqual(expectedIds);
   expect(new Set(ids).size).toBe(22);
 
   await page.screenshot({

@@ -21,6 +21,7 @@ type ParsedChange =
   | {kind: 'path'; path: string}
   | {kind: 'deleted'; path: string}
   | {kind: 'renamed'; from: string; to: string}
+  | {kind: 'copied'; from: string; to: string}
   | {kind: 'unsafe-status'; status: string; paths: string[]};
 
 const TAG_ORDER: TestTag[] = [
@@ -119,23 +120,37 @@ function normalizePath(path: string): string {
 
 function parseChange(rawChange: string): ParsedChange {
   const fields = rawChange.split('\t');
-  const statusMatch = /^([A-Z])(\d{1,3})?$/.exec(fields[0]);
-  if (!statusMatch) {
+  const status = fields[0];
+  if (fields.length === 1 && !/^[A-Z](?:\d+)?$/.test(status)) {
     return {kind: 'path', path: normalizePath(rawChange)};
   }
 
-  const status = statusMatch[1];
   const paths = fields.slice(1).map(normalizePath).filter(Boolean);
-  if ((status === 'A' || status === 'M') && paths.length === 1) {
+  if (
+    (status === 'A' || status === 'M') &&
+    fields.length === 2 &&
+    paths.length === 1
+  ) {
     return {kind: 'path', path: paths[0]};
   }
-  if (status === 'D' && paths.length === 1) {
+  if (status === 'D' && fields.length === 2 && paths.length === 1) {
     return {kind: 'deleted', path: paths[0]};
   }
-  if (status === 'R' && paths.length === 2) {
-    return {kind: 'renamed', from: paths[0], to: paths[1]};
+  const similarityStatus = /^([RC])(\d{1,3})$/.exec(status);
+  const similarityScore = similarityStatus ?
+    Number(similarityStatus[2]) :
+    Number.NaN;
+  if (
+    similarityStatus &&
+    similarityScore <= 100 &&
+    fields.length === 3 &&
+    paths.length === 2
+  ) {
+    return similarityStatus[1] === 'R' ?
+      {kind: 'renamed', from: paths[0], to: paths[1]} :
+      {kind: 'copied', from: paths[0], to: paths[1]};
   }
-  return {kind: 'unsafe-status', status: fields[0], paths};
+  return {kind: 'unsafe-status', status, paths};
 }
 
 function isCrossCutting(path: string): boolean {
@@ -175,6 +190,12 @@ export function selectImpactedTests(
     if (change.kind === 'renamed') {
       fullReasons.add(
         `Renamed path requires full E2E: ${change.from} -> ${change.to}`,
+      );
+      continue;
+    }
+    if (change.kind === 'copied') {
+      fullReasons.add(
+        `Copied path requires full E2E: ${change.from} -> ${change.to}`,
       );
       continue;
     }
