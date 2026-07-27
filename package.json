@@ -18,7 +18,7 @@
     "db:reset:test": "tsx scripts/reset-test-db.ts"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "@prisma/client": "^7.9.0",
