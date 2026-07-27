@@ -141,6 +141,78 @@ test("@booking other user's booking has no cancellation command", async ({
   await expect(block.getByRole('button', {name: /Cancel/i})).toHaveCount(0);
 });
 
+test('@booking max-length unbroken cancellation title stays contained', async ({
+  database,
+  page,
+}) => {
+  const room = await roomByName(database, 'Oak');
+  const organizer = await database.user.findUniqueOrThrow({
+    where: {normalizedEmail: DEMO_USER.email},
+  });
+  const weekStart = officeMonday(1);
+  const startsAt = officeSlot(weekStart, 4, 15);
+  const title = 'X'.repeat(100);
+  await database.booking.create({
+    data: {
+      id: `${TASK_10_BOOKING_PREFIX}max-title`,
+      roomId: room.id,
+      userId: organizer.id,
+      title,
+      startsAt: startsAt.toUTC().toJSDate(),
+      endsAt: startsAt.plus({minutes: 30}).toUTC().toJSDate(),
+    },
+  });
+
+  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
+  const block = page.getByRole('article', {name: new RegExp(title)});
+  await expect(block).toBeVisible();
+  await block.getByRole('button', {name: `Cancel ${title}`}).click();
+
+  const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
+  const layout = await dialog.evaluate((dialogElement) => {
+    const panel = dialogElement as HTMLElement;
+    const copy = panel.querySelector<HTMLElement>('.cancellation-dialog-copy');
+    const titleElement = copy?.querySelector<HTMLElement>('strong');
+    const actions = panel.querySelector<HTMLElement>('.dialog-actions');
+    const panelRect = panel.getBoundingClientRect();
+    const titleRect = titleElement?.getBoundingClientRect();
+    const actionsRect = actions?.getBoundingClientRect();
+    return {
+      actionsContained: Boolean(
+        actionsRect &&
+        actionsRect.left >= panelRect.left &&
+        actionsRect.right <= panelRect.right &&
+        actionsRect.bottom <= panelRect.bottom,
+      ),
+      copyScrollContained: Boolean(
+        copy && copy.scrollWidth <= copy.clientWidth + 1,
+      ),
+      documentHorizontalOverflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+      titleRectContained: Boolean(
+        titleRect &&
+        titleRect.left >= panelRect.left &&
+        titleRect.right <= panelRect.right,
+      ),
+      titleScrollContained: Boolean(
+        titleElement &&
+        titleElement.scrollWidth <= titleElement.clientWidth + 1,
+      ),
+    };
+  });
+  expect(layout).toEqual({
+    actionsContained: true,
+    copyScrollContained: true,
+    documentHorizontalOverflow: 0,
+    titleRectContained: true,
+    titleScrollContained: true,
+  });
+  await page.screenshot({
+    path: resolve(artifactsDirectory, 'cancel-max-title.png'),
+  });
+});
+
 test('@booking success removes block, shows toast, and persists cancellation', async ({
   database,
   page,

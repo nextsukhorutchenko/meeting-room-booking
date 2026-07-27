@@ -22,3 +22,11 @@ export const createBookingSchema = z.strictObject({
   startsAt: z.instanceof(Date),
   endsAt: z.instanceof(Date),
 });
+
+export const cancelBookingSchema = z.strictObject({
+  bookingId: z.string().trim().min(1),
+  userId: z.string().trim().min(1),
+  cancelledAt: z
+    .instanceof(Date)
+    .refine((value) => Number.isFinite(value.getTime())),
+});

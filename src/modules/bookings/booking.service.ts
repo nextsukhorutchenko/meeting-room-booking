@@ -12,7 +12,10 @@ import {
   type DomainErrorFields,
 } from '../../lib/http/domain-error';
 import type {Clock} from '../../lib/time/office-time';
-import {createBookingSchema} from './booking.schemas';
+import {
+  cancelBookingSchema,
+  createBookingSchema,
+} from './booking.schemas';
 import type {
   BookingService,
   BookingView,
@@ -91,6 +94,14 @@ function bookingNotFoundError(): DomainError {
   });
 }
 
+function invalidCancellationInputError(): DomainError {
+  return new DomainError({
+    code: 'VALIDATION_FAILED',
+    message: 'Invalid cancellation input.',
+    status: 400,
+  });
+}
+
 function serviceUnavailableError(): DomainError {
   return new DomainError({
     code: 'SERVICE_UNAVAILABLE',
@@ -124,28 +135,42 @@ export class DefaultBookingService implements BookingService {
   ) {}
 
   async cancel(input: CancelBookingInput): Promise<void> {
+    const bookingId = (
+      input &&
+      typeof input === 'object' &&
+      typeof (input as {bookingId?: unknown}).bookingId === 'string'
+    ) ? (input as {bookingId: string}).bookingId.trim() : '';
+    if (!bookingId) {
+      throw bookingNotFoundError();
+    }
+    const parsed = cancelBookingSchema.safeParse(input);
+    if (!parsed.success) {
+      throw invalidCancellationInputError();
+    }
+    const validatedInput = parsed.data;
+
     try {
       await this.dependencies.repository.withTransaction(
         async (transaction) => {
-          const updated = await transaction.cancelOwnedActive(input);
+          const updated = await transaction.cancelOwnedActive(validatedInput);
           if (updated > 0) {
             return;
           }
 
           const booking = await transaction.findCancellationMetadata(
-            input.bookingId,
+            validatedInput.bookingId,
           );
           if (!booking) {
             throw bookingNotFoundError();
           }
-          if (booking.userId !== input.userId) {
+          if (booking.userId !== validatedInput.userId) {
             throw bookingForbiddenError();
           }
           if (booking.cancelledAt !== null) {
             return;
           }
 
-          const retried = await transaction.cancelOwnedActive(input);
+          const retried = await transaction.cancelOwnedActive(validatedInput);
           if (retried === 0) {
             throw serviceUnavailableError();
           }

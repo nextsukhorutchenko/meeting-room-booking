@@ -58,14 +58,23 @@ export function Dialog({
         panel.querySelectorAll<HTMLElement>(focusableSelector),
       );
       if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
         return;
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const activeElement = document.activeElement as HTMLElement | null;
+      if (focusable.length === 1) {
+        event.preventDefault();
+        first.focus();
+      } else if (!activeElement || !focusable.includes(activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && activeElement === first) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && activeElement === last) {
         event.preventDefault();
         first.focus();
       }
@@ -90,6 +99,7 @@ export function Dialog({
         className="dialog-panel"
         ref={panelRef}
         role="dialog"
+        tabIndex={-1}
       >
         <div className="dialog-heading">
           <h2>{label}</h2>

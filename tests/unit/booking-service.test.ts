@@ -7,7 +7,10 @@ import {
   type BookingRepository,
   type BookingTransaction,
 } from '../../src/modules/bookings/booking.service';
-import type {CreateBookingInput} from '../../src/modules/bookings/booking.types';
+import type {
+  CancelBookingInput,
+  CreateBookingInput,
+} from '../../src/modules/bookings/booking.types';
 import {TestClock} from '../helpers/test-clock';
 
 const now = new Date('2026-07-27T06:00:00.000Z');
@@ -164,6 +167,93 @@ async function expectDomainError(
 describe('DefaultBookingService', () => {
   describe('cancel', () => {
     const cancelledAt = new Date('2026-07-27T08:30:00.000Z');
+
+    it.each([
+      ['undefined', undefined],
+      ['null', null],
+      ['blank', '   '],
+      ['an object', {value: 'booking-1'}],
+    ])(
+      'rejects %s bookingId as not found before opening a transaction',
+      async (_name, bookingId) => {
+        const {repository, service} = createService();
+
+        await expect(service.cancel({
+          bookingId,
+          userId: 'user-1',
+          cancelledAt,
+        } as unknown as CancelBookingInput)).rejects.toMatchObject({
+          code: 'BOOKING_NOT_FOUND',
+          message: 'Booking not found.',
+          status: 404,
+        });
+        expect(repository.transactionCalls).toBe(0);
+        expect(repository.events).toEqual([]);
+      },
+    );
+
+    it.each([
+      ['undefined userId', {userId: undefined}],
+      ['blank userId', {userId: '   '}],
+      ['object userId', {userId: {value: 'user-1'}}],
+      ['undefined cancelledAt', {cancelledAt: undefined}],
+      ['invalid Date', {cancelledAt: new Date(Number.NaN)}],
+      ['string cancelledAt', {cancelledAt: '2026-07-27T08:30:00.000Z'}],
+      ['an extra field', {unexpected: 'private-value'}],
+    ])(
+      'rejects %s with a value-free validation error before mutation',
+      async (_name, override) => {
+        const {repository, service} = createService();
+        repository.cancellationBookings.set('booking-1', {
+          userId: 'user-1',
+          cancelledAt: null,
+        });
+
+        const error = await expectDomainError(service.cancel({
+          bookingId: 'booking-1',
+          userId: 'user-1',
+          cancelledAt,
+          ...override,
+        } as unknown as CancelBookingInput));
+
+        expect(error).toMatchObject({
+          code: 'VALIDATION_FAILED',
+          message: 'Invalid cancellation input.',
+          status: 400,
+          fields: undefined,
+        });
+        expect(JSON.stringify(error)).not.toContain('private-value');
+        expect(repository.transactionCalls).toBe(0);
+        expect(repository.events).toEqual([]);
+        expect(repository.cancellationBookings.get('booking-1')).toEqual({
+          userId: 'user-1',
+          cancelledAt: null,
+        });
+      },
+    );
+
+    it('uses trimmed validated identifiers for the cancellation mutation', async () => {
+      const {repository, service} = createService();
+      repository.cancellationBookings.set('booking-1', {
+        userId: 'user-1',
+        cancelledAt: null,
+      });
+
+      await service.cancel({
+        bookingId: '  booking-1  ',
+        userId: '  user-1  ',
+        cancelledAt,
+      });
+
+      expect(repository.cancellationBookings.get('booking-1')).toEqual({
+        userId: 'user-1',
+        cancelledAt,
+      });
+      expect(repository.events).toEqual([
+        'transaction',
+        'cancel-owned-active',
+      ]);
+    });
 
     it('soft-cancels an active booking owned by the caller', async () => {
       const {repository, service} = createService();

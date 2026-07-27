@@ -58,6 +58,7 @@ export async function clearTaskBookings(
       OR: [
         {title: {startsWith: TASK_9_BOOKING_PREFIX}},
         {title: {startsWith: TASK_10_BOOKING_PREFIX}},
+        {id: {startsWith: TASK_10_BOOKING_PREFIX}},
       ],
     },
   });

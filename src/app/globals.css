@@ -670,6 +670,7 @@ select:disabled {
 .booking-form {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .booking-summary {
@@ -717,14 +718,20 @@ select:disabled {
 }
 
 .cancellation-dialog-copy {
+  min-width: 0;
   margin: 0;
   color: #445148;
   font-size: 0.875rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .cancellation-dialog-copy strong {
+  display: inline-block;
+  max-width: 100%;
   color: #17211b;
+  overflow-wrap: anywhere;
+  vertical-align: bottom;
 }
 
 .destructive-button {
