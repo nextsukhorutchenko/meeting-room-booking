@@ -18,6 +18,7 @@ model User {
   sessions           Session[]
   verificationTokens VerificationToken[]
   bookings           Booking[]
+  notifications      Notification[]
 }
 
 model VerificationToken {
@@ -65,7 +66,30 @@ model Booking {
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   room        Room      @relation(fields: [roomId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
+  currentNotifications Notification[] @relation("CurrentBooking")
+  nextNotifications    Notification[] @relation("NextBooking")
 
   @@index([roomId, startsAt, endsAt])
   @@index([userId, startsAt])
+}
+
+enum NotificationType {
+  BOOKING_END_HANDOFF
+}
+
+model Notification {
+  id               String           @id @default(cuid())
+  type             NotificationType
+  recipientId      String
+  currentBookingId String
+  nextBookingId    String
+  deliverAt        DateTime         @db.Timestamptz(3)
+  deliveredAt      DateTime?        @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  recipient        User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  currentBooking   Booking          @relation("CurrentBooking", fields: [currentBookingId], references: [id], onDelete: Cascade)
+  nextBooking      Booking          @relation("NextBooking", fields: [nextBookingId], references: [id], onDelete: Cascade)
+
+  @@unique([type, recipientId, currentBookingId, nextBookingId])
+  @@index([recipientId, deliveredAt, deliverAt])
 }

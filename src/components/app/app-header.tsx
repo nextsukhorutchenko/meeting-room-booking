@@ -1,6 +1,7 @@
 import {CalendarDays, ListChecks} from 'lucide-react';
 import Link from 'next/link';
 import {LogoutButton} from '../auth/logout-button';
+import {NotificationBell} from './notification-bell';
 
 type AppHeaderProps = {
   currentPage: 'schedule' | 'my-bookings';
@@ -34,6 +35,7 @@ export function AppHeader({currentPage, userName}: AppHeaderProps) {
         </nav>
         <div className="app-account">
           <span className="app-user-name">{userName}</span>
+          <NotificationBell />
           <LogoutButton />
         </div>
       </div>

@@ -86,7 +86,10 @@ export default defineConfig({
     {
       name: 'mobile-kyiv',
       dependencies: ['auth-setup'],
-      testMatch: '**/mobile.spec.ts',
+      testMatch: [
+        '**/mobile.spec.ts',
+        '**/notifications.spec.ts',
+      ],
       use: {
         ...devices['Pixel 7'],
         storageState: authStatePath,
