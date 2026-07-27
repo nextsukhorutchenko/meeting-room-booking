@@ -70,6 +70,14 @@ function bookingConflictError(): DomainError {
   });
 }
 
+function serviceUnavailableError(): DomainError {
+  return new DomainError({
+    code: 'SERVICE_UNAVAILABLE',
+    message: 'Service unavailable',
+    status: 503,
+  });
+}
+
 function toBookingView(
   booking: CreatedBooking,
   userId: string,
@@ -114,25 +122,33 @@ export class DefaultBookingService implements BookingService {
       endsAt: interval.endsAt,
     };
 
-    const booking = await this.dependencies.repository.withTransaction(
-      async (transaction) => {
-        const roomExists = await transaction.lockRoom(validatedInput.roomId);
-        if (!roomExists) {
-          throw roomNotFoundError();
-        }
+    let booking: CreatedBooking;
+    try {
+      booking = await this.dependencies.repository.withTransaction(
+        async (transaction) => {
+          const roomExists = await transaction.lockRoom(validatedInput.roomId);
+          if (!roomExists) {
+            throw roomNotFoundError();
+          }
 
-        const conflict = await transaction.findActiveOverlap({
-          roomId: validatedInput.roomId,
-          startsAt: validatedInput.startsAt,
-          endsAt: validatedInput.endsAt,
-        });
-        if (conflict) {
-          throw bookingConflictError();
-        }
+          const conflict = await transaction.findActiveOverlap({
+            roomId: validatedInput.roomId,
+            startsAt: validatedInput.startsAt,
+            endsAt: validatedInput.endsAt,
+          });
+          if (conflict) {
+            throw bookingConflictError();
+          }
 
-        return transaction.create(validatedInput);
-      },
-    );
+          return transaction.create(validatedInput);
+        },
+      );
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      throw serviceUnavailableError();
+    }
 
     return toBookingView(booking, validatedInput.userId);
   }

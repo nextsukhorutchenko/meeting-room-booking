@@ -11,6 +11,7 @@ export type DomainErrorCode =
   | 'BOOKING_CONFLICT'
   | 'BOOKING_FORBIDDEN'
   | 'BOOKING_NOT_FOUND'
+  | 'SERVICE_UNAVAILABLE'
   | 'VERIFICATION_INVALID_OR_EXPIRED';
 
 export type DomainErrorFields = Record<string, string>;

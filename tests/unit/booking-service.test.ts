@@ -86,6 +86,16 @@ class InMemoryBookingRepository implements BookingRepository {
   }
 }
 
+class RejectingBookingRepository extends InMemoryBookingRepository {
+  constructor(private readonly error: unknown) {
+    super();
+  }
+
+  override async withTransaction<T>(): Promise<T> {
+    throw this.error;
+  }
+}
+
 function createService(
   options: {
     repository?: InMemoryBookingRepository;
@@ -325,6 +335,59 @@ describe('DefaultBookingService', () => {
       'lock-room',
       'find-overlap',
     ]);
+  });
+
+  it('preserves DomainError instances from the repository exactly', async () => {
+    const expected = new DomainError({
+      code: 'BOOKING_CONFLICT',
+      message: 'Stable conflict',
+      status: 409,
+    });
+    const {service} = createService({
+      repository: new RejectingBookingRepository(expected),
+    });
+
+    const actual = await expectDomainError(service.create(baseInput));
+
+    expect(actual).toBe(expected);
+  });
+
+  it('replaces infrastructure failures with a value-free stable error', async () => {
+    const infrastructureError = Object.assign(
+      new Error('connection refused at postgres.internal; password=secret'),
+      {
+        code: '57P01',
+        detail: 'database host and credential metadata',
+        requestId: 'private-request-id',
+      },
+    );
+    infrastructureError.stack =
+      'Error: connection refused at postgres.internal; password=secret\n' +
+      '    at private-driver-file.ts:42:1';
+    const {service} = createService({
+      repository: new RejectingBookingRepository(infrastructureError),
+    });
+
+    const error = await expectDomainError(service.create(baseInput));
+    const serialized = JSON.stringify(error);
+
+    expect(error).not.toBe(infrastructureError);
+    expect(error).toMatchObject({
+      name: 'DomainError',
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Service unavailable',
+      status: 503,
+      fields: undefined,
+    });
+    expect(error).not.toHaveProperty('cause');
+    expect(error).not.toHaveProperty('detail');
+    expect(error).not.toHaveProperty('requestId');
+    expect(error.stack).not.toMatch(
+      /postgres\.internal|password=secret|private-driver-file|57P01/,
+    );
+    expect(serialized).not.toMatch(
+      /postgres\.internal|password=secret|private-request-id|57P01/,
+    );
   });
 
   it('ignores cancelled overlaps', async () => {
