@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_URL: http://127.0.0.1:3105
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meeting_room_booking_test?schema=public
+  TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meeting_room_booking_test?schema=public
+
+jobs:
+  quality:
+    name: Static, unit, integration, and build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: meeting_room_booking_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meeting_room_booking_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Apply test database migrations
+        run: npx prisma migrate deploy
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: Deterministic Playwright
+    needs: quality
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: meeting_room_booking_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meeting_room_booking_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Select impacted PR tests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -o pipefail
+          git diff --name-status -M "$BASE_SHA" "$HEAD_SHA" |
+            npx tsx scripts/select-impacted-tests.ts > impact-selection.json
+
+      - name: Select full suite
+        if: github.event_name != 'pull_request'
+        run: |
+          node -e "process.stdout.write(JSON.stringify({mode:'full',reasons:['main and manual runs require full E2E']},null,2)+'\n')" > impact-selection.json
+
+      - name: Export selection
+        id: impact
+        run: |
+          node -e "const value=require('./impact-selection.json');console.log('mode='+value.mode);if(value.grep)console.log('grep='+value.grep)" >> "$GITHUB_OUTPUT"
+          cat impact-selection.json
+
+      - name: List selected tests
+        if: steps.impact.outputs.mode == 'selected'
+        env:
+          IMPACT_GREP: ${{ steps.impact.outputs.grep }}
+        run: npx playwright test --grep "$IMPACT_GREP" --list
+
+      - name: Run selected E2E
+        if: steps.impact.outputs.mode == 'selected'
+        env:
+          IMPACT_GREP: ${{ steps.impact.outputs.grep }}
+        run: npm run test:e2e -- --grep "$IMPACT_GREP"
+
+      - name: Run full E2E
+        if: steps.impact.outputs.mode == 'full'
+        run: npm run test:e2e
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            impact-selection.json
+            playwright-report
+            test-results/pr-impact.json

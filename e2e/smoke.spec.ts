@@ -65,7 +65,7 @@ async function createVerificationUrl(
   return `/verify?token=${encodeURIComponent(rawToken)}`;
 }
 
-test('redirects signed-out users from the root to login', async ({page}) => {
+test('@auth redirects signed-out users from the root to login', async ({page}) => {
   await page.goto('/');
 
   await expect(page).toHaveTitle('Meeting Room Booking');
@@ -78,7 +78,9 @@ test('redirects signed-out users from the root to login', async ({page}) => {
   ).toBeVisible();
 });
 
-test('registers, persists the session, and logs out', async ({page}, testInfo) => {
+test('@auth registers, persists the session, and logs out', async ({
+  page,
+}, testInfo) => {
   const email = `${testEmailPrefix}${testInfo.project.name}-${Date.now()}@example.test`;
 
   await page.goto('/');
@@ -124,7 +126,9 @@ test('registers, persists the session, and logs out', async ({page}, testInfo) =
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test('shows pending and success verification states', async ({page}, testInfo) => {
+test('@auth shows pending and success verification states', async ({
+  page,
+}, testInfo) => {
   const email =
     `${testEmailPrefix}${testInfo.project.name}-verify-success@example.test`;
   const user = await createUnverifiedUser(email);
@@ -174,7 +178,7 @@ test('shows pending and success verification states', async ({page}, testInfo) =
   })).resolves.toEqual({emailVerifiedAt: expect.any(Date)});
 });
 
-test('shows the expired verification state', async ({page}, testInfo) => {
+test('@auth shows the expired verification state', async ({page}, testInfo) => {
   const email =
     `${testEmailPrefix}${testInfo.project.name}-verify-expired@example.test`;
   const user = await createUnverifiedUser(email);
@@ -196,7 +200,9 @@ test('shows the expired verification state', async ({page}, testInfo) => {
   });
 });
 
-test('shows a sanitized verification error state', async ({page}, testInfo) => {
+test('@auth shows a sanitized verification error state', async ({
+  page,
+}, testInfo) => {
   const email =
     `${testEmailPrefix}${testInfo.project.name}-verify-error@example.test`;
   const user = await createUnverifiedUser(email);

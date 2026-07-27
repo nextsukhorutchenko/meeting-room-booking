@@ -17,6 +17,14 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
   testIgnore: '**/exploratory/**',
+  reporter: [
+    ['list'],
+    ['html', {open: 'never', outputFolder: 'playwright-report'}],
+    [
+      './e2e/reporters/pr-impact-reporter.ts',
+      {outputFile: 'test-results/pr-impact.json'},
+    ],
+  ],
   use: {
     baseURL: baseUrl,
     trace: 'on-first-retry',
