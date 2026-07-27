@@ -19,7 +19,7 @@ test.beforeAll(async () => {
   await mkdir(artifactsDirectory, {recursive: true});
 });
 
-test('@timezone @critical booking clock values use the browser timezone', async ({
+test('@timezone @critical creates an exact browser-zone booking', async ({
   database,
   page,
 }, testInfo) => {
@@ -30,6 +30,7 @@ test('@timezone @critical booking clock values use the browser timezone', async 
   const weekStart = officeMonday(1);
   const day = officeSlot(weekStart, 1, 10);
   const title = `${TASK_12_BOOKING_PREFIX}timezone-display`;
+  const createdTitle = `${TASK_12_BOOKING_PREFIX}timezone-create`;
   await database.booking.create({
     data: {
       endsAt: day.plus({minutes: 30}).toUTC().toJSDate(),
@@ -64,15 +65,63 @@ test('@timezone @critical booking clock values use the browser timezone', async 
 
   const nextSlot = day.plus({hours: 1});
   const nextSlotLabel = nextSlot.setZone(browserTimeZone).toFormat('HH:mm');
+  const nextSlotEndLabel = nextSlot
+    .plus({minutes: 30})
+    .setZone(browserTimeZone)
+    .toFormat('HH:mm');
+  const expectedStartsAt = nextSlot.toUTC().toISO();
+  const expectedEndsAt = nextSlot.plus({minutes: 30}).toUTC().toISO();
+  type CreatePayload = {
+    endsAt: string;
+    roomId: string;
+    startsAt: string;
+    title: string;
+  };
+  let resolveCreatePayload:
+    ((payload: CreatePayload) => void) | undefined;
+  const createPayload = new Promise<CreatePayload>(
+    (resolvePayload) => {
+      resolveCreatePayload = resolvePayload;
+    },
+  );
+  await page.route('**/api/bookings', async (route) => {
+    if (route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON() as {
+        endsAt: string;
+        roomId: string;
+        startsAt: string;
+        title: string;
+      };
+      resolveCreatePayload?.(payload);
+    }
+    await route.continue();
+  });
   await page.getByRole('button', {
     name: new RegExp(`Book Tuesday.*${nextSlotLabel}`, 'i'),
   }).click();
   const dialog = page.getByRole('dialog', {name: 'Book Oak'});
   await expect(dialog).toContainText(
-    `${nextSlotLabel}-` +
-    nextSlot.plus({minutes: 30}).setZone(browserTimeZone).toFormat('HH:mm'),
+    `${nextSlotLabel}-${nextSlotEndLabel}`,
   );
-  await dialog.getByRole('button', {name: 'Close dialog'}).click();
+  await dialog.getByLabel('Title').fill(createdTitle);
+  await dialog.getByRole('button', {name: 'Create booking'}).click();
+  await expect(createPayload).resolves.toEqual({
+    endsAt: expectedEndsAt,
+    roomId: room.id,
+    startsAt: expectedStartsAt,
+    title: createdTitle,
+  });
+  await expect(
+    page.getByRole('status').filter({hasText: 'Booking created'}),
+  ).toBeVisible();
+  const createdBooking =
+    page.getByRole('article', {name: new RegExp(createdTitle)});
+  await expect(createdBooking)
+    .toContainText(`${nextSlotLabel}-${nextSlotEndLabel}`);
+  const persistedBooking =
+    await database.booking.findFirstOrThrow({where: {title: createdTitle}});
+  expect(persistedBooking.startsAt.toISOString()).toBe(expectedStartsAt);
+  expect(persistedBooking.endsAt.toISOString()).toBe(expectedEndsAt);
   await page.screenshot({
     fullPage: true,
     path: resolve(
@@ -84,6 +133,10 @@ test('@timezone @critical booking clock values use the browser timezone', async 
   await page.getByRole('link', {name: 'My Bookings'}).click();
   const row = page.locator(`[data-booking-id]`, {hasText: title});
   await expect(row).toContainText(`${expectedStart}-${expectedEnd}`);
+  const createdRow =
+    page.locator(`[data-booking-id="${persistedBooking.id}"]`);
+  await expect(createdRow)
+    .toContainText(`${nextSlotLabel}-${nextSlotEndLabel}`);
 
   await page.screenshot({
     fullPage: true,

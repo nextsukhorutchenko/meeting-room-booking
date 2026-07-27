@@ -24,4 +24,14 @@ describe('readAppEnv', () => {
       }),
     ).toThrow('OFFICE_CLOSE_HOUR must be later than OFFICE_OPEN_HOUR');
   });
+
+  it('rejects an invalid office IANA timezone with a stable error', () => {
+    expect(() =>
+      readAppEnv({
+        DATABASE_URL: 'postgresql://example',
+        APP_URL: 'http://localhost:3000',
+        OFFICE_TIMEZONE: 'Not/A_Timezone',
+      }),
+    ).toThrow('OFFICE_TIMEZONE must be a valid IANA timezone');
+  });
 });

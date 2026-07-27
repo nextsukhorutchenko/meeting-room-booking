@@ -44,9 +44,11 @@ export default defineConfig({
       name: 'desktop-kyiv',
       dependencies: ['auth-setup'],
       testIgnore: [
+        '**/locale.spec.ts',
         '**/mobile.spec.ts',
         '**/seed.spec.ts',
         '**/smoke.spec.ts',
+        '**/transition.spec.ts',
       ],
       use: {
         ...devices['Desktop Chrome'],
@@ -58,9 +60,24 @@ export default defineConfig({
     {
       name: 'desktop-new-york',
       dependencies: ['auth-setup'],
-      testMatch: '**/timezone.spec.ts',
+      testMatch: [
+        '**/timezone.spec.ts',
+        '**/transition.spec.ts',
+      ],
       use: {
         ...devices['Desktop Chrome'],
+        storageState: authStatePath,
+        timezoneId: 'America/New_York',
+        viewport: {width: 1440, height: 900},
+      },
+    },
+    {
+      name: 'desktop-new-york-fr',
+      dependencies: ['auth-setup'],
+      testMatch: '**/locale.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        locale: 'fr-FR',
         storageState: authStatePath,
         timezoneId: 'America/New_York',
         viewport: {width: 1440, height: 900},

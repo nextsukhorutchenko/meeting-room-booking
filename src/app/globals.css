@@ -408,6 +408,13 @@ select:disabled {
   font-size: 0.875rem;
 }
 
+.day-user-hours {
+  color: #52615a;
+  font-size: 0.625rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .day-header.current-day {
   background: #edf6f0;
 }

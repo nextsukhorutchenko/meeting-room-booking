@@ -7,6 +7,7 @@ import {
 import {DateTime} from 'luxon';
 import Link from 'next/link';
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -118,6 +119,7 @@ function bookingUrl(
 function formattedTime(
   booking: BookingListItem,
   userTimeZone: string,
+  officeTimeZone: string,
 ): {
   date: string;
   time: string;
@@ -127,19 +129,19 @@ function formattedTime(
       day: 'numeric',
       month: 'short',
       weekday: 'short',
-    }),
+    }, officeTimeZone),
     time:
       formatInUserZone(booking.startsAt, userTimeZone, {
         hour: '2-digit',
         hourCycle: 'h23',
         minute: '2-digit',
-      }) +
+      }, officeTimeZone) +
       '-' +
       formatInUserZone(booking.endsAt, userTimeZone, {
         hour: '2-digit',
         hourCycle: 'h23',
         minute: '2-digit',
-      }),
+      }, officeTimeZone),
   };
 }
 
@@ -219,7 +221,11 @@ function BookingSection({
       {state.items.length > 0 ? (
         <ul className="booking-list">
           {state.items.map((booking) => {
-            const time = formattedTime(booking, userTimeZone);
+            const time = formattedTime(
+              booking,
+              userTimeZone,
+              officeTimeZone,
+            );
             return (
               <li
                 className="booking-list-row"
@@ -292,9 +298,13 @@ export function BookingList({officeTimeZone}: BookingListProps) {
   const [cancellation, setCancellation] =
     useState<CancellationSelection | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const readBrowserTimeZone = useCallback(
+    () => getBrowserTimeZone(officeTimeZone),
+    [officeTimeZone],
+  );
   const userTimeZone = useSyncExternalStore(
     subscribeToBrowserTimeZone,
-    getBrowserTimeZone,
+    readBrowserTimeZone,
     () => officeTimeZone,
   );
   const loadMorePending = useRef<Record<Scope, boolean>>({

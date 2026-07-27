@@ -1,7 +1,10 @@
 'use client';
 
 import {DateTime} from 'luxon';
-import {formatInUserZone} from '../../lib/time/browser-zone';
+import {
+  APP_LOCALE,
+  formatInUserZone,
+} from '../../lib/time/browser-zone';
 import {BookingBlock} from './booking-block';
 import type {BookingSelection} from './booking-dialog';
 import {
@@ -31,17 +34,30 @@ const timeOptions: Intl.DateTimeFormatOptions = {
   minute: '2-digit',
 };
 
-function timeLabel(instant: DateTime, userTimeZone: string): string {
-  return formatInUserZone(instant.toJSDate(), userTimeZone, timeOptions);
+function timeLabel(
+  instant: DateTime,
+  userTimeZone: string,
+  officeTimeZone: string,
+): string {
+  return formatInUserZone(
+    instant.toJSDate(),
+    userTimeZone,
+    timeOptions,
+    officeTimeZone,
+  );
 }
 
-function dateLabel(instant: DateTime, userTimeZone: string): string {
+function dateLabel(
+  instant: DateTime,
+  userTimeZone: string,
+  officeTimeZone: string,
+): string {
   return formatInUserZone(instant.toJSDate(), userTimeZone, {
     day: 'numeric',
     month: 'long',
     weekday: 'long',
     year: 'numeric',
-  });
+  }, officeTimeZone);
 }
 
 function overlapsSlot(
@@ -101,12 +117,12 @@ export function DaySchedule({
       <div aria-hidden="true" className="schedule-corner">
         {formatInUserZone(officeDay.toJSDate(), userTimeZone, {
           timeZoneName: 'short',
-        }).split(' ').at(-1)}
+        }, officeTimeZone).split(' ').at(-1)}
       </div>
       <div className="schedule-day-headers" role="row">
         <div
           aria-current={officeDay.hasSame(now, 'day') ? 'date' : undefined}
-          aria-label={officeDay.toFormat('ccc, LLL d')}
+          aria-label={officeDay.setLocale(APP_LOCALE).toFormat('ccc, LLL d')}
           className={
             officeDay.hasSame(now, 'day') ?
               'day-header current-day' :
@@ -114,8 +130,10 @@ export function DaySchedule({
           }
           role="columnheader"
         >
-          <span>{officeDay.toFormat('cccc')}</span>
-          <strong>{officeDay.toFormat('LLLL d, yyyy')}</strong>
+          <span>{officeDay.setLocale(APP_LOCALE).toFormat('cccc')}</span>
+          <strong>
+            {officeDay.setLocale(APP_LOCALE).toFormat('LLLL d, yyyy')}
+          </strong>
         </div>
       </div>
       <div
@@ -136,7 +154,7 @@ export function DaySchedule({
               style={{height: SCHEDULE_LAYOUT.slotHeightPx}}
             >
               {slot % 2 === 0 ?
-                timeLabel(startsAt, userTimeZone) :
+                timeLabel(startsAt, userTimeZone, officeTimeZone) :
                 null}
             </div>
           );
@@ -145,6 +163,7 @@ export function DaySchedule({
           {timeLabel(
             officeDay.set({hour: officeCloseHour, minute: 0}),
             userTimeZone,
+            officeTimeZone,
           )}
         </span>
       </div>
@@ -170,8 +189,10 @@ export function DaySchedule({
               overlapsSlot(booking, startsAt, endsAt),
             );
             const bookable = bookingEnabled && startsAt > now && !occupied;
-            const userStartLabel = timeLabel(startsAt, userTimeZone);
-            const userEndLabel = timeLabel(endsAt, userTimeZone);
+            const userStartLabel =
+              timeLabel(startsAt, userTimeZone, officeTimeZone);
+            const userEndLabel =
+              timeLabel(endsAt, userTimeZone, officeTimeZone);
             return (
               <div
                 className="schedule-slot"
@@ -181,12 +202,20 @@ export function DaySchedule({
                 {bookable ? (
                   <button
                     aria-label={
-                      `Book ${dateLabel(startsAt, userTimeZone)} at ` +
+                      `Book ${dateLabel(
+                        startsAt,
+                        userTimeZone,
+                        officeTimeZone,
+                      )} at ` +
                       `${userStartLabel} in ${roomName}`
                     }
                     className="free-slot-button"
                     onClick={() => onSelectSlot({
-                      dateLabel: dateLabel(startsAt, userTimeZone),
+                      dateLabel: dateLabel(
+                        startsAt,
+                        userTimeZone,
+                        officeTimeZone,
+                      ),
                       endsAt: endsAt.toUTC().toISO() ?? '',
                       roomId,
                       roomName,
@@ -223,8 +252,12 @@ export function DaySchedule({
                 key={booking.id}
                 onCancel={onCancelBooking}
                 timeLabel={
-                  `${timeLabel(startsAt, userTimeZone)}-` +
-                  timeLabel(endsAt, userTimeZone)
+                  `${timeLabel(
+                    startsAt,
+                    userTimeZone,
+                    officeTimeZone,
+                  )}-` +
+                  timeLabel(endsAt, userTimeZone, officeTimeZone)
                 }
                 title={booking.title}
                 top={
@@ -236,7 +269,13 @@ export function DaySchedule({
           })}
           {showCurrentTime ? (
             <div
-              aria-label={`Current time ${timeLabel(now, userTimeZone)}`}
+              aria-label={
+                `Current time ${timeLabel(
+                  now,
+                  userTimeZone,
+                  officeTimeZone,
+                )}`
+              }
               className="current-time-line"
               style={{top: currentTop}}
             />

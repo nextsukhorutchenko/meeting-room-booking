@@ -135,9 +135,13 @@ export function ScheduleClient({
   const [selectedDay, setSelectedDay] = useState(
     normalizeDay(searchParams.get('day'), initialWeekStart, officeTimeZone),
   );
+  const readBrowserTimeZone = useCallback(
+    () => getBrowserTimeZone(officeTimeZone),
+    [officeTimeZone],
+  );
   const userTimeZone = useSyncExternalStore(
     subscribeToBrowserTimeZone,
-    getBrowserTimeZone,
+    readBrowserTimeZone,
     () => officeTimeZone,
   );
   const [roomsLoading, setRoomsLoading] = useState(true);

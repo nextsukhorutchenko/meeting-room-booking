@@ -2,6 +2,7 @@
 
 import {CalendarClock, ChevronLeft, ChevronRight} from 'lucide-react';
 import {DateTime} from 'luxon';
+import {APP_LOCALE} from '../../lib/time/browser-zone';
 import {RoomFilter, type RoomOption} from './room-filter';
 
 type ScheduleToolbarProps = {
@@ -35,7 +36,7 @@ export function ScheduleToolbar({
   selectedRoomId,
   weekStart,
 }: ScheduleToolbarProps) {
-  const start = DateTime.fromISO(weekStart);
+  const start = DateTime.fromISO(weekStart).setLocale(APP_LOCALE);
   const end = start.plus({days: 6});
   const weekLabel = start.isValid
     ? `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}`

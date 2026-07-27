@@ -112,6 +112,9 @@ describe('ScheduleClient request state', () => {
 
   beforeEach(() => {
     Settings.now = () => Date.UTC(2026, 7, 3, 6);
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03',
+    );
     navigation.router.push.mockReset();
     navigation.router.replace.mockReset();
     fetchMock.mockReset();
@@ -188,6 +191,74 @@ describe('ScheduleClient request state', () => {
         requestUrl(input as RequestInfo | URL) === '/api/rooms',
       ),
     ).toHaveLength(1);
+  });
+
+  it('ignores an old room/week response after search params restore state', async () => {
+    const staleScheduleJson = deferred<ReturnType<typeof scheduleBody>>();
+    const staleResponse = {
+      json: vi.fn(() => staleScheduleJson.promise),
+      ok: true,
+      status: 200,
+    } as unknown as Response;
+    navigation.searchParams = new URLSearchParams(
+      'roomId=pine&weekStart=2026-08-10&day=2026-08-11',
+    );
+
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (
+        url.includes('/api/rooms/pine/schedule') &&
+        url.includes('weekStart=2026-08-10')
+      ) {
+        return Promise.resolve(staleResponse);
+      }
+      if (
+        url.includes('/api/rooms/oak/schedule') &&
+        url.includes('weekStart=2026-08-03')
+      ) {
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Active popstate'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const view = renderScheduleClient();
+    await waitFor(() => {
+      expect(staleResponse.json).toHaveBeenCalledOnce();
+    });
+
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04' +
+      '&bookingId=active-popstate',
+    );
+    view.rerender(
+      <ScheduleClient
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+      />,
+    );
+
+    const activeBookings = await screen.findAllByRole('article', {
+      name: /Active popstate/,
+    });
+    expect(activeBookings).toHaveLength(2);
+    for (const activeBooking of activeBookings) {
+      expect(activeBooking).toHaveAttribute('data-highlighted', 'true');
+    }
+
+    await act(async () => {
+      staleScheduleJson.resolve(
+        scheduleBody('2026-08-10', 'Stale popstate'),
+      );
+    });
+
+    expect(activeBookings[0]).toBeVisible();
+    expect(screen.queryByText('Stale popstate')).not.toBeInTheDocument();
   });
 
   it('removes stale bookings and booking controls after an auth failure', async () => {

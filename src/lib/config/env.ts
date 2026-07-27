@@ -14,7 +14,17 @@ const appEnvSchema = z
   .object({
     DATABASE_URL: z.string().url(),
     APP_URL: z.string().url(),
-    OFFICE_TIMEZONE: z.string().min(1).default('Europe/Kyiv'),
+    OFFICE_TIMEZONE: z.string()
+      .min(1)
+      .refine((timeZone) => {
+        try {
+          new Intl.DateTimeFormat('en-US', {timeZone});
+          return true;
+        } catch {
+          return false;
+        }
+      }, 'OFFICE_TIMEZONE must be a valid IANA timezone')
+      .default('Europe/Kyiv'),
     OFFICE_OPEN_HOUR: z.coerce.number().int().min(0).max(23).default(9),
     OFFICE_CLOSE_HOUR: z.coerce.number().int().min(1).max(24).default(19),
     SESSION_DAYS: z.coerce.number().int().positive().default(7),
