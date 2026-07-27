@@ -67,10 +67,59 @@ for (const transition of transitionCases) {
     await expect(page.getByTestId(
       `day-user-hours-${sunday.toISODate()}`,
     )).toHaveText(transition.sundayHours);
+    await expect(page.getByTestId('schedule-office-zone'))
+      .toHaveText('Europe/Kyiv');
+    await expect(page.getByTestId('schedule-office-zone'))
+      .not.toContainText(/GMT[+-]/);
+    const mondayClocks =
+      page.getByTestId(`day-row-clock-${transition.weekStart}`);
+    const sundayClocks =
+      page.getByTestId(`day-row-clock-${sunday.toISODate()}`);
+    await expect(mondayClocks).toHaveCount(11);
+    await expect(sundayClocks).toHaveCount(11);
+    await expect(mondayClocks.first())
+      .toHaveText(transition.mondayHours.slice(0, 5));
+    await expect(sundayClocks.first())
+      .toHaveText(transition.sundayHours.slice(0, 5));
     await expect(page.getByRole('article', {name: new RegExp(title)}))
       .toContainText(transition.bookingTime);
     await expect(page.getByRole('article', {name: new RegExp(title)}))
       .toHaveAttribute('data-highlighted', 'true');
+    const geometry = await page.evaluate(() => {
+      const columns = Array.from(document.querySelectorAll<HTMLElement>(
+        '.week-grid [data-testid="schedule-day-column"]',
+      ));
+      const widths = columns.map(
+        (column) => column.getBoundingClientRect().width,
+      );
+      const booking = document.querySelector<HTMLElement>(
+        '.week-grid [data-highlighted="true"]',
+      );
+      const bookingRect = booking?.getBoundingClientRect();
+      const bookingColumnRect =
+        booking?.parentElement?.getBoundingClientRect();
+      return {
+        bookingContained: Boolean(
+          bookingRect &&
+          bookingColumnRect &&
+          bookingRect.left >= bookingColumnRect.left &&
+          bookingRect.right <= bookingColumnRect.right + 0.5,
+        ),
+        columns: columns.length,
+        equalColumnWidths:
+          widths.length === 7 &&
+          widths.every((width) => Math.abs(width - widths[0]) < 0.5),
+        rowsPerColumn: columns.map(
+          (column) => column.querySelectorAll('.schedule-slot').length,
+        ),
+      };
+    });
+    expect(geometry).toEqual({
+      bookingContained: true,
+      columns: 7,
+      equalColumnWidths: true,
+      rowsPerColumn: Array.from({length: 7}, () => 20),
+    });
 
     await page.screenshot({
       fullPage: true,

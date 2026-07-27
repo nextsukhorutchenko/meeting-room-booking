@@ -62,6 +62,16 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     .toFormat('HH:mm');
   const booking = page.getByRole('article', {name: new RegExp(title)});
   await expect(booking).toContainText(`${expectedStart}-${expectedEnd}`);
+  const selectedDayColumn =
+    page.getByTestId('schedule-day-column').nth(1);
+  const selectedDayClocks =
+    selectedDayColumn.getByTestId(`day-row-clock-${day.toISODate()}`);
+  await expect(selectedDayClocks).toHaveCount(11);
+  await expect(selectedDayClocks.nth(1)).toHaveText(expectedStart);
+  await expect(page.getByTestId('schedule-office-zone'))
+    .toHaveText('Europe/Kyiv');
+  await expect(page.getByTestId('schedule-office-zone'))
+    .not.toContainText(/GMT[+-]/);
 
   const nextSlot = day.plus({hours: 1});
   const nextSlotLabel = nextSlot.setZone(browserTimeZone).toFormat('HH:mm');
@@ -118,6 +128,7 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     page.getByRole('article', {name: new RegExp(createdTitle)});
   await expect(createdBooking)
     .toContainText(`${nextSlotLabel}-${nextSlotEndLabel}`);
+  await expect(selectedDayClocks.nth(2)).toHaveText(nextSlotLabel);
   const persistedBooking =
     await database.booking.findFirstOrThrow({where: {title: createdTitle}});
   expect(persistedBooking.startsAt.toISOString()).toBe(expectedStartsAt);

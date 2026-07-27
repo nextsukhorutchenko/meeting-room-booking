@@ -347,6 +347,8 @@ select:disabled {
 }
 
 .week-grid {
+  --weekly-day-clock-width: 2.75rem;
+
   display: grid;
   grid-template-columns: 4rem minmax(0, 1fr);
   grid-template-rows: 3.5rem 45rem;
@@ -375,6 +377,15 @@ select:disabled {
   padding-bottom: 0.55rem;
   color: #7a857d;
   font-size: 0.625rem;
+}
+
+.week-grid .schedule-office-zone {
+  align-items: center;
+  padding: 0.25rem;
+  font-size: 0.5625rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .schedule-day-headers,
@@ -455,6 +466,17 @@ select:disabled {
   background-color: #ffffff;
 }
 
+.week-grid .schedule-day-column::before {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: var(--weekly-day-clock-width);
+  border-right: 1px solid #e5e9e6;
+  content: "";
+  pointer-events: none;
+}
+
 .schedule-day-column:last-child {
   border-right: 0;
 }
@@ -473,12 +495,40 @@ select:disabled {
   border-bottom-color: #dfe5e0;
 }
 
+.day-row-time,
+.day-row-end-time {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  width: var(--weekly-day-clock-width);
+  color: #657169;
+  font-size: 0.6875rem;
+  line-height: 1;
+  pointer-events: none;
+  text-align: center;
+}
+
+.day-row-time {
+  top: 0;
+  transform: translateY(-0.35rem);
+}
+
+.day-row-end-time {
+  bottom: 0;
+  transform: translateY(0.35rem);
+}
+
 .free-slot-button {
   position: absolute;
   inset: 1px 2px;
   width: calc(100% - 4px);
   border: 0;
   background: transparent;
+}
+
+.week-grid .free-slot-button {
+  left: calc(var(--weekly-day-clock-width) + 2px);
+  width: auto;
 }
 
 .free-slot-button:hover,
@@ -506,6 +556,10 @@ select:disabled {
   padding: 0.18rem 0.4rem;
   color: #5d2c26;
   box-shadow: 0 1px 2px rgb(23 33 27 / 8%);
+}
+
+.week-grid .booking-block {
+  left: calc(var(--weekly-day-clock-width) + 0.25rem);
 }
 
 .booking-block strong,

@@ -66,6 +66,30 @@ describe('WeekGrid timezone semantics', () => {
     Settings.defaultLocale = originalLocale;
   });
 
+  it('aligns ordinary New York row clocks with booking labels', () => {
+    renderWeek(
+      '2026-08-03',
+      booking(
+        '2026-08-04T07:00:00.000Z',
+        '2026-08-04T07:30:00.000Z',
+        'Ordinary New York',
+      ),
+    );
+
+    expect(screen.getByTestId('schedule-office-zone'))
+      .toHaveTextContent('Europe/Kyiv');
+    expect(screen.getAllByTestId('schedule-time-row').every(
+      (row) => row.textContent === '',
+    )).toBe(true);
+    const tuesdayClocks =
+      screen.getAllByTestId('day-row-clock-2026-08-04');
+    expect(tuesdayClocks).toHaveLength(11);
+    expect(tuesdayClocks[0]).toHaveTextContent('02:00');
+    expect(tuesdayClocks[1]).toHaveTextContent('03:00');
+    expect(screen.getByRole('article', {name: /Ordinary New York/}))
+      .toHaveTextContent('03:00-03:30');
+  });
+
   it('uses per-day New York clocks across the US-only DST week', async () => {
     const onSelectSlot = renderWeek(
       '2026-03-02',
@@ -80,6 +104,10 @@ describe('WeekGrid timezone semantics', () => {
       .toHaveTextContent('02:00-12:00 EST');
     expect(screen.getByTestId('day-user-hours-2026-03-08'))
       .toHaveTextContent('03:00-13:00 EDT');
+    expect(screen.getAllByTestId('day-row-clock-2026-03-02')[0])
+      .toHaveTextContent('02:00');
+    expect(screen.getAllByTestId('day-row-clock-2026-03-08')[0])
+      .toHaveTextContent('03:00');
     expect(screen.getByRole('article', {name: /US transition Sunday/}))
       .toHaveTextContent('04:00-04:30');
 
@@ -108,6 +136,12 @@ describe('WeekGrid timezone semantics', () => {
       .toHaveTextContent('03:00-13:00 EDT');
     expect(screen.getByTestId('day-user-hours-2026-03-29'))
       .toHaveTextContent('02:00-12:00 EDT');
+    expect(screen.getByTestId('schedule-office-zone'))
+      .toHaveTextContent('Europe/Kyiv');
+    expect(screen.getAllByTestId('day-row-clock-2026-03-23')[0])
+      .toHaveTextContent('03:00');
+    expect(screen.getAllByTestId('day-row-clock-2026-03-29')[0])
+      .toHaveTextContent('02:00');
     expect(screen.getByRole('article', {name: /Kyiv transition Sunday/}))
       .toHaveTextContent('02:00-02:30');
   });

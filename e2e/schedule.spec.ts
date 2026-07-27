@@ -52,9 +52,12 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
   const weeklyGrid = page.getByRole('grid', {name: 'Weekly room schedule'});
   await expect(page.getByTestId('schedule-day-column')).toHaveCount(7);
   await expect(page.getByTestId('schedule-time-row')).toHaveCount(20);
-  await expect(weeklyGrid.getByText('09:00', {exact: true})).toBeVisible();
-  await expect(weeklyGrid.getByText('10:00', {exact: true})).toBeVisible();
-  await expect(weeklyGrid.getByText('19:00', {exact: true})).toBeVisible();
+  const firstDayClocks =
+    weeklyGrid.getByTestId(`day-row-clock-${weekStart}`);
+  await expect(firstDayClocks).toHaveCount(11);
+  await expect(firstDayClocks.first()).toHaveText('09:00');
+  await expect(firstDayClocks.nth(1)).toHaveText('10:00');
+  await expect(firstDayClocks.last()).toHaveText('19:00');
   await expect(page.getByText('Invalid DateTime')).toHaveCount(0);
   await expect(page.getByText('Oak', {exact: true})).toBeVisible();
   await expect(page.getByText('Floor 1', {exact: true})).toBeVisible();

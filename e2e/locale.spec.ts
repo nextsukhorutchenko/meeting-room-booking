@@ -105,7 +105,7 @@ test('@timezone unsupported browser alias falls back during hydration', async ({
     'Office hours: 09:00–19:00 Europe/Kyiv',
     {exact: true},
   )).toHaveCount(0);
-  await expect(page.getByTestId('schedule-time-row').first())
+  await expect(page.getByTestId('day-row-clock-2026-03-02').first())
     .toHaveText('09:00');
   expect(hydrationErrors).toEqual([]);
 });
