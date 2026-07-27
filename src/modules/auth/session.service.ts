@@ -4,6 +4,7 @@ import type {Clock} from '../../lib/time/office-time';
 import type {
   AuthUser,
   CreatedSession,
+  PreparedSession,
   SessionRecord,
   SessionRepository,
   SessionService,
@@ -34,20 +35,29 @@ export class OpaqueSessionService implements SessionService {
     },
   ) {}
 
-  async create(userId: string): Promise<CreatedSession> {
+  prepare(): PreparedSession {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(
       this.dependencies.clock.now().getTime() +
       this.dependencies.sessionDays * millisecondsPerDay,
     );
 
-    await this.dependencies.repository.create({
+    return {
+      token,
       tokenHash: hashToken(token),
-      userId,
       expiresAt,
+    };
+  }
+
+  async create(userId: string): Promise<CreatedSession> {
+    const session = this.prepare();
+    await this.dependencies.repository.create({
+      tokenHash: session.tokenHash,
+      userId,
+      expiresAt: session.expiresAt,
     });
 
-    return {token, expiresAt};
+    return {token: session.token, expiresAt: session.expiresAt};
   }
 
   async findUserByToken(token: string): Promise<AuthUser | null> {

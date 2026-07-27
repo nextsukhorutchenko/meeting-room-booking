@@ -1,6 +1,9 @@
 import argon2 from 'argon2';
 import {z} from 'zod';
 
+export const dummyPasswordHash =
+  '$argon2id$v=19$m=65536,p=4,t=3$CrqiyR139OxWu5J/XzbKDw$T7G2dHawGuBKiZnMjxmdL8YSw+q0u5Q6xrhRJZ742so';
+
 function unicodeCharacterCount(value: string): number {
   return Array.from(value).length;
 }

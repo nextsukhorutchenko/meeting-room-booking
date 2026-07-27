@@ -1,6 +1,11 @@
 import {createHash} from 'node:crypto';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
+import type {SessionService} from '../../src/modules/auth/auth.types';
 import type {AuthUser} from '../../src/modules/auth/auth.schemas';
+import {
+  AuthService,
+  PrismaAuthRepository,
+} from '../../src/modules/auth/auth.service';
 import {createVerifiedUser} from '../helpers/factories';
 import {
   type PostHandler,
@@ -141,6 +146,39 @@ describe.sequential('auth API', () => {
     await expect(
       getOptionalUser(requestWithCookie(cookie.header)),
     ).resolves.toEqual(body.data.user);
+  });
+
+  it('rolls back the user when the initial session insert fails', async () => {
+    const email = `${testEmailPrefix}session-failure@example.com`;
+    const failingSessionService: SessionService = {
+      prepare: () => ({
+        token: 'not-persisted',
+        tokenHash: 'not-persisted-hash',
+        expiresAt: null as unknown as Date,
+      }),
+      create: async () => {
+        throw new Error('Unexpected session creation');
+      },
+      findUserByToken: async () => null,
+      revoke: async () => {},
+    };
+    const service = new AuthService({
+      repository: new PrismaAuthRepository(testDb),
+      sessions: failingSessionService,
+      password: {
+        hash: async () => 'hashed:correct password',
+        verify: async () => false,
+      },
+    });
+
+    await expect(service.register({
+      name: 'Session Failure',
+      email,
+      password: 'correct password',
+    })).rejects.toThrow();
+    await expect(testDb.user.findUnique({
+      where: {normalizedEmail: email},
+    })).resolves.toBeNull();
   });
 
   it('maps a real normalized-email conflict without rejecting duplicate names', async () => {

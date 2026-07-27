@@ -13,7 +13,7 @@ import {
   OpaqueSessionService,
   PrismaSessionRepository,
 } from './session.service';
-import type {SessionService} from './auth.types';
+import type {PreparedSession, SessionService} from './auth.types';
 import {
   type AuthUser,
   loginSchema,
@@ -22,7 +22,11 @@ import {
   type RegisterInput,
 } from './auth.schemas';
 import {normalizeEmail} from './email';
-import {hashPassword, verifyPassword} from './password';
+import {
+  dummyPasswordHash,
+  hashPassword,
+  verifyPassword,
+} from './password';
 
 export type AuthAccount = {
   id: string;
@@ -34,12 +38,13 @@ export type AuthAccount = {
 };
 
 export interface AuthRepository {
-  create(input: {
+  createWithSession(input: {
     name: string;
     email: string;
     normalizedEmail: string;
     passwordHash: string;
-  }): Promise<AuthAccount>;
+  }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>):
+    Promise<AuthAccount>;
   findByNormalizedEmail(normalizedEmail: string): Promise<AuthAccount | null>;
 }
 
@@ -131,14 +136,15 @@ export class AuthService {
     const passwordHash = await this.dependencies.password.hash(
       parsed.data.password,
     );
+    const session = this.dependencies.sessions.prepare();
     let account: AuthAccount;
     try {
-      account = await this.dependencies.repository.create({
+      account = await this.dependencies.repository.createWithSession({
         name: parsed.data.name,
         email: parsed.data.email,
         normalizedEmail,
         passwordHash,
-      });
+      }, session);
     } catch (error) {
       if (error instanceof DuplicateEmailRepositoryError) {
         throw new DomainError({
@@ -151,8 +157,11 @@ export class AuthService {
       throw error;
     }
 
-    const session = await this.dependencies.sessions.create(account.id);
-    return {...session, user: toAuthUser(account)};
+    return {
+      token: session.token,
+      expiresAt: session.expiresAt,
+      user: toAuthUser(account),
+    };
   }
 
   async login(input: unknown): Promise<AuthenticatedSession> {
@@ -171,10 +180,11 @@ export class AuthService {
     const account = await this.dependencies.repository.findByNormalizedEmail(
       normalizedEmail,
     );
-    if (!account || !await this.dependencies.password.verify(
-      account.passwordHash,
+    const passwordMatches = await this.dependencies.password.verify(
+      account?.passwordHash ?? dummyPasswordHash,
       parsed.data.password,
-    )) {
+    );
+    if (!account || !passwordMatches) {
       throw invalidCredentialsError();
     }
 
@@ -195,7 +205,7 @@ export class AuthService {
   }
 }
 
-type AuthPrismaClient = Pick<PrismaClient, 'user'>;
+type AuthPrismaClient = Pick<PrismaClient, '$transaction' | 'user'>;
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -205,14 +215,25 @@ function isUniqueConstraintError(error: unknown): boolean {
 export class PrismaAuthRepository implements AuthRepository {
   constructor(private readonly database: AuthPrismaClient) {}
 
-  async create(input: {
+  async createWithSession(input: {
     name: string;
     email: string;
     normalizedEmail: string;
     passwordHash: string;
-  }): Promise<AuthAccount> {
+  }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>):
+    Promise<AuthAccount> {
     try {
-      return await this.database.user.create({data: input});
+      return await this.database.$transaction(async (transaction) => {
+        const account = await transaction.user.create({data: input});
+        await transaction.session.create({
+          data: {
+            tokenHash: session.tokenHash,
+            userId: account.id,
+            expiresAt: session.expiresAt,
+          },
+        });
+        return account;
+      });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new DuplicateEmailRepositoryError();

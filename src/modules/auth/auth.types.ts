@@ -11,6 +11,10 @@ export type CreatedSession = {
   expiresAt: Date;
 };
 
+export type PreparedSession = CreatedSession & {
+  tokenHash: string;
+};
+
 export type SessionRecord = {
   tokenHash: string;
   userId: string;
@@ -29,6 +33,7 @@ export interface SessionRepository {
 }
 
 export interface SessionService {
+  prepare(): PreparedSession;
   create(userId: string): Promise<CreatedSession>;
   findUserByToken(token: string): Promise<AuthUser | null>;
   revoke(token: string): Promise<void>;

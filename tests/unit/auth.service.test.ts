@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {
   AuthUser as SessionUser,
   CreatedSession,
+  PreparedSession,
   SessionService,
 } from '../../src/modules/auth/auth.types';
 import {
@@ -10,17 +11,22 @@ import {
   type AuthRepository,
   DuplicateEmailRepositoryError,
 } from '../../src/modules/auth/auth.service';
+import {dummyPasswordHash} from '../../src/modules/auth/password';
 
 class InMemoryAuthRepository implements AuthRepository {
   private sequence = 0;
   private readonly accounts = new Map<string, AuthAccount>();
+  failSessionInsert = false;
 
-  async create(input: {
+  async createWithSession(input: {
     name: string;
     email: string;
     normalizedEmail: string;
     passwordHash: string;
   }): Promise<AuthAccount> {
+    if (this.failSessionInsert) {
+      throw new Error('Session insert failed');
+    }
     if (this.accounts.has(input.normalizedEmail)) {
       throw new DuplicateEmailRepositoryError();
     }
@@ -46,12 +52,18 @@ class InMemorySessionService implements SessionService {
   readonly revokedTokens: string[] = [];
   private sequence = 0;
 
-  async create(): Promise<CreatedSession> {
+  prepare(): PreparedSession {
     this.sequence += 1;
     return {
       token: `session-${this.sequence}`,
+      tokenHash: `hashed-session-${this.sequence}`,
       expiresAt: new Date('2026-08-03T06:00:00.000Z'),
     };
+  }
+
+  async create(): Promise<CreatedSession> {
+    const session = this.prepare();
+    return {token: session.token, expiresAt: session.expiresAt};
   }
 
   async findUserByToken(token: string): Promise<SessionUser | null> {
@@ -170,6 +182,57 @@ describe('AuthService', () => {
       code: 'INVALID_CREDENTIALS',
       status: 401,
     });
+  });
+
+  it('runs the password verifier for unknown and incorrect credentials', async () => {
+    const repository = new InMemoryAuthRepository();
+    const sessions = new InMemorySessionService();
+    const verifierHashes: string[] = [];
+    const service = new AuthService({
+      repository,
+      sessions,
+      password: {
+        hash: async (password) => `hashed:${password}`,
+        verify: async (hash) => {
+          verifierHashes.push(hash);
+          return false;
+        },
+      },
+    });
+    await service.register({
+      name: 'Ada',
+      email: 'ada@example.com',
+      password: 'correct password',
+    });
+
+    await expect(service.login({
+      email: 'unknown@example.com',
+      password: 'wrong password',
+    })).rejects.toMatchObject({code: 'INVALID_CREDENTIALS'});
+    await expect(service.login({
+      email: 'ada@example.com',
+      password: 'wrong password',
+    })).rejects.toMatchObject({code: 'INVALID_CREDENTIALS'});
+
+    expect(verifierHashes).toEqual([
+      dummyPasswordHash,
+      'hashed:correct password',
+    ]);
+  });
+
+  it('does not persist an account when initial session creation fails', async () => {
+    const {repository, service} = createService();
+    repository.failSessionInsert = true;
+
+    await expect(service.register({
+      name: 'Ada',
+      email: 'ada@example.com',
+      password: 'correct password',
+    })).rejects.toThrow('Session insert failed');
+
+    await expect(
+      repository.findByNormalizedEmail('ada@example.com'),
+    ).resolves.toBeNull();
   });
 
   it('maps session users to safe fields and revokes only the current token', async () => {
