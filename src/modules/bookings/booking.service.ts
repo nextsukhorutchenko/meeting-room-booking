@@ -2,7 +2,7 @@ import {
   type Prisma,
   type PrismaClient,
 } from '@prisma/client';
-import type {ZodError} from 'zod';
+import {z, type ZodError} from 'zod';
 import {
   type AppEnv,
   readAppEnv,
@@ -17,13 +17,38 @@ import {
   createBookingSchema,
 } from './booking.schemas';
 import type {
+  BookingListItem,
+  BookingPage,
   BookingService,
   BookingView,
   CancelBookingInput,
   CreatedBooking,
   CreateBookingInput,
+  ListUserBookingsInput,
 } from './booking.types';
 import {validateBookingInterval} from './interval';
+
+type BookingHistoryCursor = {
+  startsAt: Date;
+  id: string;
+};
+
+type BookingHistoryRecord = {
+  id: string;
+  room: {id: string; name: string};
+  title: string;
+  startsAt: Date;
+  endsAt: Date;
+  cancelledAt: Date | null;
+};
+
+type BookingHistoryQuery = {
+  userId: string;
+  scope: 'future' | 'past';
+  cursor?: BookingHistoryCursor;
+  limit: number;
+  now: Date;
+};
 
 export interface BookingTransaction {
   cancelOwnedActive(input: CancelBookingInput): Promise<number>;
@@ -40,10 +65,30 @@ export interface BookingTransaction {
 }
 
 export interface BookingRepository {
+  listUserBookings(input: BookingHistoryQuery): Promise<BookingHistoryRecord[]>;
   withTransaction<T>(
     operation: (transaction: BookingTransaction) => Promise<T>,
   ): Promise<T>;
 }
+
+const cursorTextSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .regex(/^[A-Za-z0-9_-]+$/);
+
+const bookingHistoryInputSchema = z.strictObject({
+  userId: z.string().trim().min(1),
+  scope: z.enum(['future', 'past']),
+  cursor: cursorTextSchema.optional(),
+  limit: z.number().int().positive().transform((limit) => Math.min(limit, 50)),
+  now: z.date(),
+});
+
+const decodedCursorSchema = z.strictObject({
+  startsAt: z.iso.datetime({offset: true}),
+  id: z.string().trim().min(1).max(255),
+});
 
 function validationError(error: ZodError): DomainError {
   const fields: DomainErrorFields = {};
@@ -102,12 +147,62 @@ function invalidCancellationInputError(): DomainError {
   });
 }
 
+function invalidBookingHistoryQueryError(): DomainError {
+  return new DomainError({
+    code: 'VALIDATION_FAILED',
+    message: 'Invalid booking history query.',
+    status: 400,
+  });
+}
+
 function serviceUnavailableError(): DomainError {
   return new DomainError({
     code: 'SERVICE_UNAVAILABLE',
     message: 'Service unavailable',
     status: 503,
   });
+}
+
+function decodeBookingCursor(cursor: string): BookingHistoryCursor {
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const parsed = decodedCursorSchema.safeParse(JSON.parse(decoded));
+    if (!parsed.success) {
+      throw invalidBookingHistoryQueryError();
+    }
+    return {
+      startsAt: new Date(parsed.data.startsAt),
+      id: parsed.data.id,
+    };
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw error;
+    }
+    throw invalidBookingHistoryQueryError();
+  }
+}
+
+function encodeBookingCursor(booking: BookingHistoryRecord): string {
+  return Buffer.from(JSON.stringify({
+    startsAt: booking.startsAt.toISOString(),
+    id: booking.id,
+  }), 'utf8').toString('base64url');
+}
+
+function toBookingListItem(
+  booking: BookingHistoryRecord,
+  scope: 'future' | 'past',
+): BookingListItem {
+  return {
+    id: booking.id,
+    room: booking.room,
+    title: booking.title,
+    startsAt: booking.startsAt.toISOString(),
+    endsAt: booking.endsAt.toISOString(),
+    status: booking.cancelledAt !== null ?
+      'cancelled' :
+      scope === 'future' ? 'upcoming' : 'completed',
+  };
 }
 
 function toBookingView(
@@ -133,6 +228,37 @@ export class DefaultBookingService implements BookingService {
       env: AppEnv;
     },
   ) {}
+
+  async listUserBookings(input: ListUserBookingsInput): Promise<BookingPage> {
+    const parsed = bookingHistoryInputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw invalidBookingHistoryQueryError();
+    }
+    const {cursor, ...validatedInput} = parsed.data;
+    const query: BookingHistoryQuery = {
+      ...validatedInput,
+      ...(cursor ? {
+        cursor: decodeBookingCursor(cursor),
+      } : {}),
+    };
+
+    let records: BookingHistoryRecord[];
+    try {
+      records = await this.dependencies.repository.listUserBookings(query);
+    } catch {
+      throw serviceUnavailableError();
+    }
+
+    const pageRecords = records.slice(0, query.limit);
+    return {
+      items: pageRecords.map((booking) =>
+        toBookingListItem(booking, query.scope),
+      ),
+      nextCursor: records.length > query.limit && pageRecords.length > 0 ?
+        encodeBookingCursor(pageRecords[pageRecords.length - 1]) :
+        null,
+    };
+  }
 
   async cancel(input: CancelBookingInput): Promise<void> {
     const bookingId = (
@@ -322,10 +448,53 @@ class PrismaBookingTransaction implements BookingTransaction {
   }
 }
 
-type BookingPrismaClient = Pick<PrismaClient, '$transaction'>;
+type BookingPrismaClient = Pick<PrismaClient, '$transaction' | 'booking'>;
 
 export class PrismaBookingRepository implements BookingRepository {
   constructor(private readonly database: BookingPrismaClient) {}
+
+  async listUserBookings(
+    input: BookingHistoryQuery,
+  ): Promise<BookingHistoryRecord[]> {
+    const direction = input.scope === 'future' ? 'asc' : 'desc';
+    const cursorBoundary = input.cursor ? {
+      OR: [
+        {startsAt: {[input.scope === 'future' ? 'gt' : 'lt']: input.cursor.startsAt}},
+        {
+          startsAt: input.cursor.startsAt,
+          id: {[input.scope === 'future' ? 'gt' : 'lt']: input.cursor.id},
+        },
+      ],
+    } : {};
+    return this.database.booking.findMany({
+      where: {
+        userId: input.userId,
+        startsAt: input.scope === 'future' ?
+          {gte: input.now} :
+          {lt: input.now},
+        ...(input.scope === 'future' ? {cancelledAt: null} : {}),
+        ...cursorBoundary,
+      },
+      orderBy: [
+        {startsAt: direction},
+        {id: direction},
+      ],
+      take: input.limit + 1,
+      select: {
+        id: true,
+        room: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        title: true,
+        startsAt: true,
+        endsAt: true,
+        cancelledAt: true,
+      },
+    });
+  }
 
   async withTransaction<T>(
     operation: (transaction: BookingTransaction) => Promise<T>,
@@ -366,3 +535,14 @@ export async function cancelBooking(
 ): Promise<void> {
   return (await getDefaultService()).cancel(input);
 }
+
+export async function listUserBookings(
+  input: ListUserBookingsInput,
+): Promise<BookingPage> {
+  return (await getDefaultService()).listUserBookings(input);
+}
+
+export type {
+  BookingListItem,
+  BookingPage,
+} from './booking.types';

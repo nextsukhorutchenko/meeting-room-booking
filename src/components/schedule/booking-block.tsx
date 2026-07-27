@@ -4,6 +4,7 @@ type BookingBlockProps = {
   authorName: string;
   bookingId: string;
   height: number;
+  isHighlighted: boolean;
   isOwn: boolean;
   onCancel(booking: {id: string; title: string}): void;
   title: string;
@@ -14,6 +15,7 @@ export function BookingBlock({
   authorName,
   bookingId,
   height,
+  isHighlighted,
   isOwn,
   onCancel,
   title,
@@ -22,7 +24,12 @@ export function BookingBlock({
   return (
     <article
       aria-label={`${title}, booked by ${authorName}${isOwn ? ', yours' : ''}`}
-      className={isOwn ? 'booking-block booking-own' : 'booking-block'}
+      className={[
+        'booking-block',
+        isOwn ? 'booking-own' : '',
+        isHighlighted ? 'booking-highlighted' : '',
+      ].filter(Boolean).join(' ')}
+      data-highlighted={isHighlighted ? 'true' : undefined}
       style={{height: Math.max(height - 4, 32), top: top + 2}}
     >
       <strong>{title}</strong>

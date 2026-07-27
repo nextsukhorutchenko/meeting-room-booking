@@ -23,6 +23,7 @@ type ScheduleBooking = {
 type WeekGridProps = {
   bookingEnabled: boolean;
   bookings: ScheduleBooking[];
+  highlightedBookingId: string | null;
   loading: boolean;
   officeTimeZone: string;
   onCancelBooking(booking: {id: string; title: string}): void;
@@ -53,6 +54,7 @@ function overlapsSlot(
 export function WeekGrid({
   bookingEnabled,
   bookings,
+  highlightedBookingId,
   loading,
   officeTimeZone,
   onCancelBooking,
@@ -208,6 +210,7 @@ export function WeekGrid({
                       durationMinutes / SCHEDULE_LAYOUT.slotMinutes *
                       SCHEDULE_LAYOUT.slotHeightPx
                     }
+                    isHighlighted={booking.id === highlightedBookingId}
                     isOwn={booking.isOwn}
                     key={booking.id}
                     onCancel={onCancelBooking}

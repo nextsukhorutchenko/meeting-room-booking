@@ -101,6 +101,8 @@ export function ScheduleClient() {
   const weekStartRef = useRef(weekStart);
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
+  const linkedBookingId = searchParams.get('bookingId');
+  const linkedBookingIdRef = useRef(linkedBookingId);
 
   const updateUrl = useCallback((
     roomId: string,
@@ -111,8 +113,15 @@ export function ScheduleClient() {
       parameters.set('roomId', roomId);
     }
     parameters.set('weekStart', nextWeekStart);
+    if (linkedBookingIdRef.current) {
+      parameters.set('bookingId', linkedBookingIdRef.current);
+    }
     router.replace(`/schedule?${parameters.toString()}`, {scroll: false});
   }, [router]);
+
+  useEffect(() => {
+    linkedBookingIdRef.current = linkedBookingId;
+  }, [linkedBookingId]);
 
   useEffect(() => {
     selectedRoomIdRef.current = selectedRoomId;
@@ -268,6 +277,7 @@ export function ScheduleClient() {
   );
 
   function changeRoom(roomId: string) {
+    linkedBookingIdRef.current = null;
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
@@ -277,6 +287,7 @@ export function ScheduleClient() {
   }
 
   function changeWeek(weeks: number) {
+    linkedBookingIdRef.current = null;
     const nextWeek = DateTime.fromISO(weekStart, {zone: officeTimeZone})
       .plus({weeks})
       .toFormat('yyyy-LL-dd');
@@ -289,6 +300,7 @@ export function ScheduleClient() {
   }
 
   function goToToday() {
+    linkedBookingIdRef.current = null;
     const currentWeek = currentOfficeWeek();
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
@@ -378,6 +390,7 @@ export function ScheduleClient() {
           <WeekGrid
             bookingEnabled={schedule !== null}
             bookings={schedule?.bookings ?? []}
+            highlightedBookingId={linkedBookingId}
             loading={scheduleLoading || roomsLoading}
             officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
             onCancelBooking={setCancellation}

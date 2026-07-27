@@ -44,12 +44,24 @@ type CancellationBooking = {
   cancelledAt: Date | null;
 };
 
+type HistoryBooking = {
+  id: string;
+  userId: string;
+  room: {id: string; name: string};
+  title: string;
+  startsAt: Date;
+  endsAt: Date;
+  cancelledAt: Date | null;
+};
+
 class InMemoryBookingRepository implements BookingRepository {
   readonly createdInputs: CreateBookingInput[] = [];
   readonly events: string[] = [];
   readonly rooms = new Set(['room-1']);
   readonly existingBookings: ExistingBooking[] = [];
   readonly cancellationBookings = new Map<string, CancellationBooking>();
+  readonly historyBookings: HistoryBooking[] = [];
+  listCalls = 0;
   cancelOwnedActiveOverride?: (
     input: {bookingId: string; userId: string; cancelledAt: Date},
     attempt: number,
@@ -120,6 +132,46 @@ class InMemoryBookingRepository implements BookingRepository {
       },
     });
   }
+
+  async listUserBookings(input: {
+    userId: string;
+    scope: 'future' | 'past';
+    cursor?: {startsAt: Date; id: string};
+    limit: number;
+    now: Date;
+  }): Promise<HistoryBooking[]> {
+    this.listCalls += 1;
+    this.events.push('list-user-bookings');
+    const direction = input.scope === 'future' ? 1 : -1;
+    return this.historyBookings
+      .filter((booking) => {
+        if (booking.userId !== input.userId) {
+          return false;
+        }
+        if (input.scope === 'future') {
+          return booking.startsAt >= input.now && booking.cancelledAt === null;
+        }
+        return booking.startsAt < input.now;
+      })
+      .filter((booking) => {
+        if (!input.cursor) {
+          return true;
+        }
+        const timeComparison =
+          booking.startsAt.getTime() - input.cursor.startsAt.getTime();
+        return timeComparison === 0 ?
+          booking.id.localeCompare(input.cursor.id) * direction > 0 :
+          timeComparison * direction > 0;
+      })
+      .sort((left, right) => {
+        const timeComparison =
+          left.startsAt.getTime() - right.startsAt.getTime();
+        return timeComparison === 0 ?
+          left.id.localeCompare(right.id) * direction :
+          timeComparison * direction;
+      })
+      .slice(0, input.limit + 1);
+  }
 }
 
 class RejectingBookingRepository extends InMemoryBookingRepository {
@@ -165,6 +217,165 @@ async function expectDomainError(
 }
 
 describe('DefaultBookingService', () => {
+  describe('listUserBookings', () => {
+    function historyBooking(
+      id: string,
+      startsAt: string,
+      options: Partial<HistoryBooking> = {},
+    ): HistoryBooking {
+      return {
+        id,
+        userId: 'user-1',
+        room: {id: 'room-1', name: 'Oak'},
+        title: `Booking ${id}`,
+        startsAt: new Date(startsAt),
+        endsAt: new Date(new Date(startsAt).getTime() + 60 * 60 * 1000),
+        cancelledAt: null,
+        ...options,
+      };
+    }
+
+    it('lists active future bookings ascending with id tie-breaking', async () => {
+      const {repository, service} = createService();
+      repository.historyBookings.push(
+        historyBooking('future-b', '2026-07-28T07:00:00.000Z'),
+        historyBooking('future-a', '2026-07-28T07:00:00.000Z'),
+        historyBooking('future-later', '2026-07-29T07:00:00.000Z'),
+        historyBooking('cancelled-future', '2026-07-27T07:00:00.000Z', {
+          cancelledAt: new Date('2026-07-27T06:30:00.000Z'),
+        }),
+        historyBooking('other-user', '2026-07-27T07:30:00.000Z', {
+          userId: 'user-2',
+        }),
+        historyBooking('past', '2026-07-26T07:00:00.000Z'),
+      );
+
+      await expect(service.listUserBookings({
+        userId: 'user-1',
+        scope: 'future',
+        limit: 20,
+        now,
+      })).resolves.toEqual({
+        items: [
+          expect.objectContaining({id: 'future-a', status: 'upcoming'}),
+          expect.objectContaining({id: 'future-b', status: 'upcoming'}),
+          expect.objectContaining({id: 'future-later', status: 'upcoming'}),
+        ],
+        nextCursor: null,
+      });
+      expect(repository.events).toEqual(['list-user-bookings']);
+    });
+
+    it('lists past bookings descending and retains cancellation state', async () => {
+      const {repository, service} = createService();
+      repository.historyBookings.push(
+        historyBooking('past-a', '2026-07-26T07:00:00.000Z'),
+        historyBooking('past-b', '2026-07-26T07:00:00.000Z', {
+          cancelledAt: new Date('2026-07-25T07:00:00.000Z'),
+        }),
+        historyBooking('past-older', '2026-07-25T07:00:00.000Z'),
+        historyBooking('future', '2026-07-28T07:00:00.000Z'),
+      );
+
+      await expect(service.listUserBookings({
+        userId: 'user-1',
+        scope: 'past',
+        limit: 20,
+        now,
+      })).resolves.toEqual({
+        items: [
+          expect.objectContaining({id: 'past-b', status: 'cancelled'}),
+          expect.objectContaining({id: 'past-a', status: 'completed'}),
+          expect.objectContaining({id: 'past-older', status: 'completed'}),
+        ],
+        nextCursor: null,
+      });
+    });
+
+    it('paginates equal timestamps without duplicates or skipped records', async () => {
+      const {repository, service} = createService();
+      repository.historyBookings.push(
+        historyBooking('past-d', '2026-07-26T07:00:00.000Z'),
+        historyBooking('past-c', '2026-07-26T07:00:00.000Z'),
+        historyBooking('past-b', '2026-07-26T07:00:00.000Z'),
+        historyBooking('past-a', '2026-07-26T07:00:00.000Z'),
+      );
+
+      const first = await service.listUserBookings({
+        userId: 'user-1',
+        scope: 'past',
+        limit: 2,
+        now,
+      });
+      expect(first.items.map((item) => item.id)).toEqual(['past-d', 'past-c']);
+      expect(first.nextCursor).toEqual(expect.any(String));
+
+      const second = await service.listUserBookings({
+        userId: 'user-1',
+        scope: 'past',
+        cursor: first.nextCursor ?? undefined,
+        limit: 2,
+        now,
+      });
+      expect(second.items.map((item) => item.id)).toEqual(['past-b', 'past-a']);
+      expect(second.nextCursor).toBeNull();
+      expect(
+        new Set([...first.items, ...second.items].map((item) => item.id)).size,
+      ).toBe(4);
+    });
+
+    it('caps a requested page at 50 records and exposes another page', async () => {
+      const {repository, service} = createService();
+      for (let index = 0; index < 52; index += 1) {
+        repository.historyBookings.push(historyBooking(
+          `future-${index.toString().padStart(2, '0')}`,
+          new Date(now.getTime() + (index + 1) * 60_000).toISOString(),
+        ));
+      }
+
+      const page = await service.listUserBookings({
+        userId: 'user-1',
+        scope: 'future',
+        limit: 500,
+        now,
+      });
+
+      expect(page.items).toHaveLength(50);
+      expect(page.nextCursor).toEqual(expect.any(String));
+    });
+
+    it.each([
+      ['zero limit', {limit: 0}],
+      ['fractional limit', {limit: 1.5}],
+      ['non-finite limit', {limit: Number.NaN}],
+      ['invalid scope', {scope: 'all'}],
+      ['invalid now', {now: new Date(Number.NaN)}],
+      ['blank user', {userId: ' '}],
+      ['invalid cursor alphabet', {cursor: 'not+a+cursor'}],
+      ['invalid cursor payload', {cursor: 'bm90LWpzb24'}],
+      ['extra input', {unexpected: 'private-value'}],
+    ])('rejects %s with a stable sanitized error', async (_name, override) => {
+      const {repository, service} = createService();
+
+      const error = await expectDomainError(service.listUserBookings({
+        userId: 'user-1',
+        scope: 'future',
+        limit: 20,
+        now,
+        ...override,
+      } as never));
+
+      expect(error).toMatchObject({
+        code: 'VALIDATION_FAILED',
+        message: 'Invalid booking history query.',
+        status: 400,
+        fields: undefined,
+      });
+      expect(JSON.stringify(error)).not.toContain('private-value');
+      expect(repository.listCalls).toBe(0);
+    });
+  });
+
   describe('cancel', () => {
     const cancelledAt = new Date('2026-07-27T08:30:00.000Z');
 

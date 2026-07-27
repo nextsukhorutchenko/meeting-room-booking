@@ -11,7 +11,7 @@ export default async function SchedulePage() {
 
   return (
     <>
-      <AppHeader userName={user.name} />
+      <AppHeader currentPage="schedule" userName={user.name} />
       <main className="schedule-page">
         <div className="schedule-title-row">
           <div>
