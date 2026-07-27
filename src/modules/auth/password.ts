@@ -25,5 +25,14 @@ export async function verifyPassword(
   hash: string,
   password: string,
 ): Promise<boolean> {
-  return argon2.verify(hash, passwordSchema.parse(password));
+  const candidate = passwordSchema.safeParse(password);
+  if (!candidate.success) {
+    return false;
+  }
+
+  try {
+    return await argon2.verify(hash, candidate.data);
+  } catch {
+    return false;
+  }
 }
