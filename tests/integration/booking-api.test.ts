@@ -164,6 +164,82 @@ describe.sequential('booking API', () => {
     });
   });
 
+  it('rejects an offsetless local timestamp', async () => {
+    const localTimestamp = officeDate(bookingDaysFromNow, 10).toFormat(
+      "yyyy-LL-dd'T'HH:mm:ss",
+    );
+    const response = await postJson(
+      bookingPost,
+      '/api/bookings',
+      {...bookingBody(), startsAt: localTimestamp},
+      {cookie},
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Please correct the highlighted fields',
+        fields: {
+          startsAt: 'Enter an ISO date-time with an explicit offset',
+        },
+      },
+    });
+  });
+
+  it('rejects a calendar-invalid explicit-offset timestamp', async () => {
+    const response = await postJson(
+      bookingPost,
+      '/api/bookings',
+      {...bookingBody(), startsAt: '2026-02-30T10:00:00+02:00'},
+      {cookie},
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Please correct the highlighted fields',
+        fields: {
+          startsAt: 'Enter an ISO date-time with an explicit offset',
+        },
+      },
+    });
+  });
+
+  it('rejects a client-supplied owner and unknown field without creating a booking', async () => {
+    const attemptedOwner = await createVerifiedUser();
+    const bookingsBefore = await testDb.booking.count({where: {roomId}});
+
+    try {
+      expect(attemptedOwner.id).not.toBe(userId);
+      const response = await postJson(bookingPost, '/api/bookings', {
+        ...bookingBody(),
+        userId: attemptedOwner.id,
+        unknownField: 'not allowed',
+      }, {cookie});
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Please correct the highlighted fields',
+          fields: {
+            body: 'Request body must be an object with valid booking fields',
+          },
+        },
+      });
+      await expect(testDb.booking.count({where: {roomId}})).resolves.toBe(
+        bookingsBefore,
+      );
+      await expect(testDb.booking.count({
+        where: {userId: attemptedOwner.id},
+      })).resolves.toBe(0);
+    } finally {
+      await testDb.user.delete({where: {id: attemptedOwner.id}});
+    }
+  });
+
   it('rejects a booking in the past', async () => {
     const response = await postJson(
       bookingPost,
