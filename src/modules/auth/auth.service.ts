@@ -32,7 +32,7 @@ import {
   DefaultVerificationService,
   type PreparedVerification,
   PrismaVerificationRepository,
-  type VerificationService,
+  type RegistrationVerificationService,
 } from './verification.service';
 
 export type AuthAccount = {
@@ -139,7 +139,7 @@ export class AuthService {
     private readonly dependencies: {
       repository: AuthRepository;
       sessions: SessionService;
-      verification: VerificationService;
+      verification: RegistrationVerificationService;
       password: PasswordOperations;
     },
   ) {}

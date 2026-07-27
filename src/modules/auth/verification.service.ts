@@ -18,12 +18,21 @@ export type PreparedVerification = {
 };
 
 export interface VerificationService {
-  prepare(): PreparedVerification;
-  writeLink(url: string): void;
+  issue(userId: string): Promise<{url: string; expiresAt: Date}>;
   verify(rawToken: string): Promise<void>;
 }
 
+export interface RegistrationVerificationService extends VerificationService {
+  prepare(): PreparedVerification;
+  writeLink(url: string): void;
+}
+
 export interface VerificationRepository {
+  create(input: {
+    tokenHash: string;
+    userId: string;
+    expiresAt: Date;
+  }, beforeCommit: () => void): Promise<void>;
   consumeAndVerify(input: {
     tokenHash: string;
     consumedAt: Date;
@@ -50,7 +59,8 @@ function serviceUnavailableError(): DomainError {
   });
 }
 
-export class DefaultVerificationService implements VerificationService {
+export class DefaultVerificationService
+  implements RegistrationVerificationService {
   constructor(
     private readonly dependencies: {
       repository: VerificationRepository;
@@ -83,6 +93,22 @@ export class DefaultVerificationService implements VerificationService {
     }
   }
 
+  async issue(userId: string): Promise<{url: string; expiresAt: Date}> {
+    const prepared = this.prepare();
+    try {
+      await this.dependencies.repository.create({
+        tokenHash: prepared.tokenHash,
+        userId,
+        expiresAt: prepared.expiresAt,
+      }, () => {
+        this.writeLink(prepared.url);
+      });
+    } catch {
+      throw serviceUnavailableError();
+    }
+    return {url: prepared.url, expiresAt: prepared.expiresAt};
+  }
+
   async verify(rawToken: string): Promise<void> {
     if (!rawTokenPattern.test(rawToken)) {
       throw invalidOrExpiredError();
@@ -107,6 +133,17 @@ type VerificationPrismaClient = Pick<PrismaClient, '$transaction'>;
 
 export class PrismaVerificationRepository implements VerificationRepository {
   constructor(private readonly database: VerificationPrismaClient) {}
+
+  async create(input: {
+    tokenHash: string;
+    userId: string;
+    expiresAt: Date;
+  }, beforeCommit: () => void): Promise<void> {
+    await this.database.$transaction(async (transaction) => {
+      await transaction.verificationToken.create({data: input});
+      beforeCommit();
+    });
+  }
 
   async consumeAndVerify(input: {
     tokenHash: string;

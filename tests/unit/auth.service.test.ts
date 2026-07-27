@@ -17,6 +17,7 @@ import {dummyPasswordHash} from '../../src/modules/auth/password';
 import {
   DefaultVerificationService,
   type PreparedVerification,
+  type RegistrationVerificationService,
   type VerificationLinkWriter,
   type VerificationRepository,
   type VerificationService,
@@ -89,7 +90,7 @@ class InMemorySessionService implements SessionService {
   }
 }
 
-class InMemoryVerificationService implements VerificationService {
+class InMemoryVerificationService implements RegistrationVerificationService {
   readonly writtenUrls: string[] = [];
 
   prepare(): PreparedVerification {
@@ -102,6 +103,12 @@ class InMemoryVerificationService implements VerificationService {
 
   writeLink(url: string): void {
     this.writtenUrls.push(url);
+  }
+
+  async issue(): Promise<{url: string; expiresAt: Date}> {
+    const prepared = this.prepare();
+    this.writeLink(prepared.url);
+    return {url: prepared.url, expiresAt: prepared.expiresAt};
   }
 
   async verify(): Promise<void> {}
@@ -323,6 +330,23 @@ class InMemoryVerificationRepository implements VerificationRepository {
   readonly records = new Map<string, VerificationRecord>();
   readonly verifiedUserIds = new Set<string>();
 
+  async create(input: {
+    tokenHash: string;
+    userId: string;
+    expiresAt: Date;
+  }, beforeCommit: () => void): Promise<void> {
+    if (this.records.has(input.tokenHash)) {
+      throw new Error('Verification token hash already exists');
+    }
+    this.insert(input);
+    try {
+      beforeCommit();
+    } catch (error) {
+      this.records.delete(input.tokenHash);
+      throw error;
+    }
+  }
+
   insert(input: {
     tokenHash: string;
     userId: string;
@@ -356,6 +380,7 @@ class InMemoryVerificationRepository implements VerificationRepository {
 function verificationService(options: {
   repository?: VerificationRepository;
   clock?: Clock;
+  writer?: VerificationLinkWriter;
 } = {}): {
   repository: InMemoryVerificationRepository;
   urls: string[];
@@ -363,7 +388,7 @@ function verificationService(options: {
 } {
   const repository = options.repository ?? new InMemoryVerificationRepository();
   const urls: string[] = [];
-  const writer: VerificationLinkWriter = {
+  const writer = options.writer ?? {
     write: (url) => urls.push(url),
   };
   const service = new DefaultVerificationService({
@@ -381,24 +406,52 @@ function verificationService(options: {
 }
 
 describe('DefaultVerificationService', () => {
-  it('prepares only a SHA-256 hash and writes one 24-hour development URL', () => {
+  it('issues through the public contract without leaking its token hash', async () => {
     const {repository, service, urls} = verificationService();
+    const publicService: VerificationService = service;
 
-    const prepared = service.prepare();
-    const rawToken = new URL(prepared.url).searchParams.get('token');
-    service.writeLink(prepared.url);
+    const issued = await publicService.issue('user-1');
+    const rawToken = new URL(issued.url).searchParams.get('token');
 
     expect(rawToken).toEqual(expect.any(String));
     expect(Buffer.from(rawToken ?? '', 'base64url')).toHaveLength(32);
     const expectedHash = createHash('sha256')
       .update(rawToken ?? '')
       .digest('hex');
-    expect(prepared.tokenHash).toBe(expectedHash);
+    expect(repository.records.get(expectedHash)).toEqual({
+      userId: 'user-1',
+      expiresAt: new Date('2026-07-28T06:00:00.000Z'),
+      consumedAt: null,
+    });
     expect(repository.records.has(rawToken ?? '')).toBe(false);
-    expect(prepared.expiresAt).toEqual(
+    expect(issued.expiresAt).toEqual(
       new Date('2026-07-28T06:00:00.000Z'),
     );
-    expect(urls).toEqual([prepared.url]);
+    expect(Object.keys(issued).sort()).toEqual(['expiresAt', 'url']);
+    expect(JSON.stringify(issued)).not.toContain(expectedHash);
+    expect(urls).toEqual([issued.url]);
+  });
+
+  it('rolls back public issuance when the link writer fails', async () => {
+    const privateDetail = 'private writer failure detail';
+    const {repository, service} = verificationService({
+      writer: {
+        write: () => {
+          throw new Error(privateDetail);
+        },
+      },
+    });
+
+    const failure = await service.issue('user-1')
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Service unavailable',
+      status: 503,
+    });
+    expect(JSON.stringify(failure)).not.toContain(privateDetail);
+    expect(repository.records.size).toBe(0);
   });
 
   it('verifies a user once and rejects a consumed token', async () => {
@@ -443,6 +496,9 @@ describe('DefaultVerificationService', () => {
 
   it('replaces repository failures with a value-free stable error', async () => {
     const repository: VerificationRepository = {
+      create: async () => {
+        throw new Error('Unexpected verification issuance');
+      },
       consumeAndVerify: async () => {
         throw new Error('postgres.internal password=secret');
       },
