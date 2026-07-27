@@ -69,6 +69,7 @@ class InMemoryBookingRepository implements BookingRepository {
   readonly createdInputs: CreateBookingInput[] = [];
   readonly events: string[] = [];
   readonly rooms = new Set(['room-1']);
+  readonly verifiedUsers = new Set(['user-1']);
   readonly existingBookings: ExistingBooking[] = [];
   readonly cancellationBookings = new Map<string, CancellationBooking>();
   readonly historyBookings: HistoryBooking[] = [];
@@ -87,6 +88,10 @@ class InMemoryBookingRepository implements BookingRepository {
     this.transactionCalls += 1;
     this.events.push('transaction');
     return operation({
+      isUserEmailVerified: async (userId) => {
+        this.events.push('is-user-email-verified');
+        return this.verifiedUsers.has(userId);
+      },
       lockRoom: async (roomId) => {
         this.events.push('lock-room');
         return this.rooms.has(roomId);
@@ -729,6 +734,7 @@ describe('DefaultBookingService', () => {
     expect(repository.createdInputs[0]?.title).toBe('Roadmap review 😀');
     expect(repository.events).toEqual([
       'transaction',
+      'is-user-email-verified',
       'lock-room',
       'find-overlap',
       'create',
@@ -767,6 +773,22 @@ describe('DefaultBookingService', () => {
       fields: {roomId: 'Room is required'},
     });
     expect(repository.transactionCalls).toBe(0);
+  });
+
+  it('rejects an unverified user before locking a room or creating a booking', async () => {
+    const {repository, service} = createService();
+    repository.verifiedUsers.clear();
+
+    await expect(service.create(baseInput)).rejects.toMatchObject({
+      code: 'EMAIL_NOT_VERIFIED',
+      message: 'Verify your email before booking a room.',
+      status: 403,
+    });
+    expect(repository.createdInputs).toEqual([]);
+    expect(repository.events).toEqual([
+      'transaction',
+      'is-user-email-verified',
+    ]);
   });
 
   it.each([
@@ -893,7 +915,11 @@ describe('DefaultBookingService', () => {
       message: 'Room not found.',
       status: 404,
     });
-    expect(repository.events).toEqual(['transaction', 'lock-room']);
+    expect(repository.events).toEqual([
+      'transaction',
+      'is-user-email-verified',
+      'lock-room',
+    ]);
   });
 
   it('returns a stable conflict error for an active overlap', async () => {
@@ -912,6 +938,7 @@ describe('DefaultBookingService', () => {
     });
     expect(repository.events).toEqual([
       'transaction',
+      'is-user-email-verified',
       'lock-room',
       'find-overlap',
     ]);

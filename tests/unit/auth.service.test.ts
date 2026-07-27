@@ -1,4 +1,6 @@
+import {createHash} from 'node:crypto';
 import {describe, expect, it} from 'vitest';
+import type {Clock} from '../../src/lib/time/office-time';
 import type {
   AuthUser as SessionUser,
   CreatedSession,
@@ -12,6 +14,13 @@ import {
   DuplicateEmailRepositoryError,
 } from '../../src/modules/auth/auth.service';
 import {dummyPasswordHash} from '../../src/modules/auth/password';
+import {
+  DefaultVerificationService,
+  type VerificationLinkWriter,
+  type VerificationRepository,
+  type VerificationService,
+} from '../../src/modules/auth/verification.service';
+import {TestClock} from '../helpers/test-clock';
 
 class InMemoryAuthRepository implements AuthRepository {
   private sequence = 0;
@@ -76,28 +85,45 @@ class InMemorySessionService implements SessionService {
   }
 }
 
+class InMemoryVerificationService implements VerificationService {
+  readonly issuedUserIds: string[] = [];
+
+  async issue(userId: string): Promise<{url: string; expiresAt: Date}> {
+    this.issuedUserIds.push(userId);
+    return {
+      url: 'http://localhost:3000/verify?token=development-token',
+      expiresAt: new Date('2026-07-28T06:00:00.000Z'),
+    };
+  }
+
+  async verify(): Promise<void> {}
+}
+
 function createService(): {
   repository: InMemoryAuthRepository;
   sessions: InMemorySessionService;
+  verification: InMemoryVerificationService;
   service: AuthService;
 } {
   const repository = new InMemoryAuthRepository();
   const sessions = new InMemorySessionService();
+  const verification = new InMemoryVerificationService();
   const service = new AuthService({
     repository,
     sessions,
+    verification,
     password: {
       hash: async (password) => `hashed:${password}`,
       verify: async (hash, password) => hash === `hashed:${password}`,
     },
   });
 
-  return {repository, sessions, service};
+  return {repository, sessions, verification, service};
 }
 
 describe('AuthService', () => {
   it('enforces normalized email uniqueness while allowing duplicate names', async () => {
-    const {service} = createService();
+    const {service, verification} = createService();
 
     const first = await service.register({
       name: '  Ada Lovelace  ',
@@ -130,6 +156,7 @@ describe('AuthService', () => {
         email: 'another@example.com',
       },
     });
+    expect(verification.issuedUserIds).toEqual(['user-1', 'user-2']);
   });
 
   it('returns stable field errors before hashing invalid registration data', async () => {
@@ -191,6 +218,7 @@ describe('AuthService', () => {
     const service = new AuthService({
       repository,
       sessions,
+      verification: new InMemoryVerificationService(),
       password: {
         hash: async (password) => `hashed:${password}`,
         verify: async (hash) => {
@@ -270,5 +298,143 @@ describe('AuthService', () => {
     await expect(
       service.getUserBySessionToken('other-token'),
     ).resolves.toMatchObject({id: 'user-1'});
+  });
+});
+
+type VerificationRecord = {
+  userId: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+};
+
+class InMemoryVerificationRepository implements VerificationRepository {
+  readonly records = new Map<string, VerificationRecord>();
+  readonly verifiedUserIds = new Set<string>();
+
+  async create(input: {
+    tokenHash: string;
+    userId: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    this.records.set(input.tokenHash, {
+      userId: input.userId,
+      expiresAt: input.expiresAt,
+      consumedAt: null,
+    });
+  }
+
+  async consumeAndVerify(input: {
+    tokenHash: string;
+    consumedAt: Date;
+  }): Promise<boolean> {
+    const record = this.records.get(input.tokenHash);
+    if (
+      !record ||
+      record.consumedAt !== null ||
+      record.expiresAt <= input.consumedAt
+    ) {
+      return false;
+    }
+    record.consumedAt = input.consumedAt;
+    this.verifiedUserIds.add(record.userId);
+    return true;
+  }
+}
+
+function verificationService(options: {
+  repository?: VerificationRepository;
+  clock?: Clock;
+} = {}): {
+  repository: InMemoryVerificationRepository;
+  urls: string[];
+  service: DefaultVerificationService;
+} {
+  const repository = options.repository ?? new InMemoryVerificationRepository();
+  const urls: string[] = [];
+  const writer: VerificationLinkWriter = {
+    write: (url) => urls.push(url),
+  };
+  const service = new DefaultVerificationService({
+    repository,
+    clock: options.clock ??
+      new TestClock(new Date('2026-07-27T06:00:00.000Z')),
+    appUrl: 'http://localhost:3000',
+    writer,
+  });
+  return {
+    repository: repository as InMemoryVerificationRepository,
+    urls,
+    service,
+  };
+}
+
+describe('DefaultVerificationService', () => {
+  it('stores only a SHA-256 hash and writes one 24-hour development URL', async () => {
+    const {repository, service, urls} = verificationService();
+
+    const issued = await service.issue('user-1');
+    const rawToken = new URL(issued.url).searchParams.get('token');
+
+    expect(rawToken).toEqual(expect.any(String));
+    expect(Buffer.from(rawToken ?? '', 'base64url')).toHaveLength(32);
+    const expectedHash = createHash('sha256')
+      .update(rawToken ?? '')
+      .digest('hex');
+    expect(repository.records.get(expectedHash)).toEqual({
+      userId: 'user-1',
+      expiresAt: new Date('2026-07-28T06:00:00.000Z'),
+      consumedAt: null,
+    });
+    expect(repository.records.has(rawToken ?? '')).toBe(false);
+    expect(issued.expiresAt).toEqual(
+      new Date('2026-07-28T06:00:00.000Z'),
+    );
+    expect(urls).toEqual([issued.url]);
+  });
+
+  it('verifies a user once and rejects a consumed token', async () => {
+    const {repository, service} = verificationService();
+    const issued = await service.issue('user-1');
+    const rawToken = new URL(issued.url).searchParams.get('token') ?? '';
+
+    await expect(service.verify(rawToken)).resolves.toBeUndefined();
+    expect(repository.verifiedUserIds).toEqual(new Set(['user-1']));
+    await expect(service.verify(rawToken)).rejects.toMatchObject({
+      code: 'VERIFICATION_INVALID_OR_EXPIRED',
+      status: 410,
+    });
+  });
+
+  it('rejects a token at its 24-hour expiry without verifying the user', async () => {
+    const repository = new InMemoryVerificationRepository();
+    const issuedBy = verificationService({repository});
+    const issued = await issuedBy.service.issue('user-1');
+    const rawToken = new URL(issued.url).searchParams.get('token') ?? '';
+    const expiredVerifier = verificationService({
+      repository,
+      clock: new TestClock(new Date('2026-07-28T06:00:00.000Z')),
+    });
+
+    await expect(expiredVerifier.service.verify(rawToken)).rejects.toMatchObject({
+      code: 'VERIFICATION_INVALID_OR_EXPIRED',
+      status: 410,
+    });
+    expect(repository.verifiedUserIds).toEqual(new Set());
+  });
+
+  it('replaces repository failures with a value-free stable error', async () => {
+    const repository: VerificationRepository = {
+      create: async () => {
+        throw new Error('postgres.internal password=secret');
+      },
+      consumeAndVerify: async () => false,
+    };
+    const {service} = verificationService({repository});
+
+    await expect(service.issue('user-1')).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Service unavailable',
+      status: 503,
+    });
   });
 });

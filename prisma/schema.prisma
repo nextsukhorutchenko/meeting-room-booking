@@ -7,16 +7,29 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  name            String
-  email           String
-  normalizedEmail String    @unique
-  passwordHash    String
-  emailVerifiedAt DateTime? @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
-  sessions        Session[]
-  bookings        Booking[]
+  id                 String              @id @default(cuid())
+  name               String
+  email              String
+  normalizedEmail    String              @unique
+  passwordHash       String
+  emailVerifiedAt    DateTime?           @db.Timestamptz(3)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  sessions           Session[]
+  verificationTokens VerificationToken[]
+  bookings           Booking[]
+}
+
+model VerificationToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model Session {

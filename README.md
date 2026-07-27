@@ -19,3 +19,10 @@ docker compose --env-file .env.example config --quiet
 ```
 
 Copy `.env.example` to a local environment file before running services that require configuration.
+
+## Development email verification
+
+New accounts are unverified. Registration writes one development verification
+URL to the server console instead of sending email. Open that one-time URL
+within 24 hours to verify the account and enable room booking. Seeded demo users
+are already verified.

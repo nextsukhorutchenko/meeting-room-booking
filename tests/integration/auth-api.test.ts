@@ -1,5 +1,14 @@
 import {createHash} from 'node:crypto';
-import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type {SessionService} from '../../src/modules/auth/auth.types';
 import type {AuthUser} from '../../src/modules/auth/auth.schemas';
 import {
@@ -20,27 +29,41 @@ const testEmailPrefix = 'task-5-auth-';
 let registerPost: PostHandler;
 let loginPost: PostHandler;
 let logoutPost: PostHandler;
+let verifyPost: PostHandler;
 let getOptionalUser: (request?: Request) => Promise<AuthUser | null>;
+let verificationUrls: string[] = [];
 
 beforeAll(async () => {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  const [registerRoute, loginRoute, logoutRoute, authModule] =
+  const [registerRoute, loginRoute, logoutRoute, verifyRoute, authModule] =
     await Promise.all([
       import('../../src/app/api/auth/register/route'),
       import('../../src/app/api/auth/login/route'),
       import('../../src/app/api/auth/logout/route'),
+      import('../../src/app/api/auth/verify/route'),
       import('../../src/modules/auth/auth.service'),
     ]);
   registerPost = registerRoute.POST;
   loginPost = loginRoute.POST;
   logoutPost = logoutRoute.POST;
+  verifyPost = verifyRoute.POST;
   getOptionalUser = authModule.getOptionalUser;
 });
 
 beforeEach(async () => {
+  verificationUrls = [];
+  vi.spyOn(console, 'info').mockImplementation((value?: unknown) => {
+    if (typeof value === 'string') {
+      verificationUrls.push(value);
+    }
+  });
   await testDb.user.deleteMany({
     where: {normalizedEmail: {startsWith: testEmailPrefix}},
   });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 afterAll(async () => {
@@ -56,6 +79,7 @@ describe.sequential('auth API', () => {
       ['/api/auth/register', registerPost],
       ['/api/auth/login', loginPost],
       ['/api/auth/logout', logoutPost],
+      ['/api/auth/verify', verifyPost],
     ] as const;
 
     for (const [path, handler] of routes) {
@@ -121,6 +145,13 @@ describe.sequential('auth API', () => {
       'name',
     ]);
     expect(JSON.stringify(body)).not.toContain(password);
+    expect(verificationUrls).toHaveLength(1);
+    const verificationUrl = new URL(verificationUrls[0]);
+    expect(verificationUrl.origin).toBe('http://localhost:3000');
+    expect(verificationUrl.pathname).toBe('/verify');
+    const rawVerificationToken =
+      verificationUrl.searchParams.get('token') ?? '';
+    expect(Buffer.from(rawVerificationToken, 'base64url')).toHaveLength(32);
 
     const setCookie = response.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('mrb_session=');
@@ -143,9 +174,151 @@ describe.sequential('auth API', () => {
     expect(expiresInDays).toBeGreaterThan(6.99);
     expect(expiresInDays).toBeLessThanOrEqual(7);
 
+    const verificationToken = await testDb.verificationToken.findUniqueOrThrow({
+      where: {
+        tokenHash: createHash('sha256')
+          .update(rawVerificationToken)
+          .digest('hex'),
+      },
+    });
+    expect(verificationToken.tokenHash).not.toBe(rawVerificationToken);
+    expect(JSON.stringify(verificationToken)).not.toContain(
+      rawVerificationToken,
+    );
+    const verificationExpiresInHours =
+      (verificationToken.expiresAt.getTime() - Date.now()) /
+      (60 * 60 * 1_000);
+    expect(verificationExpiresInHours).toBeGreaterThan(23.99);
+    expect(verificationExpiresInHours).toBeLessThanOrEqual(24);
+
     await expect(
       getOptionalUser(requestWithCookie(cookie.header)),
     ).resolves.toEqual(body.data.user);
+  });
+
+  it('verifies an issued token once and rejects its reuse', async () => {
+    const email = `${testEmailPrefix}verify-once@example.com`;
+    const registration = await postJson(registerPost, '/api/auth/register', {
+      name: 'Verify Once',
+      email,
+      password: 'correct password',
+    });
+    expect(registration.status).toBe(201);
+    const rawToken = new URL(verificationUrls[0])
+      .searchParams.get('token') ?? '';
+
+    const verified = await postJson(verifyPost, '/api/auth/verify', {token: rawToken});
+
+    expect(verified.status).toBe(200);
+    await expect(verified.json()).resolves.toEqual({
+      data: {verified: true},
+    });
+    await expect(testDb.user.findUniqueOrThrow({
+      where: {normalizedEmail: email},
+      select: {emailVerifiedAt: true},
+    })).resolves.toEqual({emailVerifiedAt: expect.any(Date)});
+    await expect(postJson(
+      verifyPost,
+      '/api/auth/verify',
+      {token: rawToken},
+    ).then(async (response) => ({
+      status: response.status,
+      body: await response.json(),
+    }))).resolves.toEqual({
+      status: 410,
+      body: {
+        error: {
+          code: 'VERIFICATION_INVALID_OR_EXPIRED',
+          message: 'Verification link is invalid or expired',
+        },
+      },
+    });
+  });
+
+  it('rejects an expired token without verifying its user', async () => {
+    const email = `${testEmailPrefix}expired@example.com`;
+    const registration = await postJson(registerPost, '/api/auth/register', {
+      name: 'Expired Link',
+      email,
+      password: 'correct password',
+    });
+    expect(registration.status).toBe(201);
+    const rawToken = new URL(verificationUrls[0])
+      .searchParams.get('token') ?? '';
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    await testDb.verificationToken.update({
+      where: {tokenHash},
+      data: {expiresAt: new Date('2000-01-01T00:00:00.000Z')},
+    });
+
+    const response = await postJson(
+      verifyPost,
+      '/api/auth/verify',
+      {token: rawToken},
+    );
+
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'VERIFICATION_INVALID_OR_EXPIRED',
+        message: 'Verification link is invalid or expired',
+      },
+    });
+    await expect(testDb.user.findUniqueOrThrow({
+      where: {normalizedEmail: email},
+      select: {emailVerifiedAt: true},
+    })).resolves.toEqual({emailVerifiedAt: null});
+    await expect(testDb.verificationToken.findUniqueOrThrow({
+      where: {tokenHash},
+      select: {consumedAt: true},
+    })).resolves.toEqual({consumedAt: null});
+  });
+
+  it('allows exactly one concurrent verification attempt', async () => {
+    const email = `${testEmailPrefix}verify-race@example.com`;
+    const registration = await postJson(registerPost, '/api/auth/register', {
+      name: 'Verification Race',
+      email,
+      password: 'correct password',
+    });
+    expect(registration.status).toBe(201);
+    const rawToken = new URL(verificationUrls[0])
+      .searchParams.get('token') ?? '';
+
+    const attempts = await Promise.all([
+      postJson(verifyPost, '/api/auth/verify', {token: rawToken}),
+      postJson(verifyPost, '/api/auth/verify', {token: rawToken}),
+    ]);
+
+    expect(attempts.map((response) => response.status).sort()).toEqual([
+      200,
+      410,
+    ]);
+    await expect(testDb.user.findUniqueOrThrow({
+      where: {normalizedEmail: email},
+      select: {emailVerifiedAt: true},
+    })).resolves.toEqual({emailVerifiedAt: expect.any(Date)});
+    await expect(testDb.verificationToken.count({
+      where: {
+        user: {normalizedEmail: email},
+        consumedAt: {not: null},
+      },
+    })).resolves.toBe(1);
+  });
+
+  it('strictly validates verification input without exposing internals', async () => {
+    const response = await postJson(verifyPost, '/api/auth/verify', {
+      token: 'not-a-token',
+      extra: 'not allowed',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Invalid verification request',
+      },
+    });
   });
 
   it('rolls back the user when the initial session insert fails', async () => {
@@ -165,6 +338,12 @@ describe.sequential('auth API', () => {
     const service = new AuthService({
       repository: new PrismaAuthRepository(testDb),
       sessions: failingSessionService,
+      verification: {
+        issue: async () => {
+          throw new Error('Unexpected verification issue');
+        },
+        verify: async () => {},
+      },
       password: {
         hash: async () => 'hashed:correct password',
         verify: async () => false,

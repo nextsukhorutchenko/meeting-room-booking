@@ -164,6 +164,29 @@ describe.sequential('booking API', () => {
     });
   });
 
+  it('rejects booking when the database user is not verified', async () => {
+    await testDb.user.update({
+      where: {id: userId},
+      data: {emailVerifiedAt: null},
+    });
+
+    const response = await postJson(
+      bookingPost,
+      '/api/bookings',
+      bookingBody(),
+      {cookie},
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Verify your email before booking a room.',
+      },
+    });
+    await expect(testDb.booking.count({where: {userId}})).resolves.toBe(0);
+  });
+
   it('rejects an offsetless local timestamp', async () => {
     const localTimestamp = officeDate(bookingDaysFromNow, 10).toFormat(
       "yyyy-LL-dd'T'HH:mm:ss",

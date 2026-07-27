@@ -27,6 +27,12 @@ import {
   hashPassword,
   verifyPassword,
 } from './password';
+import {
+  developmentVerificationLinkWriter,
+  DefaultVerificationService,
+  PrismaVerificationRepository,
+  type VerificationService,
+} from './verification.service';
 
 export type AuthAccount = {
   id: string;
@@ -122,6 +128,7 @@ export class AuthService {
     private readonly dependencies: {
       repository: AuthRepository;
       sessions: SessionService;
+      verification: VerificationService;
       password: PasswordOperations;
     },
   ) {}
@@ -157,6 +164,7 @@ export class AuthService {
       throw error;
     }
 
+    await this.dependencies.verification.issue(account.id);
     return {
       token: session.token,
       expiresAt: session.expiresAt,
@@ -265,6 +273,12 @@ async function getDefaultService(): Promise<AuthService> {
           repository: new PrismaSessionRepository(prisma),
           clock: systemClock,
           sessionDays: env.sessionDays,
+        }),
+        verification: new DefaultVerificationService({
+          repository: new PrismaVerificationRepository(prisma),
+          clock: systemClock,
+          appUrl: env.appUrl,
+          writer: developmentVerificationLinkWriter,
         }),
         password: {
           hash: hashPassword,

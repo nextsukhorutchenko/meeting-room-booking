@@ -17,6 +17,7 @@ export type BookingSelection = {
 
 type ErrorBody = {
   error?: {
+    code?: string;
     fields?: Record<string, string>;
     message?: string;
   };
@@ -80,7 +81,9 @@ export function BookingDialog({
       if (!response.ok) {
         setTitleError(body.error?.fields?.title ?? '');
         setFormError(
-          body.error?.message ?? 'Unable to create the booking.',
+          body.error?.code === 'EMAIL_NOT_VERIFIED' ?
+            'Verify your email before booking a room.' :
+            body.error?.message ?? 'Unable to create the booking.',
         );
         return;
       }

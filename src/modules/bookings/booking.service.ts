@@ -55,6 +55,7 @@ export interface BookingTransaction {
   findCancellationMetadata(
     bookingId: string,
   ): Promise<{userId: string; cancelledAt: Date | null} | null>;
+  isUserEmailVerified(userId: string): Promise<boolean>;
   lockRoom(roomId: string): Promise<boolean>;
   findActiveOverlap(input: {
     roomId: string;
@@ -120,6 +121,14 @@ function bookingConflictError(): DomainError {
     code: 'BOOKING_CONFLICT',
     message: 'This time is already booked. Choose another slot.',
     status: 409,
+  });
+}
+
+function emailNotVerifiedError(): DomainError {
+  return new DomainError({
+    code: 'EMAIL_NOT_VERIFIED',
+    message: 'Verify your email before booking a room.',
+    status: 403,
   });
 }
 
@@ -334,6 +343,13 @@ export class DefaultBookingService implements BookingService {
     try {
       booking = await this.dependencies.repository.withTransaction(
         async (transaction) => {
+          const emailVerified = await transaction.isUserEmailVerified(
+            validatedInput.userId,
+          );
+          if (!emailVerified) {
+            throw emailNotVerifiedError();
+          }
+
           const roomExists = await transaction.lockRoom(validatedInput.roomId);
           if (!roomExists) {
             throw roomNotFoundError();
@@ -364,7 +380,7 @@ export class DefaultBookingService implements BookingService {
 
 type TransactionDatabase = Pick<
   Prisma.TransactionClient,
-  '$queryRaw' | 'booking'
+  '$queryRaw' | 'booking' | 'user'
 >;
 
 class PrismaBookingTransaction implements BookingTransaction {
@@ -392,6 +408,14 @@ class PrismaBookingTransaction implements BookingTransaction {
         cancelledAt: true,
       },
     });
+  }
+
+  async isUserEmailVerified(userId: string): Promise<boolean> {
+    const user = await this.transaction.user.findUnique({
+      where: {id: userId},
+      select: {emailVerifiedAt: true},
+    });
+    return user !== null && user.emailVerifiedAt !== null;
   }
 
   async lockRoom(roomId: string): Promise<boolean> {
