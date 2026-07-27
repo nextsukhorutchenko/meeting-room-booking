@@ -5,17 +5,24 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   testIgnore: '**/exploratory/**',
   use: {
-    baseURL: 'http://127.0.0.1:3000',
+    baseURL: 'http://127.0.0.1:3105',
   },
   webServer: {
-    command: 'npm run dev',
-    url: 'http://127.0.0.1:3000',
-    reuseExistingServer: !process.env.CI,
+    command: 'npm run dev -- --port 3105',
+    url: 'http://127.0.0.1:3105',
+    reuseExistingServer: false,
   },
   projects: [
     {
       name: 'chromium',
       use: {...devices['Desktop Chrome']},
+    },
+    {
+      name: 'mobile-chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: {width: 390, height: 844},
+      },
     },
   ],
 });
