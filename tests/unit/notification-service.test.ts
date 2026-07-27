@@ -142,6 +142,7 @@ class MemoryNotificationTransaction implements NotificationTransaction {
 
 class MemoryNotificationRepository implements NotificationRepository {
   readonly transaction: MemoryNotificationTransaction;
+  transactionCalls = 0;
 
   constructor(bookings: BookingFixture[]) {
     this.transaction = new MemoryNotificationTransaction(bookings);
@@ -150,22 +151,40 @@ class MemoryNotificationRepository implements NotificationRepository {
   async withTransaction<T>(
     operation: (transaction: NotificationTransaction) => Promise<T>,
   ): Promise<T> {
+    this.transactionCalls += 1;
     return operation(this.transaction);
   }
 }
 
 function service(bookings: BookingFixture[]): {
   notifications: StoredNotification[];
+  repository: MemoryNotificationRepository;
   service: DefaultNotificationService;
 } {
   const repository = new MemoryNotificationRepository(bookings);
   return {
     notifications: repository.transaction.notifications,
+    repository,
     service: new DefaultNotificationService(repository),
   };
 }
 
 describe('DefaultNotificationService', () => {
+  it('rejects a zero lead before opening a database transaction', async () => {
+    const subject = service([]);
+
+    await expect(subject.service.claimDueNotifications({
+      recipientId,
+      now,
+      leadMinutes: 0,
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: 'Invalid notification claim input.',
+      status: 400,
+    });
+    expect(subject.repository.transactionCalls).toBe(0);
+  });
+
   it('delivers an immediately adjacent active next booking', async () => {
     const subject = service([booking('current'), booking('next')]);
 

@@ -34,4 +34,14 @@ describe('readAppEnv', () => {
       }),
     ).toThrow('OFFICE_TIMEZONE must be a valid IANA timezone');
   });
+
+  it('rejects a zero notification lead with a stable error', () => {
+    expect(() =>
+      readAppEnv({
+        DATABASE_URL: 'postgresql://example',
+        APP_URL: 'http://localhost:3000',
+        NOTIFY_BEFORE_MINUTES: '0',
+      }),
+    ).toThrow('NOTIFY_BEFORE_MINUTES must be greater than 0');
+  });
 });

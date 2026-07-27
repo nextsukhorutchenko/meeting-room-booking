@@ -47,7 +47,7 @@ export interface NotificationRepository {
 const claimInputSchema = z.strictObject({
   recipientId: z.string().trim().min(1),
   now: z.date(),
-  leadMinutes: z.number().int().nonnegative(),
+  leadMinutes: z.number().int().positive(),
 });
 
 function invalidInputError(): DomainError {

@@ -16,12 +16,16 @@ import {
   createVerifiedUser,
 } from '../helpers/factories';
 import {disconnectTestDatabase, testDb} from '../helpers/database';
+import {TestClock} from '../helpers/test-clock';
 
 type PollHandler = (request: NextRequest) => Promise<Response>;
 
 const taskPrefix = 'task-14-notification-api-';
 const password = 'task-14-notification-password';
 let pollNotifications: PollHandler;
+let createNotificationsPost: typeof import(
+  '../../src/app/api/notifications/route'
+)['createNotificationsPost'];
 let loginPost: PostHandler;
 let cookie: string;
 let currentUserId: string;
@@ -73,10 +77,13 @@ async function createHandoff(options: {
   currentCancelled?: boolean;
   nextCancelled?: boolean;
   minutesUntilEnd?: number;
+  now?: Date;
+  startsAt?: Date;
+  endsAt?: Date;
 } = {}): Promise<{currentId: string; nextId: string}> {
-  const requestTime = new Date();
+  const requestTime = new Date(options.now ?? new Date());
   requestTime.setMilliseconds(0);
-  const currentEndsAt = new Date(
+  const currentEndsAt = options.endsAt ?? new Date(
     requestTime.getTime() +
     (options.minutesUntilEnd ?? 5) * 60_000,
   );
@@ -84,7 +91,8 @@ async function createHandoff(options: {
     roomId,
     userId: currentUserId,
     title: `${taskPrefix}current-${sequence}`,
-    startsAt: new Date(requestTime.getTime() - 30 * 60_000),
+    startsAt: options.startsAt ??
+      new Date(requestTime.getTime() - 30 * 60_000),
     endsAt: currentEndsAt,
     cancelledAt: options.currentCancelled ? requestTime : null,
   });
@@ -108,12 +116,14 @@ beforeAll(async () => {
     import('../../src/app/api/notifications/route'),
     import('../../src/app/api/auth/login/route'),
   ]);
+  createNotificationsPost = notificationRoute.createNotificationsPost;
   pollNotifications = notificationRoute.POST;
   loginPost = loginRoute.POST;
 });
 
 beforeEach(async () => {
   await removeTaskFixtures();
+  pollNotifications = createNotificationsPost();
   sequence += 1;
   const current = await createVerifiedUser({
     name: 'Current User',
@@ -145,6 +155,12 @@ afterAll(async () => {
 });
 
 describe.sequential('notification API', () => {
+  function freezeClock(now: Date): void {
+    pollNotifications = createNotificationsPost({
+      clock: new TestClock(now),
+    });
+  }
+
   it('requires authentication and ignores client-selected recipients', async () => {
     const unauthorized = await poll(undefined, `?recipientId=${nextUserId}`);
     expect(unauthorized.status).toBe(401);
@@ -213,6 +229,63 @@ describe.sequential('notification API', () => {
     await expect(testDb.notification.count()).resolves.toBe(0);
   });
 
+  it('delivers at exact equality with the lead threshold', async () => {
+    const now = new Date('2026-07-28T09:50:00.000Z');
+    freezeClock(now);
+    await createHandoff({
+      now,
+      endsAt: new Date('2026-07-28T10:00:00.000Z'),
+    });
+
+    const response = await poll(cookie);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toHaveLength(1);
+  });
+
+  it('does not deliver one millisecond before the lead threshold', async () => {
+    const now = new Date('2026-07-28T09:49:59.999Z');
+    freezeClock(now);
+    await createHandoff({
+      now,
+      endsAt: new Date('2026-07-28T10:00:00.000Z'),
+    });
+
+    const response = await poll(cookie);
+
+    await expect(response.json()).resolves.toEqual({data: []});
+    await expect(testDb.notification.count()).resolves.toBe(0);
+  });
+
+  it('treats a booking starting exactly now as active', async () => {
+    const now = new Date('2026-07-28T09:50:00.000Z');
+    freezeClock(now);
+    await createHandoff({
+      now,
+      startsAt: now,
+      endsAt: new Date('2026-07-28T10:00:00.000Z'),
+    });
+
+    const response = await poll(cookie);
+
+    expect((await response.json()).data).toHaveLength(1);
+  });
+
+  it('treats a booking ending exactly now as inactive', async () => {
+    const now = new Date('2026-07-28T10:00:00.000Z');
+    freezeClock(now);
+    await createHandoff({
+      now,
+      startsAt: new Date('2026-07-28T09:30:00.000Z'),
+      endsAt: now,
+    });
+
+    const response = await poll(cookie);
+
+    await expect(response.json()).resolves.toEqual({data: []});
+    await expect(testDb.notification.count()).resolves.toBe(0);
+  });
+
   it('delivers an adjacent handoff exactly once across repeated polls', async () => {
     await createHandoff();
 
@@ -230,30 +303,37 @@ describe.sequential('notification API', () => {
     })).resolves.toBe(1);
   });
 
-  it('rechecks cancellation before claiming an existing row', async () => {
-    const ids = await createHandoff();
-    await testDb.notification.create({
-      data: {
-        type: 'BOOKING_END_HANDOFF',
-        recipientId: currentUserId,
-        currentBookingId: ids.currentId,
-        nextBookingId: ids.nextId,
-        deliverAt: new Date(Date.now() - 60_000),
-      },
-    });
-    await testDb.booking.update({
-      where: {id: ids.nextId},
-      data: {cancelledAt: new Date()},
-    });
+  it.each(['current', 'next'] as const)(
+    'rechecks %s booking cancellation before claiming an existing row',
+    async (cancelledBooking) => {
+      const now = new Date('2026-07-28T09:55:00.000Z');
+      freezeClock(now);
+      const ids = await createHandoff({now});
+      await testDb.notification.create({
+        data: {
+          type: 'BOOKING_END_HANDOFF',
+          recipientId: currentUserId,
+          currentBookingId: ids.currentId,
+          nextBookingId: ids.nextId,
+          deliverAt: new Date(now.getTime() - 60_000),
+        },
+      });
+      await testDb.booking.update({
+        where: {
+          id: cancelledBooking === 'current' ? ids.currentId : ids.nextId,
+        },
+        data: {cancelledAt: now},
+      });
 
-    const response = await poll(cookie);
+      const response = await poll(cookie);
 
-    await expect(response.json()).resolves.toEqual({data: []});
-    await expect(testDb.notification.findFirstOrThrow({
-      where: {recipientId: currentUserId},
-      select: {deliveredAt: true},
-    })).resolves.toEqual({deliveredAt: null});
-  });
+      await expect(response.json()).resolves.toEqual({data: []});
+      await expect(testDb.notification.findFirstOrThrow({
+        where: {recipientId: currentUserId},
+        select: {deliveredAt: true},
+      })).resolves.toEqual({deliveredAt: null});
+    },
+  );
 
   it('delivers once across two simultaneous real PostgreSQL polls', async () => {
     await createHandoff();

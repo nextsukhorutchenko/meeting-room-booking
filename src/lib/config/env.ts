@@ -28,7 +28,11 @@ const appEnvSchema = z
     OFFICE_OPEN_HOUR: z.coerce.number().int().min(0).max(23).default(9),
     OFFICE_CLOSE_HOUR: z.coerce.number().int().min(1).max(24).default(19),
     SESSION_DAYS: z.coerce.number().int().positive().default(7),
-    NOTIFY_BEFORE_MINUTES: z.coerce.number().int().nonnegative().default(10),
+    NOTIFY_BEFORE_MINUTES: z.coerce
+      .number()
+      .int()
+      .positive('NOTIFY_BEFORE_MINUTES must be greater than 0')
+      .default(10),
   })
   .superRefine((value, context) => {
     if (value.OFFICE_CLOSE_HOUR <= value.OFFICE_OPEN_HOUR) {
