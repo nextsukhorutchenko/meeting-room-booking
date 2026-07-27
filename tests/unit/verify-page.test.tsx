@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import {render, screen, waitFor} from '@testing-library/react';
+import {StrictMode} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import VerifyPage from '../../src/app/verify/page';
 
@@ -21,11 +22,16 @@ describe('VerifyPage', () => {
     vi.stubGlobal('fetch', fetch);
     window.history.replaceState({}, '', verificationUrl);
 
-    render(<VerifyPage />);
+    render(
+      <StrictMode>
+        <VerifyPage />
+      </StrictMode>,
+    );
 
     expect(
       screen.getByRole('heading', {name: 'Verifying your email'}),
     ).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
     resolveResponse(new Response(
       JSON.stringify({data: {verified: true}}),
       {status: 200, headers: {'content-type': 'application/json'}},
@@ -45,6 +51,7 @@ describe('VerifyPage', () => {
         token: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       }),
     });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('shows the expired state for an invalid, expired, or consumed token', async () => {

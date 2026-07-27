@@ -16,6 +16,7 @@ import {
 import {dummyPasswordHash} from '../../src/modules/auth/password';
 import {
   DefaultVerificationService,
+  type PreparedVerification,
   type VerificationLinkWriter,
   type VerificationRepository,
   type VerificationService,
@@ -27,12 +28,14 @@ class InMemoryAuthRepository implements AuthRepository {
   private readonly accounts = new Map<string, AuthAccount>();
   failSessionInsert = false;
 
-  async createWithSession(input: {
+  async createRegistration(input: {
     name: string;
     email: string;
     normalizedEmail: string;
     passwordHash: string;
-  }): Promise<AuthAccount> {
+  }, _session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>,
+  _verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>,
+  beforeCommit: () => void): Promise<AuthAccount> {
     if (this.failSessionInsert) {
       throw new Error('Session insert failed');
     }
@@ -45,6 +48,7 @@ class InMemoryAuthRepository implements AuthRepository {
       ...input,
       emailVerifiedAt: null,
     };
+    beforeCommit();
     this.accounts.set(input.normalizedEmail, account);
     return account;
   }
@@ -86,14 +90,18 @@ class InMemorySessionService implements SessionService {
 }
 
 class InMemoryVerificationService implements VerificationService {
-  readonly issuedUserIds: string[] = [];
+  readonly writtenUrls: string[] = [];
 
-  async issue(userId: string): Promise<{url: string; expiresAt: Date}> {
-    this.issuedUserIds.push(userId);
+  prepare(): PreparedVerification {
     return {
+      tokenHash: 'prepared-verification-hash',
       url: 'http://localhost:3000/verify?token=development-token',
       expiresAt: new Date('2026-07-28T06:00:00.000Z'),
     };
+  }
+
+  writeLink(url: string): void {
+    this.writtenUrls.push(url);
   }
 
   async verify(): Promise<void> {}
@@ -156,7 +164,7 @@ describe('AuthService', () => {
         email: 'another@example.com',
       },
     });
-    expect(verification.issuedUserIds).toEqual(['user-1', 'user-2']);
+    expect(verification.writtenUrls).toHaveLength(2);
   });
 
   it('returns stable field errors before hashing invalid registration data', async () => {
@@ -256,7 +264,11 @@ describe('AuthService', () => {
       name: 'Ada',
       email: 'ada@example.com',
       password: 'correct password',
-    })).rejects.toThrow('Session insert failed');
+    })).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Service unavailable',
+      status: 503,
+    });
 
     await expect(
       repository.findByNormalizedEmail('ada@example.com'),
@@ -311,11 +323,11 @@ class InMemoryVerificationRepository implements VerificationRepository {
   readonly records = new Map<string, VerificationRecord>();
   readonly verifiedUserIds = new Set<string>();
 
-  async create(input: {
+  insert(input: {
     tokenHash: string;
     userId: string;
     expiresAt: Date;
-  }): Promise<void> {
+  }): void {
     this.records.set(input.tokenHash, {
       userId: input.userId,
       expiresAt: input.expiresAt,
@@ -369,33 +381,35 @@ function verificationService(options: {
 }
 
 describe('DefaultVerificationService', () => {
-  it('stores only a SHA-256 hash and writes one 24-hour development URL', async () => {
+  it('prepares only a SHA-256 hash and writes one 24-hour development URL', () => {
     const {repository, service, urls} = verificationService();
 
-    const issued = await service.issue('user-1');
-    const rawToken = new URL(issued.url).searchParams.get('token');
+    const prepared = service.prepare();
+    const rawToken = new URL(prepared.url).searchParams.get('token');
+    service.writeLink(prepared.url);
 
     expect(rawToken).toEqual(expect.any(String));
     expect(Buffer.from(rawToken ?? '', 'base64url')).toHaveLength(32);
     const expectedHash = createHash('sha256')
       .update(rawToken ?? '')
       .digest('hex');
-    expect(repository.records.get(expectedHash)).toEqual({
-      userId: 'user-1',
-      expiresAt: new Date('2026-07-28T06:00:00.000Z'),
-      consumedAt: null,
-    });
+    expect(prepared.tokenHash).toBe(expectedHash);
     expect(repository.records.has(rawToken ?? '')).toBe(false);
-    expect(issued.expiresAt).toEqual(
+    expect(prepared.expiresAt).toEqual(
       new Date('2026-07-28T06:00:00.000Z'),
     );
-    expect(urls).toEqual([issued.url]);
+    expect(urls).toEqual([prepared.url]);
   });
 
   it('verifies a user once and rejects a consumed token', async () => {
     const {repository, service} = verificationService();
-    const issued = await service.issue('user-1');
-    const rawToken = new URL(issued.url).searchParams.get('token') ?? '';
+    const prepared = service.prepare();
+    const rawToken = new URL(prepared.url).searchParams.get('token') ?? '';
+    repository.insert({
+      tokenHash: prepared.tokenHash,
+      userId: 'user-1',
+      expiresAt: prepared.expiresAt,
+    });
 
     await expect(service.verify(rawToken)).resolves.toBeUndefined();
     expect(repository.verifiedUserIds).toEqual(new Set(['user-1']));
@@ -408,8 +422,13 @@ describe('DefaultVerificationService', () => {
   it('rejects a token at its 24-hour expiry without verifying the user', async () => {
     const repository = new InMemoryVerificationRepository();
     const issuedBy = verificationService({repository});
-    const issued = await issuedBy.service.issue('user-1');
-    const rawToken = new URL(issued.url).searchParams.get('token') ?? '';
+    const prepared = issuedBy.service.prepare();
+    const rawToken = new URL(prepared.url).searchParams.get('token') ?? '';
+    repository.insert({
+      tokenHash: prepared.tokenHash,
+      userId: 'user-1',
+      expiresAt: prepared.expiresAt,
+    });
     const expiredVerifier = verificationService({
       repository,
       clock: new TestClock(new Date('2026-07-28T06:00:00.000Z')),
@@ -424,14 +443,14 @@ describe('DefaultVerificationService', () => {
 
   it('replaces repository failures with a value-free stable error', async () => {
     const repository: VerificationRepository = {
-      create: async () => {
+      consumeAndVerify: async () => {
         throw new Error('postgres.internal password=secret');
       },
-      consumeAndVerify: async () => false,
     };
     const {service} = verificationService({repository});
+    const rawToken = Buffer.alloc(32).toString('base64url');
 
-    await expect(service.issue('user-1')).rejects.toMatchObject({
+    await expect(service.verify(rawToken)).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
       message: 'Service unavailable',
       status: 503,

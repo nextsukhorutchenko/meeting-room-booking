@@ -7,7 +7,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import Link from 'next/link';
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 
 type VerificationState =
   | 'pending'
@@ -29,8 +29,29 @@ const scheduleLinkClassName = [
   'focus-visible:outline-offset-2 focus-visible:outline-emerald-700',
 ].join(' ');
 
+async function requestVerification(token: string): Promise<VerificationState> {
+  try {
+    const response = await fetch('/api/auth/verify', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({token}),
+    });
+    const body = await response.json() as ErrorResponse;
+    if (response.ok) {
+      return 'success';
+    }
+    if (body.error?.code === 'VERIFICATION_INVALID_OR_EXPIRED') {
+      return 'expired';
+    }
+    return 'error';
+  } catch {
+    return 'error';
+  }
+}
+
 export default function VerifyPage() {
   const [state, setState] = useState<VerificationState>('pending');
+  const verificationRequest = useRef<Promise<VerificationState> | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -46,33 +67,12 @@ export default function VerifyPage() {
       };
     }
 
-    async function verify() {
-      try {
-        const response = await fetch('/api/auth/verify', {
-          method: 'POST',
-          headers: {'content-type': 'application/json'},
-          body: JSON.stringify({token}),
-        });
-        const body = await response.json() as ErrorResponse;
-        if (!active) {
-          return;
-        }
-        if (response.ok) {
-          setState('success');
-        } else if (
-          body.error?.code === 'VERIFICATION_INVALID_OR_EXPIRED'
-        ) {
-          setState('expired');
-        } else {
-          setState('error');
-        }
-      } catch {
-        if (active) {
-          setState('error');
-        }
+    verificationRequest.current ??= requestVerification(token);
+    void verificationRequest.current.then((nextState) => {
+      if (active) {
+        setState(nextState);
       }
-    }
-    void verify();
+    });
 
     return () => {
       active = false;

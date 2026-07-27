@@ -30,6 +30,7 @@ import {
 import {
   developmentVerificationLinkWriter,
   DefaultVerificationService,
+  type PreparedVerification,
   PrismaVerificationRepository,
   type VerificationService,
 } from './verification.service';
@@ -44,12 +45,14 @@ export type AuthAccount = {
 };
 
 export interface AuthRepository {
-  createWithSession(input: {
+  createRegistration(input: {
     name: string;
     email: string;
     normalizedEmail: string;
     passwordHash: string;
-  }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>):
+  }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>,
+  verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>,
+  beforeCommit: () => void):
     Promise<AuthAccount>;
   findByNormalizedEmail(normalizedEmail: string): Promise<AuthAccount | null>;
 }
@@ -86,6 +89,14 @@ function invalidCredentialsError(): DomainError {
     code: 'INVALID_CREDENTIALS',
     message: 'Email or password is incorrect',
     status: 401,
+  });
+}
+
+function serviceUnavailableError(): DomainError {
+  return new DomainError({
+    code: 'SERVICE_UNAVAILABLE',
+    message: 'Service unavailable',
+    status: 503,
   });
 }
 
@@ -144,14 +155,17 @@ export class AuthService {
       parsed.data.password,
     );
     const session = this.dependencies.sessions.prepare();
+    const verification = this.dependencies.verification.prepare();
     let account: AuthAccount;
     try {
-      account = await this.dependencies.repository.createWithSession({
+      account = await this.dependencies.repository.createRegistration({
         name: parsed.data.name,
         email: parsed.data.email,
         normalizedEmail,
         passwordHash,
-      }, session);
+      }, session, verification, () => {
+        this.dependencies.verification.writeLink(verification.url);
+      });
     } catch (error) {
       if (error instanceof DuplicateEmailRepositoryError) {
         throw new DomainError({
@@ -161,10 +175,9 @@ export class AuthService {
           fields: {email: 'An account with this email already exists'},
         });
       }
-      throw error;
+      throw serviceUnavailableError();
     }
 
-    await this.dependencies.verification.issue(account.id);
     return {
       token: session.token,
       expiresAt: session.expiresAt,
@@ -215,20 +228,35 @@ export class AuthService {
 
 type AuthPrismaClient = Pick<PrismaClient, '$transaction' | 'user'>;
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === 'P2002';
+function isNormalizedEmailUniqueConstraintError(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== 'P2002'
+  ) {
+    return false;
+  }
+  const target = error.meta?.target;
+  const isUserConstraint = error.meta?.modelName === 'User';
+  if (Array.isArray(target)) {
+    return isUserConstraint && target.includes('normalizedEmail');
+  }
+  if (typeof target === 'string') {
+    return isUserConstraint && target.includes('normalizedEmail');
+  }
+  return isUserConstraint;
 }
 
 export class PrismaAuthRepository implements AuthRepository {
   constructor(private readonly database: AuthPrismaClient) {}
 
-  async createWithSession(input: {
+  async createRegistration(input: {
     name: string;
     email: string;
     normalizedEmail: string;
     passwordHash: string;
-  }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>):
+  }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>,
+  verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>,
+  beforeCommit: () => void):
     Promise<AuthAccount> {
     try {
       return await this.database.$transaction(async (transaction) => {
@@ -240,10 +268,18 @@ export class PrismaAuthRepository implements AuthRepository {
             expiresAt: session.expiresAt,
           },
         });
+        await transaction.verificationToken.create({
+          data: {
+            tokenHash: verification.tokenHash,
+            userId: account.id,
+            expiresAt: verification.expiresAt,
+          },
+        });
+        beforeCommit();
         return account;
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) {
+      if (isNormalizedEmailUniqueConstraintError(error)) {
         throw new DuplicateEmailRepositoryError();
       }
       throw error;

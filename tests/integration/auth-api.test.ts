@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {
   afterAll,
   afterEach,
@@ -15,6 +15,11 @@ import {
   AuthService,
   PrismaAuthRepository,
 } from '../../src/modules/auth/auth.service';
+import {
+  DefaultVerificationService,
+  PrismaVerificationRepository,
+  type VerificationService,
+} from '../../src/modules/auth/verification.service';
 import {createVerifiedUser} from '../helpers/factories';
 import {
   type PostHandler,
@@ -32,6 +37,41 @@ let logoutPost: PostHandler;
 let verifyPost: PostHandler;
 let getOptionalUser: (request?: Request) => Promise<AuthUser | null>;
 let verificationUrls: string[] = [];
+
+function createRegistrationSessionService(): SessionService {
+  const token = randomBytes(32).toString('base64url');
+  return {
+    prepare: () => ({
+      token,
+      tokenHash: createHash('sha256').update(token).digest('hex'),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
+    }),
+    create: async () => {
+      throw new Error('Unexpected session creation');
+    },
+    findUserByToken: async () => null,
+    revoke: async () => {},
+  };
+}
+
+function createPreparedVerificationService(input: {
+  tokenHash?: string;
+  writeLink?: (url: string) => void;
+} = {}): VerificationService {
+  const rawToken = randomBytes(32).toString('base64url');
+  const url = new URL('/verify', 'http://localhost:3000');
+  url.searchParams.set('token', rawToken);
+  return {
+    prepare: () => ({
+      tokenHash: input.tokenHash ??
+        createHash('sha256').update(rawToken).digest('hex'),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+      url: url.toString(),
+    }),
+    writeLink: input.writeLink ?? (() => {}),
+    verify: async () => {},
+  };
+}
 
 beforeAll(async () => {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -274,6 +314,43 @@ describe.sequential('auth API', () => {
     })).resolves.toEqual({consumedAt: null});
   });
 
+  it('treats the exact PostgreSQL expiry boundary as expired', async () => {
+    const email = `${testEmailPrefix}expiry-boundary@example.com`;
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date('2030-01-02T03:04:05.000Z');
+    const user = await testDb.user.create({
+      data: {
+        name: 'Expiry Boundary',
+        email,
+        normalizedEmail: email,
+        passwordHash: 'test-only-password-hash',
+      },
+    });
+    await testDb.verificationToken.create({
+      data: {tokenHash, userId: user.id, expiresAt},
+    });
+    const service = new DefaultVerificationService({
+      repository: new PrismaVerificationRepository(testDb),
+      clock: {now: () => new Date(expiresAt)},
+      appUrl: 'http://localhost:3000',
+      writer: {write: () => {}},
+    });
+
+    await expect(service.verify(rawToken)).rejects.toMatchObject({
+      code: 'VERIFICATION_INVALID_OR_EXPIRED',
+      status: 410,
+    });
+    await expect(testDb.user.findUniqueOrThrow({
+      where: {id: user.id},
+      select: {emailVerifiedAt: true},
+    })).resolves.toEqual({emailVerifiedAt: null});
+    await expect(testDb.verificationToken.findUniqueOrThrow({
+      where: {tokenHash},
+      select: {consumedAt: true},
+    })).resolves.toEqual({consumedAt: null});
+  });
+
   it('allows exactly one concurrent verification attempt', async () => {
     const email = `${testEmailPrefix}verify-race@example.com`;
     const registration = await postJson(registerPost, '/api/auth/register', {
@@ -339,8 +416,11 @@ describe.sequential('auth API', () => {
       repository: new PrismaAuthRepository(testDb),
       sessions: failingSessionService,
       verification: {
-        issue: async () => {
-          throw new Error('Unexpected verification issue');
+        prepare: () => {
+          throw new Error('Unexpected verification preparation');
+        },
+        writeLink: () => {
+          throw new Error('Unexpected verification link write');
         },
         verify: async () => {},
       },
@@ -358,6 +438,151 @@ describe.sequential('auth API', () => {
     await expect(testDb.user.findUnique({
       where: {normalizedEmail: email},
     })).resolves.toBeNull();
+  });
+
+  it('rolls back registration when the verification-token insert fails', async () => {
+    const email = `${testEmailPrefix}token-failure@example.com`;
+    const holder = await testDb.user.create({
+      data: {
+        name: 'Token Holder',
+        email: `${testEmailPrefix}token-holder@example.com`,
+        normalizedEmail: `${testEmailPrefix}token-holder@example.com`,
+        passwordHash: 'test-only-password-hash',
+      },
+    });
+    const collidingTokenHash = createHash('sha256')
+      .update(randomBytes(32))
+      .digest('hex');
+    await testDb.verificationToken.create({
+      data: {
+        tokenHash: collidingTokenHash,
+        userId: holder.id,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+      },
+    });
+    const writeLink = vi.fn();
+    const service = new AuthService({
+      repository: new PrismaAuthRepository(testDb),
+      sessions: createRegistrationSessionService(),
+      verification: createPreparedVerificationService({
+        tokenHash: collidingTokenHash,
+        writeLink,
+      }),
+      password: {
+        hash: async () => 'hashed:correct password',
+        verify: async () => false,
+      },
+    });
+
+    await expect(service.register({
+      name: 'Token Failure',
+      email,
+      password: 'correct password',
+    })).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      status: 503,
+    });
+    expect(writeLink).not.toHaveBeenCalled();
+    await expect(testDb.user.findUnique({
+      where: {normalizedEmail: email},
+    })).resolves.toBeNull();
+    await expect(testDb.session.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(0);
+    await expect(testDb.verificationToken.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(0);
+
+    const retry = new AuthService({
+      repository: new PrismaAuthRepository(testDb),
+      sessions: createRegistrationSessionService(),
+      verification: createPreparedVerificationService(),
+      password: {
+        hash: async () => 'hashed:correct password',
+        verify: async () => false,
+      },
+    });
+    await expect(retry.register({
+      name: 'Token Failure',
+      email,
+      password: 'correct password',
+    })).resolves.toMatchObject({
+      user: {email, emailVerified: false},
+    });
+    await expect(testDb.user.findUnique({
+      where: {normalizedEmail: email},
+    })).resolves.not.toBeNull();
+    await expect(testDb.session.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(1);
+    await expect(testDb.verificationToken.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(1);
+  });
+
+  it('rolls back registration when the development link writer fails', async () => {
+    const email = `${testEmailPrefix}writer-failure@example.com`;
+    const privateDetail = 'private writer failure detail';
+    const service = new AuthService({
+      repository: new PrismaAuthRepository(testDb),
+      sessions: createRegistrationSessionService(),
+      verification: createPreparedVerificationService({
+        writeLink: () => {
+          throw new Error(privateDetail);
+        },
+      }),
+      password: {
+        hash: async () => 'hashed:correct password',
+        verify: async () => false,
+      },
+    });
+
+    const failure = await service.register({
+      name: 'Writer Failure',
+      email,
+      password: 'correct password',
+    }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Service unavailable',
+      status: 503,
+    });
+    expect(JSON.stringify(failure)).not.toContain(privateDetail);
+    await expect(testDb.user.findUnique({
+      where: {normalizedEmail: email},
+    })).resolves.toBeNull();
+    await expect(testDb.session.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(0);
+    await expect(testDb.verificationToken.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(0);
+
+    const retry = new AuthService({
+      repository: new PrismaAuthRepository(testDb),
+      sessions: createRegistrationSessionService(),
+      verification: createPreparedVerificationService(),
+      password: {
+        hash: async () => 'hashed:correct password',
+        verify: async () => false,
+      },
+    });
+    await expect(retry.register({
+      name: 'Writer Failure',
+      email,
+      password: 'correct password',
+    })).resolves.toMatchObject({
+      user: {email, emailVerified: false},
+    });
+    await expect(testDb.user.findUnique({
+      where: {normalizedEmail: email},
+    })).resolves.not.toBeNull();
+    await expect(testDb.session.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(1);
+    await expect(testDb.verificationToken.count({
+      where: {user: {normalizedEmail: email}},
+    })).resolves.toBe(1);
   });
 
   it('maps a real normalized-email conflict without rejecting duplicate names', async () => {

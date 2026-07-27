@@ -11,17 +11,19 @@ export type VerificationLinkWriter = {
   write(url: string): void;
 };
 
+export type PreparedVerification = {
+  tokenHash: string;
+  url: string;
+  expiresAt: Date;
+};
+
 export interface VerificationService {
-  issue(userId: string): Promise<{url: string; expiresAt: Date}>;
+  prepare(): PreparedVerification;
+  writeLink(url: string): void;
   verify(rawToken: string): Promise<void>;
 }
 
 export interface VerificationRepository {
-  create(input: {
-    tokenHash: string;
-    userId: string;
-    expiresAt: Date;
-  }): Promise<void>;
   consumeAndVerify(input: {
     tokenHash: string;
     consumedAt: Date;
@@ -58,31 +60,27 @@ export class DefaultVerificationService implements VerificationService {
     },
   ) {}
 
-  async issue(userId: string): Promise<{url: string; expiresAt: Date}> {
+  prepare(): PreparedVerification {
     const rawToken = randomBytes(32).toString('base64url');
     const expiresAt = new Date(
       this.dependencies.clock.now().getTime() +
       verificationLifetimeMilliseconds,
     );
-    try {
-      await this.dependencies.repository.create({
-        tokenHash: hashToken(rawToken),
-        userId,
-        expiresAt,
-      });
-    } catch {
-      throw serviceUnavailableError();
-    }
-
     const verificationUrl = new URL('/verify', this.dependencies.appUrl);
     verificationUrl.searchParams.set('token', rawToken);
-    const url = verificationUrl.toString();
+    return {
+      tokenHash: hashToken(rawToken),
+      url: verificationUrl.toString(),
+      expiresAt,
+    };
+  }
+
+  writeLink(url: string): void {
     try {
       this.dependencies.writer.write(url);
     } catch {
       throw serviceUnavailableError();
     }
-    return {url, expiresAt};
   }
 
   async verify(rawToken: string): Promise<void> {
@@ -105,21 +103,10 @@ export class DefaultVerificationService implements VerificationService {
   }
 }
 
-type VerificationPrismaClient = Pick<
-  PrismaClient,
-  '$transaction' | 'verificationToken'
->;
+type VerificationPrismaClient = Pick<PrismaClient, '$transaction'>;
 
 export class PrismaVerificationRepository implements VerificationRepository {
   constructor(private readonly database: VerificationPrismaClient) {}
-
-  async create(input: {
-    tokenHash: string;
-    userId: string;
-    expiresAt: Date;
-  }): Promise<void> {
-    await this.database.verificationToken.create({data: input});
-  }
 
   async consumeAndVerify(input: {
     tokenHash: string;
