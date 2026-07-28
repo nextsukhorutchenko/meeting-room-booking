@@ -4,6 +4,10 @@ import {
   officeMonday,
   roomByName,
 } from '../fixtures';
+import {
+  exploratoryMobileSchedulePath,
+  exploratoryTuesday,
+} from './mobile-booking-date';
 import {test} from './fixture';
 
 test.use({
@@ -23,12 +27,12 @@ test('mobile booking controls and dialogs remain visually usable', async ({
 }) => {
   const room = await roomByName(database, 'Oak');
   const weekStart = officeMonday(1);
+  const selectedDay = exploratoryTuesday(weekStart);
   await loginAsDemoUser(page);
-  await page.goto(
-    `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${weekStart}`,
-  );
+  await page.goto(exploratoryMobileSchedulePath(room.id, weekStart));
   await expect(page.getByRole('grid', {name: 'Daily room schedule'}))
     .toBeVisible();
+  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(selectedDay);
   const agent = await agentForPage(page);
 
   await agent.aiAssert(
