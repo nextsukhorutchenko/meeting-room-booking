@@ -216,7 +216,7 @@ describe('BookingList', () => {
     expect(within(past).queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('links a row to its office week and booking highlight', async () => {
+  it('renders the row link before a separate cancel control', async () => {
     const linked = booking('linked-booking', {title: 'Roadmap review'});
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const scope = requestUrl(input).searchParams.get('scope');
@@ -227,13 +227,35 @@ describe('BookingList', () => {
     });
 
     renderBookingList();
+    const user = userEvent.setup();
+    const link = await screen.findByRole('link', {
+      name: 'Open Roadmap review in schedule',
+    });
+    const cancel = screen.getByRole('button', {
+      name: 'Cancel Roadmap review',
+    });
+    const row = link.closest('li');
 
-    expect(await screen.findByRole('link', {name: 'Roadmap review'}))
-      .toHaveAttribute(
-        'href',
-        '/schedule?roomId=oak&weekStart=2026-08-03&day=2026-08-04' +
-        '&bookingId=linked-booking',
-      );
+    expect(row).not.toBeNull();
+    expect(link).toHaveAttribute(
+      'href',
+      '/schedule?roomId=oak&weekStart=2026-08-03&day=2026-08-04' +
+      '&bookingId=linked-booking',
+    );
+    expect(link).toContainElement(screen.getByText('Roadmap review'));
+    expect(link).toContainElement(screen.getByText('Oak'));
+    expect(link).toContainElement(screen.getByText('Upcoming'));
+    expect(link.parentElement).toBe(row);
+    expect(cancel.parentElement).toBe(row);
+    expect(
+      link.compareDocumentPosition(cancel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.tab();
+    expect(link).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
   });
 
   it('reuses confirmation cancellation and removes the future row on success', async () => {
@@ -259,7 +281,14 @@ describe('BookingList', () => {
     await user.click(
       await screen.findByRole('button', {name: 'Cancel Cancel me'}),
     );
-    expect(screen.getByRole('dialog', {name: 'Cancel booking'})).toBeVisible();
+    const dialog = screen.getByRole('dialog', {name: 'Cancel booking'});
+    const link = screen.getByRole('link', {
+      name: 'Open Cancel me in schedule',
+    });
+    const row = link.closest('li');
+    expect(dialog).toBeVisible();
+    expect(dialog).not.toContainElement(link);
+    expect(row).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
     await waitFor(() => {

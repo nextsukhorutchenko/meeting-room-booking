@@ -228,43 +228,56 @@ function BookingSection({
             );
             return (
               <li
-                className="booking-list-row"
+                className={
+                  onCancel && booking.status === 'upcoming' ?
+                    'booking-list-row booking-list-row-cancellable' :
+                    'booking-list-row'
+                }
                 data-booking-id={booking.id}
                 key={booking.id}
               >
-                <div className="booking-list-content">
-                  <time dateTime={booking.startsAt}>
-                    <strong>{time.date}</strong>
-                    <span>{time.time}</span>
-                  </time>
-                  <div className="booking-list-details">
-                    <Link href={bookingUrl(booking, officeTimeZone)}>
-                      {booking.title}
-                    </Link>
-                    <span>{booking.room.name}</span>
+                <Link
+                  aria-label={`Open ${booking.title} in schedule`}
+                  className="booking-list-row-link"
+                  href={bookingUrl(booking, officeTimeZone)}
+                >
+                  <div className="booking-list-content">
+                    <time dateTime={booking.startsAt}>
+                      <strong>{time.date}</strong>
+                      <span>{time.time}</span>
+                    </time>
+                    <div className="booking-list-details">
+                      <strong className="booking-list-title">
+                        {booking.title}
+                      </strong>
+                      <span>{booking.room.name}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="booking-list-actions">
                   <span
                     className={`booking-status booking-status-${booking.status}`}
                   >
                     {statusLabel(booking.status)}
                   </span>
-                  {onCancel && booking.status === 'upcoming' ? (
-                    <button
-                      aria-label={`Cancel ${booking.title}`}
-                      className="booking-list-cancel"
-                      onClick={() => onCancel({
-                        id: booking.id,
-                        title: booking.title,
-                      })}
-                      title="Cancel booking"
-                      type="button"
+                </Link>
+                {onCancel && booking.status === 'upcoming' ? (
+                  <button
+                    aria-label={`Cancel ${booking.title}`}
+                    className="booking-list-cancel"
+                    onClick={() => onCancel({
+                      id: booking.id,
+                      title: booking.title,
+                    })}
+                    title="Cancel booking"
+                    type="button"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="booking-list-cancel-visual"
                     >
-                      <CalendarX2 aria-hidden="true" />
-                    </button>
-                  ) : null}
-                </div>
+                      <CalendarX2 />
+                    </span>
+                  </button>
+                ) : null}
               </li>
             );
           })}

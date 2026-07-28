@@ -108,13 +108,41 @@ test('@booking Load more appends equal-time past records without duplicates', as
       return rect.left >= 0 && rect.right <= window.innerWidth + 0.5;
     }),
     titlesContained: Array.from(
-      document.querySelectorAll<HTMLElement>('.booking-list-details a'),
+      document.querySelectorAll<HTMLElement>('.booking-list-title'),
     ).every((title) => title.scrollWidth <= title.clientWidth + 1),
+    hitTargetsCoverRows: Array.from(
+      document.querySelectorAll<HTMLElement>('.booking-list-row'),
+    ).every((row) => {
+      const link = row.querySelector<HTMLElement>('.booking-list-row-link');
+      const cancel =
+        row.querySelector<HTMLElement>('.booking-list-cancel');
+      if (!link) {
+        return false;
+      }
+      const rowRect = row.getBoundingClientRect();
+      const linkRect = link.getBoundingClientRect();
+      const fillsHeight =
+        Math.abs(linkRect.top - rowRect.top) <= 1 &&
+        Math.abs(linkRect.bottom - rowRect.bottom) <= 1;
+      if (!cancel) {
+        return fillsHeight &&
+          Math.abs(linkRect.width - rowRect.width) <= 1;
+      }
+      const cancelRect = cancel.getBoundingClientRect();
+      return fillsHeight &&
+        Math.abs(cancelRect.top - rowRect.top) <= 1 &&
+        Math.abs(cancelRect.bottom - rowRect.bottom) <= 1 &&
+        Math.abs(linkRect.right - cancelRect.left) <= 1 &&
+        Math.abs(
+          linkRect.width + cancelRect.width - rowRect.width,
+        ) <= 1;
+    }),
   }));
   expect(layout).toEqual({
     horizontalOverflow: 0,
     rowsContained: true,
     titlesContained: true,
+    hitTargetsCoverRows: true,
   });
   await page.screenshot({
     path: resolve(artifactsDirectory, 'my-bookings-mobile.png'),
@@ -146,14 +174,26 @@ test('@booking a history row opens and highlights the correct schedule booking',
   });
 
   await page.goto('/my-bookings');
-  await page.getByRole('link', {name: title}).click();
+  const row = page.locator(`[data-booking-id="${id}"]`);
+  await row.getByText('Upcoming', {exact: true}).click();
 
-  await expect(page).toHaveURL(
+  const expectedUrl =
     `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
-    `&day=${startsAt.toISODate()}&bookingId=${id}`,
-  );
+    `&day=${startsAt.toISODate()}&bookingId=${id}`;
+
+  await expect(page).toHaveURL(expectedUrl);
   await expect(page.getByRole('article', {name: new RegExp(title)}))
     .toHaveAttribute('data-highlighted', 'true');
+
+  await page.goBack();
+  await expect(page).toHaveURL('/my-bookings');
+  const rowLink = page.getByRole('link', {
+    name: `Open ${title} in schedule`,
+  });
+  await rowLink.focus();
+  await expect(rowLink).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(expectedUrl);
 });
 
 test('@booking a future history row cancels through the shared dialog', async ({
@@ -181,6 +221,7 @@ test('@booking a future history row cancels through the shared dialog', async ({
   await page.goto('/my-bookings');
   await page.getByRole('button', {name: `Cancel ${title}`}).click();
   const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
+  await expect(page).toHaveURL('/my-bookings');
   await expect(dialog).toBeVisible();
 
   const cancellationResponse = page.waitForResponse((response) =>
