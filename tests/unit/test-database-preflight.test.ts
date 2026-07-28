@@ -1,3 +1,5 @@
+import {spawnSync} from 'node:child_process';
+import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {
   requireTestDatabaseUrl,
@@ -40,5 +42,31 @@ describe('database-backed test preflight', () => {
       DATABASE_URL: 'postgresql://localhost/meeting_room_booking',
       TEST_DATABASE_URL: testDatabaseUrl,
     }, 'e2e')).toBe(testDatabaseUrl);
+  });
+
+  it('rejects surplus CLI arguments', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('node_modules/tsx/dist/cli.mjs'),
+        resolve('scripts/check-test-database-url.ts'),
+        'integration',
+        'extra',
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          TEST_DATABASE_URL:
+            'postgresql://localhost/meeting_room_booking_test',
+        },
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'Database test preflight expects "integration" or "e2e"',
+    );
   });
 });

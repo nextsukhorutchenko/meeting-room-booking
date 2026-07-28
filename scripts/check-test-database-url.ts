@@ -15,6 +15,11 @@ function readCommand(value: string | undefined):
 }
 
 try {
+  if (process.argv.length !== 3) {
+    throw new Error(
+      'Database test preflight expects "integration" or "e2e"',
+    );
+  }
   requireTestDatabaseUrl(process.env, readCommand(process.argv[2]));
 } catch (error: unknown) {
   console.error(error instanceof Error ? error.message : 'Preflight failed');
