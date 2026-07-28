@@ -97,7 +97,7 @@ test('@auth registers, persists the session, and logs out', async ({
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill('correct password');
   await page.getByRole('button', {name: 'Create account'}).click();
-  await expect(page).toHaveURL(/\/schedule$/);
+  await expect(page).toHaveURL(url => url.pathname === '/schedule');
   await expect(page.getByRole('heading', {name: 'Schedule'})).toBeVisible();
 
   await page.reload();

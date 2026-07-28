@@ -187,9 +187,11 @@ test('@booking occupied slot -> visible conflict, dialog remains open', async ({
   await dialog.getByRole('button', {name: 'Create booking'}).click();
 
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('alert')).toHaveText(
-    'This time is already booked. Choose another slot.',
-  );
+  await expect(
+    dialog.getByRole('alert').filter({
+      hasText: 'This time is already booked. Choose another slot.',
+    }),
+  ).toHaveText('This time is already booked. Choose another slot.');
 });
 
 test('@booking pending disabled, duplicate clicks create exactly one', async ({
