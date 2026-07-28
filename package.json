@@ -14,7 +14,7 @@
     "test:impact": "vitest run tests/unit/impact-map.test.ts tests/unit/pr-impact-reporter.test.ts tests/unit/playwright-agent-contract.test.ts",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts --no-file-parallelism",
-    "test:e2e": "tsx scripts/run-e2e.ts",
+    "test:e2e": "npm run build && tsx scripts/run-e2e.ts",
     "test:e2e:list": "playwright test --config playwright.config.ts --list",
     "test:exploratory": "node -r dotenv/config -e \"const names=['MIDSCENE_MODEL_BASE_URL','MIDSCENE_MODEL_API_KEY','MIDSCENE_MODEL_NAME','MIDSCENE_MODEL_FAMILY'];const missing=names.filter((name)=>!process.env[name]);if(missing.length){console.error('Midscene exploratory tests require: '+missing.join(', '));process.exit(1)}\" && playwright test --config playwright.midscene.config.ts",
     "select:e2e": "tsx scripts/select-impacted-tests.ts",

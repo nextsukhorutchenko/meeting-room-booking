@@ -11,9 +11,13 @@ const playwrightCli = resolve('node_modules/@playwright/test/cli.js');
 function waitForServerReady(server: ChildProcess): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     let settled = false;
+    let pollTimer: NodeJS.Timeout | undefined;
     const timeout = setTimeout(() => {
       if (!settled) {
         settled = true;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+        }
         reject(new Error('Standalone E2E server did not become ready'));
       }
     }, 30_000);
@@ -24,18 +28,33 @@ function waitForServerReady(server: ChildProcess): Promise<void> {
       }
       settled = true;
       clearTimeout(timeout);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
       operation();
     };
 
-    server.stdout?.on('data', (chunk: Buffer) => {
-      process.stdout.write(chunk);
-      if (chunk.toString().includes('Ready')) {
-        settle(resolvePromise);
+    const pollHealth = async (): Promise<void> => {
+      if (settled) {
+        return;
       }
-    });
-    server.stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(chunk);
-    });
+      try {
+        const response = await fetch(`${baseUrl}/api/health`, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(1_000),
+        });
+        if (response.ok) {
+          settle(resolvePromise);
+          return;
+        }
+      } catch {
+        // The bounded retry below handles startup connection failures.
+      }
+      if (!settled) {
+        pollTimer = setTimeout(() => void pollHealth(), 200);
+      }
+    };
+
     server.once('exit', (code, signal) => {
       settle(() => reject(new Error(
         `Standalone E2E server exited before ready: ${code ?? signal}`,
@@ -44,6 +63,7 @@ function waitForServerReady(server: ChildProcess): Promise<void> {
     server.once('error', (error) => {
       settle(() => reject(error));
     });
+    void pollHealth();
   });
 }
 
@@ -69,12 +89,15 @@ async function main(): Promise<void> {
     env: {
       ...process.env,
       APP_URL: baseUrl,
+      APP_DEPLOYMENT_MODE: 'local-development',
       DATABASE_URL: testDatabaseUrl,
       HOSTNAME: '127.0.0.1',
       PORT: '3105',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  server.stdout?.on('data', (chunk: Buffer) => process.stdout.write(chunk));
+  server.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
 
   try {
     await waitForServerReady(server);
@@ -89,12 +112,29 @@ async function main(): Promise<void> {
       ],
       {env: process.env, stdio: 'inherit'},
     );
-    const [code, signal] = await once(runner, 'exit') as [
-      number | null,
-      NodeJS.Signals | null,
-    ];
-    if (code !== 0) {
-      throw new Error(`Playwright failed: ${code ?? signal}`);
+    const outcome = await Promise.race([
+      once(runner, 'exit').then(([code, signal]) => ({
+        code: code as number | null,
+        signal: signal as NodeJS.Signals | null,
+        source: 'playwright' as const,
+      })),
+      once(server, 'exit').then(([code, signal]) => ({
+        code: code as number | null,
+        signal: signal as NodeJS.Signals | null,
+        source: 'server' as const,
+      })),
+    ]);
+    if (outcome.source === 'server') {
+      await terminate(runner);
+      throw new Error(
+        `Standalone E2E server exited during Playwright: ` +
+        `${outcome.code ?? outcome.signal}`,
+      );
+    }
+    if (outcome.code !== 0) {
+      throw new Error(
+        `Playwright failed: ${outcome.code ?? outcome.signal}`,
+      );
     }
   } finally {
     await terminate(server);

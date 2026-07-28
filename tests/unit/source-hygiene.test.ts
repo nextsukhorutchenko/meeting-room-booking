@@ -1,5 +1,11 @@
-import {describe, expect, it} from 'vitest';
-import {findForbiddenControls} from '../../scripts/check-source-hygiene';
+import {readFileSync} from 'node:fs';
+import {describe, expect, it, vi} from 'vitest';
+import {
+  findForbiddenControls,
+  isExcludedTrackedPath,
+  listTrackedPaths,
+  scanTrackedTextFiles,
+} from '../../scripts/check-source-hygiene';
 
 describe('findForbiddenControls', () => {
   it('reports a byte-order mark with its source index', () => {
@@ -77,5 +83,58 @@ describe('findForbiddenControls', () => {
       'src/example.ts',
       'Кімнату успішно заброньовано. Київський офіс працює з 09:00.',
     )).toEqual([]);
+  });
+});
+
+describe('tracked source inventory', () => {
+  it('enumerates NUL-delimited tracked paths through git', () => {
+    const run = vi.fn().mockReturnValue('src/a.ts\0README.md\0');
+
+    expect(listTrackedPaths(run)).toEqual(['src/a.ts', 'README.md']);
+    expect(run).toHaveBeenCalledWith('git', ['ls-files', '-z'], {
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  });
+
+  it('excludes generated and test-artifact paths explicitly', () => {
+    expect(isExcludedTrackedPath('src/generated/prisma/client.ts')).toBe(true);
+    expect(isExcludedTrackedPath('coverage/report.json')).toBe(true);
+    expect(isExcludedTrackedPath('src/modules/auth/auth.service.ts')).toBe(
+      false,
+    );
+  });
+
+  it('skips a known real binary asset', () => {
+    const icon = readFileSync('src/app/favicon.ico');
+
+    expect(scanTrackedTextFiles({
+      readFile: () => icon,
+      trackedPaths: () => ['src/app/favicon.ico'],
+    })).toEqual([]);
+  });
+
+  it('fails closed on UTF-16 and malformed UTF-8 text-like files', () => {
+    const files = new Map<string, Buffer>([
+      [
+        'src/generated/prisma/ignored.ts',
+        Buffer.from('\uFEFFignored generated source'),
+      ],
+      ['assets/logo.png', Buffer.from([0x00, 0xFF, 0x00, 0xFF])],
+      [
+        'src/utf16.ts',
+        Buffer.from('\uFEFFconst value = 1;', 'utf16le'),
+      ],
+      ['src/malformed.ts', Buffer.from([0x63, 0xC3, 0x28])],
+      ['src/clean.ts', Buffer.from('const value = 1;\n', 'utf8')],
+    ]);
+
+    expect(scanTrackedTextFiles({
+      readFile: (path) => files.get(path) as Buffer,
+      trackedPaths: () => [...files.keys()],
+    })).toEqual([
+      {path: 'src/utf16.ts', error: 'UNSUPPORTED_TEXT_ENCODING'},
+      {path: 'src/malformed.ts', error: 'UNSUPPORTED_TEXT_ENCODING'},
+    ]);
   });
 });

@@ -349,7 +349,13 @@ export function WeekGrid({
               })}
               {showCurrentTime && dayIndex === now.weekday - 1 ? (
                 <div
-                  aria-label={`Current time ${now.toFormat('HH:mm')}`}
+                  aria-label={
+                    `Current time ${timeLabel(
+                      now,
+                      userTimeZone,
+                      officeTimeZone,
+                    )}`
+                  }
                   className="current-time-line"
                   style={{top: currentTop}}
                 />

@@ -90,6 +90,20 @@ describe('WeekGrid timezone semantics', () => {
       .toHaveTextContent('03:00-03:30');
   });
 
+  it('announces current time in the browser zone', () => {
+    Settings.now = () => Date.UTC(2026, 7, 4, 7, 15);
+    renderWeek(
+      '2026-08-03',
+      booking(
+        '2026-08-04T07:00:00.000Z',
+        '2026-08-04T07:30:00.000Z',
+        'Current time label',
+      ),
+    );
+
+    expect(screen.getByLabelText('Current time 03:15')).toBeVisible();
+  });
+
   it('uses per-day New York clocks across the US-only DST week', async () => {
     const onSelectSlot = renderWeek(
       '2026-03-02',

@@ -32,3 +32,19 @@ describe('Playwright healer contract', () => {
     );
   });
 });
+
+describe('canonical E2E runner contract', () => {
+  it('rebuilds current source and waits for health with child-exit handling', () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve('package.json'), 'utf8'),
+    ) as {scripts: Record<string, string>};
+    const runner = readFileSync(resolve('scripts/run-e2e.ts'), 'utf8');
+
+    expect(packageJson.scripts['test:e2e']).toBe(
+      'npm run build && tsx scripts/run-e2e.ts',
+    );
+    expect(runner).toContain('/api/health');
+    expect(runner).toContain("server.once('exit'");
+    expect(runner).not.toContain("includes('Ready')");
+  });
+});
