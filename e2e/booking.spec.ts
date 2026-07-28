@@ -105,21 +105,52 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   expect(persistedBooking.endsAt.toISOString()).toBe(
     officeSlot(weekStart, 1, 12).toUTC().toISO(),
   );
-  const createdBlockContained = await bookingBlock.evaluate((booking) => {
+  const createdBlockLayout = await bookingBlock.evaluate((booking) => {
+    const dayColumn = booking.closest(
+      '[data-testid="schedule-day-column"]',
+    );
     const bookingRect = booking.getBoundingClientRect();
+    const dayColumnRect = dayColumn?.getBoundingClientRect();
     const titleRect = booking.querySelector('strong')?.getBoundingClientRect();
     const metaRect = booking
       .querySelector('.booking-block-meta')
       ?.getBoundingClientRect();
-    return Boolean(
-      titleRect &&
-      metaRect &&
-      titleRect.top >= bookingRect.top &&
-      metaRect.bottom <= bookingRect.bottom + 0.5 &&
-      titleRect.bottom <= metaRect.top + 0.5,
-    );
+    const cancelRect = booking
+      .querySelector('.booking-cancel-button')
+      ?.getBoundingClientRect();
+    return {
+      bookingContainedInDayColumn: Boolean(
+        dayColumnRect &&
+        bookingRect.left >= dayColumnRect.left &&
+        bookingRect.right <= dayColumnRect.right + 0.5 &&
+        bookingRect.top >= dayColumnRect.top &&
+        bookingRect.bottom <= dayColumnRect.bottom + 0.5,
+      ),
+      bookingContentContained: Boolean(
+        titleRect &&
+        metaRect &&
+        cancelRect &&
+        titleRect.left >= bookingRect.left &&
+        titleRect.right <= cancelRect.left + 0.5 &&
+        titleRect.top >= bookingRect.top &&
+        titleRect.bottom <= metaRect.top + 0.5 &&
+        metaRect.left >= bookingRect.left &&
+        metaRect.right <= cancelRect.left + 0.5 &&
+        metaRect.bottom <= bookingRect.bottom + 0.5 &&
+        cancelRect.top >= bookingRect.top &&
+        cancelRect.right <= bookingRect.right + 0.5 &&
+        cancelRect.bottom <= bookingRect.bottom + 0.5,
+      ),
+      horizontalOverflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    };
   });
-  expect(createdBlockContained).toBe(true);
+  expect(createdBlockLayout).toEqual({
+    bookingContainedInDayColumn: true,
+    bookingContentContained: true,
+    horizontalOverflow: 0,
+  });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: resolve(artifactsDirectory, 'booking-created.png'),

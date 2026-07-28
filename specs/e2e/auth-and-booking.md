@@ -44,6 +44,8 @@
   end time.
 - The booking appears as 10:00-12:00 in the schedule with a `172px` block
   height: four 44px slots minus BookingBlock's 4px spacing.
+- The created block and its visible content remain within Tuesday's schedule
+  column, and document horizontal overflow remains `0` after creation.
 
 ### 2.2 Create A Multi-Slot Booking In The Pine Daily Schedule
 
@@ -63,6 +65,8 @@
 - The POST request and isolated test database persist the exact Tuesday 12:00
   UTC end time.
 - The daily schedule renders a visible 10:00-12:00 booking block at `172px`.
+- The created block and its visible content remain within the daily column and
+  viewport, and document horizontal overflow remains `0` after creation.
 - The existing screenshot, cancellation, and horizontal-overflow checks remain
   in place.
 

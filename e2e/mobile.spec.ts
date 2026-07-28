@@ -76,6 +76,58 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
   expect(booking.endsAt.toISOString()).toBe(
     officeSlot(weekStart, 1, 12).toUTC().toISO(),
   );
+  const createdBlockLayout = await bookingBlock.evaluate((bookingElement) => {
+    const dayColumn = bookingElement.closest(
+      '[data-testid="day-schedule-day-column"]',
+    );
+    const bookingRect = bookingElement.getBoundingClientRect();
+    const dayColumnRect = dayColumn?.getBoundingClientRect();
+    const titleRect = bookingElement
+      .querySelector('strong')
+      ?.getBoundingClientRect();
+    const metaRect = bookingElement
+      .querySelector('.booking-block-meta')
+      ?.getBoundingClientRect();
+    const cancelRect = bookingElement
+      .querySelector('.booking-cancel-button')
+      ?.getBoundingClientRect();
+    return {
+      bookingContainedInDayColumn: Boolean(
+        dayColumnRect &&
+        bookingRect.left >= dayColumnRect.left &&
+        bookingRect.right <= dayColumnRect.right + 0.5 &&
+        bookingRect.top >= dayColumnRect.top &&
+        bookingRect.bottom <= dayColumnRect.bottom + 0.5,
+      ),
+      bookingContainedInViewport:
+        bookingRect.left >= 0 &&
+        bookingRect.right <= window.innerWidth + 0.5,
+      bookingContentContained: Boolean(
+        titleRect &&
+        metaRect &&
+        cancelRect &&
+        titleRect.left >= bookingRect.left &&
+        titleRect.right <= cancelRect.left + 0.5 &&
+        titleRect.top >= bookingRect.top &&
+        titleRect.bottom <= metaRect.top + 0.5 &&
+        metaRect.left >= bookingRect.left &&
+        metaRect.right <= cancelRect.left + 0.5 &&
+        metaRect.bottom <= bookingRect.bottom + 0.5 &&
+        cancelRect.top >= bookingRect.top &&
+        cancelRect.right <= bookingRect.right + 0.5 &&
+        cancelRect.bottom <= bookingRect.bottom + 0.5,
+      ),
+      horizontalOverflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    };
+  });
+  expect(createdBlockLayout).toEqual({
+    bookingContainedInDayColumn: true,
+    bookingContainedInViewport: true,
+    bookingContentContained: true,
+    horizontalOverflow: 0,
+  });
   await page.screenshot({
     fullPage: true,
     path: resolve(artifactsDirectory, 'mobile-booking-created.png'),
