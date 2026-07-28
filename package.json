@@ -15,6 +15,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts --no-file-parallelism",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:e2e:list": "playwright test --config playwright.config.ts --list",
+    "test:exploratory": "node -r dotenv/config -e \"const names=['MIDSCENE_MODEL_BASE_URL','MIDSCENE_MODEL_API_KEY','MIDSCENE_MODEL_NAME','MIDSCENE_MODEL_FAMILY'];const missing=names.filter((name)=>!process.env[name]);if(missing.length){console.error('Midscene exploratory tests require: '+missing.join(', '));process.exit(1)}\" && playwright test --config playwright.midscene.config.ts",
     "select:e2e": "tsx scripts/select-impacted-tests.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -38,6 +39,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@midscene/web": "^1.10.7",
     "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.0",

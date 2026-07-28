@@ -52,6 +52,7 @@ export default defineConfig({
       name: 'desktop-kyiv',
       dependencies: ['auth-setup'],
       testIgnore: [
+        '**/exploratory/**',
         '**/locale.spec.ts',
         '**/mobile.spec.ts',
         '**/seed.spec.ts',

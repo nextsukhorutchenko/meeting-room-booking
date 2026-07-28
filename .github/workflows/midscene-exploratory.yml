@@ -1,0 +1,96 @@
+name: Midscene exploratory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exploratory:
+    name: Optional visual exploratory review
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: http://127.0.0.1:3106
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meeting_room_booking_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meeting_room_booking_test?schema=public
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: meeting_room_booking_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meeting_room_booking_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check model configuration
+        id: model
+        env:
+          MIDSCENE_MODEL_API_KEY: ${{ secrets.MIDSCENE_MODEL_API_KEY }}
+          MIDSCENE_MODEL_BASE_URL: ${{ vars.MIDSCENE_MODEL_BASE_URL }}
+          MIDSCENE_MODEL_FAMILY: ${{ vars.MIDSCENE_MODEL_FAMILY }}
+          MIDSCENE_MODEL_NAME: ${{ vars.MIDSCENE_MODEL_NAME }}
+        shell: bash
+        run: |
+          if [[ -n "$MIDSCENE_MODEL_API_KEY" &&
+                -n "$MIDSCENE_MODEL_BASE_URL" &&
+                -n "$MIDSCENE_MODEL_FAMILY" &&
+                -n "$MIDSCENE_MODEL_NAME" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Midscene exploratory run skipped because model configuration is incomplete."
+          fi
+
+      - name: Checkout
+        if: steps.model.outputs.configured == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.model.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install dependencies
+        if: steps.model.outputs.configured == 'true'
+        run: npm ci
+
+      - name: Install Chromium
+        if: steps.model.outputs.configured == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Apply test database migrations
+        if: steps.model.outputs.configured == 'true'
+        run: npx prisma migrate deploy
+
+      - name: Seed synthetic test data
+        if: steps.model.outputs.configured == 'true'
+        run: npm run db:seed:test
+
+      - name: Run optional visual exploratory tests
+        if: steps.model.outputs.configured == 'true'
+        env:
+          MIDSCENE_MODEL_API_KEY: ${{ secrets.MIDSCENE_MODEL_API_KEY }}
+          MIDSCENE_MODEL_BASE_URL: ${{ vars.MIDSCENE_MODEL_BASE_URL }}
+          MIDSCENE_MODEL_FAMILY: ${{ vars.MIDSCENE_MODEL_FAMILY }}
+          MIDSCENE_MODEL_NAME: ${{ vars.MIDSCENE_MODEL_NAME }}
+        run: npm run test:exploratory
+
+      - name: Upload Midscene artifacts
+        if: always() && steps.model.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: warn
+          name: midscene-exploratory-${{ github.run_id }}
+          path: |
+            midscene_run
+            test-results
