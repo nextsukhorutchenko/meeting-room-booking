@@ -339,7 +339,7 @@ describe.sequential('auth API', () => {
     expect(JSON.stringify(body)).not.toContain(password);
     expect(verificationUrls).toHaveLength(1);
     const verificationUrl = new URL(verificationUrls[0]);
-    expect(verificationUrl.origin).toBe('http://localhost:3000');
+    expect(verificationUrl.origin).toBe(new URL(process.env.APP_URL!).origin);
     expect(verificationUrl.pathname).toBe('/verify');
     const rawVerificationToken =
       verificationUrl.searchParams.get('token') ?? '';

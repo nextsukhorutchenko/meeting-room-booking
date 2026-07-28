@@ -15,9 +15,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  APP_DEPLOYMENT_MODE: local-development
   APP_URL: http://127.0.0.1:3105
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meeting_room_booking_test?schema=public
   TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meeting_room_booking_test?schema=public
+  VERIFICATION_DELIVERY_MODE: console
 
 jobs:
   quality:

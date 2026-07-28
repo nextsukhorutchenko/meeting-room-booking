@@ -3,6 +3,20 @@ import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 describe('CI dependency bootstrap contract', () => {
+  it('configures safe local verification delivery for CI routes', () => {
+    const workflow = readFileSync(
+      resolve('.github/workflows/ci.yml'),
+      'utf8',
+    );
+
+    expect(workflow).toMatch(
+      /APP_DEPLOYMENT_MODE: local-development/,
+    );
+    expect(workflow).toMatch(
+      /VERIFICATION_DELIVERY_MODE: console/,
+    );
+  });
+
   it('generates Prisma Client after every dependency install', () => {
     const workflow = readFileSync(
       resolve('.github/workflows/ci.yml'),
