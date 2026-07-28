@@ -95,14 +95,20 @@ test('@booking @critical own booking exposes Cancel and confirmation is required
       horizontalOverflow:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth,
+      cancelHeight: cancelRect?.height ?? 0,
+      cancelWidth: cancelRect?.width ?? 0,
     };
   });
   expect(layout).toEqual({
     blockContentContained: true,
+    cancelHeight: expect.any(Number),
+    cancelWidth: expect.any(Number),
     dialogContained: true,
     dialogActionsContained: true,
     horizontalOverflow: 0,
   });
+  expect(layout.cancelHeight).toBeGreaterThanOrEqual(40);
+  expect(layout.cancelWidth).toBeGreaterThanOrEqual(40);
   await page.screenshot({
     path: resolve(artifactsDirectory, 'cancel-confirmation.png'),
   });

@@ -55,19 +55,27 @@ export default function VerifyPage() {
 
   useEffect(() => {
     let active = true;
-    const token = new URLSearchParams(window.location.search).get('token');
-    if (!token) {
-      queueMicrotask(() => {
-        if (active) {
-          setState('invalid');
-        }
-      });
-      return () => {
-        active = false;
-      };
+    if (!verificationRequest.current) {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token) {
+        queueMicrotask(() => {
+          if (active) {
+            setState('invalid');
+          }
+        });
+        return () => {
+          active = false;
+        };
+      }
+
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${window.location.hash}`,
+      );
+      verificationRequest.current = requestVerification(token);
     }
 
-    verificationRequest.current ??= requestVerification(token);
     void verificationRequest.current.then((nextState) => {
       if (active) {
         setState(nextState);
@@ -111,8 +119,11 @@ export default function VerifyPage() {
   return (
     <main className="auth-shell">
       <section
+        aria-atomic="true"
         aria-labelledby="verification-heading"
+        aria-live="polite"
         className="auth-panel text-center"
+        role="status"
       >
         <div className="grid justify-items-center gap-3">
           <div className="size-8" aria-hidden="true">

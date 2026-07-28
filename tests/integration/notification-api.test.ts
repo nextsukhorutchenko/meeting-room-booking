@@ -358,4 +358,34 @@ describe.sequential('notification API', () => {
       },
     })).resolves.toBe(1);
   });
+
+  it('claims one pre-existing due row across simultaneous PostgreSQL polls', async () => {
+    const now = new Date('2026-07-28T09:55:00.000Z');
+    freezeClock(now);
+    const ids = await createHandoff({now});
+    await testDb.notification.create({
+      data: {
+        type: 'BOOKING_END_HANDOFF',
+        recipientId: currentUserId,
+        currentBookingId: ids.currentId,
+        nextBookingId: ids.nextId,
+        deliverAt: new Date(now.getTime() - 60_000),
+      },
+    });
+
+    const responses = await Promise.all([poll(cookie), poll(cookie)]);
+    const payloads = await Promise.all(
+      responses.map((response) => response.json()),
+    );
+
+    expect(
+      payloads.reduce(
+        (count, payload) => count + payload.data.length,
+        0,
+      ),
+    ).toBe(1);
+    await expect(testDb.notification.count({
+      where: {recipientId: currentUserId, deliveredAt: {not: null}},
+    })).resolves.toBe(1);
+  });
 });

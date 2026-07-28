@@ -118,4 +118,46 @@ describe('NotificationBell', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
+
+  it.each(['fetch', 'json'] as const)(
+    'ignores a rejected %s operation',
+    async (failure) => {
+      fetchMock.mockImplementationOnce(async () => {
+        if (failure === 'fetch') {
+          throw new Error('private fetch failure');
+        }
+        return {
+          json: vi.fn().mockRejectedValue(new Error('private JSON failure')),
+          ok: true,
+        } as unknown as Response;
+      });
+
+      render(<NotificationBell />);
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    },
+  );
+
+  it('aborts an in-flight poll and removes its visibility listener', async () => {
+    let signal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((
+      _url: string,
+      init?: RequestInit,
+    ) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    });
+    const removeListener = vi.spyOn(document, 'removeEventListener');
+    const {unmount} = render(<NotificationBell />);
+    await waitFor(() => expect(signal).toBeDefined());
+
+    unmount();
+
+    expect(signal?.aborted).toBe(true);
+    expect(removeListener).toHaveBeenCalledWith(
+      'visibilitychange',
+      expect.any(Function),
+    );
+  });
 });

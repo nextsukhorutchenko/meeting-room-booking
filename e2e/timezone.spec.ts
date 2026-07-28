@@ -188,18 +188,25 @@ test('@timezone server rejects an instant outside Kyiv office hours', async ({
   const startsAt = officeSlot(officeMonday(1), 2, 8);
   await page.goto('/schedule');
 
-  const response = await page.request.post('/api/bookings', {
-    data: {
-      endsAt: startsAt.plus({minutes: 30}).toUTC().toISO(),
-      roomId: room.id,
-      startsAt: startsAt.toUTC().toISO(),
-      title: `${TASK_12_BOOKING_PREFIX}outside-office-hours`,
-    },
-    headers: {origin: 'http://127.0.0.1:3105'},
+  const response = await page.evaluate(async (data) => {
+    const result = await fetch('/api/bookings', {
+      body: JSON.stringify(data),
+      headers: {'content-type': 'application/json'},
+      method: 'POST',
+    });
+    return {
+      body: await result.json() as unknown,
+      status: result.status,
+    };
+  }, {
+    endsAt: startsAt.plus({minutes: 30}).toUTC().toISO(),
+    roomId: room.id,
+    startsAt: startsAt.toUTC().toISO(),
+    title: `${TASK_12_BOOKING_PREFIX}outside-office-hours`,
   });
 
-  expect(response.status()).toBe(422);
-  await expect(response.json()).resolves.toMatchObject({
+  expect(response.status).toBe(422);
+  expect(response.body).toMatchObject({
     error: {
       code: 'BOOKING_OUTSIDE_OFFICE_HOURS',
       message: 'Booking must be within office hours',

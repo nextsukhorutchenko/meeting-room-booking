@@ -4,16 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && tsx scripts/prepare-standalone.ts",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "check:source": "tsx scripts/check-source-hygiene.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:impact": "vitest run tests/unit/impact-map.test.ts tests/unit/pr-impact-reporter.test.ts tests/unit/playwright-agent-contract.test.ts",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts --no-file-parallelism",
-    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:e2e": "tsx scripts/run-e2e.ts",
     "test:e2e:list": "playwright test --config playwright.config.ts --list",
     "test:exploratory": "node -r dotenv/config -e \"const names=['MIDSCENE_MODEL_BASE_URL','MIDSCENE_MODEL_API_KEY','MIDSCENE_MODEL_NAME','MIDSCENE_MODEL_FAMILY'];const missing=names.filter((name)=>!process.env[name]);if(missing.length){console.error('Midscene exploratory tests require: '+missing.join(', '));process.exit(1)}\" && playwright test --config playwright.midscene.config.ts",
     "select:e2e": "tsx scripts/select-impacted-tests.ts",
@@ -21,10 +22,11 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:test": "tsx prisma/seed-test.ts",
-    "db:reset:test": "tsx scripts/reset-test-db.ts"
+    "db:reset:test": "tsx scripts/reset-test-db.ts",
+    "verify:clean-start": "tsx scripts/verify-clean-start.ts"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.22.2"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",

@@ -38,6 +38,14 @@ test('weekly schedule remains visually legible', async ({
   const weekStart = officeMonday(1);
   const ownStart = officeSlot(weekStart, 1, 10);
   const guestStart = officeSlot(weekStart, 2, 11);
+  await database.booking.deleteMany({
+    where: {
+      OR: [
+        {id: {startsWith: bookingPrefix}},
+        {title: {startsWith: bookingPrefix}},
+      ],
+    },
+  });
   await database.booking.createMany({
     data: [
       {

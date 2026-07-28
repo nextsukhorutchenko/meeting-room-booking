@@ -11,7 +11,7 @@ import type {BookingSelection} from './booking-dialog';
 
 export const SCHEDULE_LAYOUT = {
   slotMinutes: 30,
-  slotHeightPx: 36,
+  slotHeightPx: 44,
   dayCount: 7,
 } as const;
 

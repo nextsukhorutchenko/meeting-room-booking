@@ -12,7 +12,7 @@ if (!testDatabaseUrl) {
 
 export default defineConfig({
   fullyParallel: false,
-  retries: 1,
+  retries: 0,
   workers: 1,
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
@@ -28,15 +28,6 @@ export default defineConfig({
   use: {
     baseURL: baseUrl,
     trace: 'on-first-retry',
-  },
-  webServer: {
-    command: 'node node_modules/next/dist/bin/next dev --port 3105',
-    url: baseUrl,
-    env: {
-      APP_URL: baseUrl,
-      DATABASE_URL: testDatabaseUrl,
-    },
-    reuseExistingServer: false,
   },
   projects: [
     {

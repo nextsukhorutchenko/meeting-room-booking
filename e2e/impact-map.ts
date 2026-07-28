@@ -50,7 +50,7 @@ const IMPACT_RULES: ImpactRule[] = [
     ],
     tags: ['@auth', '@critical'],
     reason:
-      'src/modules/auth/** affects authentication and critical access flows',
+      'authentication paths affect authentication and critical access flows',
   },
   {
     prefixes: [
@@ -61,7 +61,7 @@ const IMPACT_RULES: ImpactRule[] = [
     ],
     tags: ['@schedule', '@booking'],
     reason:
-      'src/components/schedule/** affects schedule and booking flows',
+      'schedule and room paths affect schedule and booking flows',
   },
   {
     prefixes: ['src/lib/time/'],

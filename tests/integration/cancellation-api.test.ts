@@ -248,6 +248,42 @@ describe.sequential('cancellation API', () => {
     );
   });
 
+  it('makes simultaneous owner cancellation requests idempotent', async () => {
+    const booking = await createBookingFixture({
+      roomId,
+      userId: ownerId,
+      title: `${taskPrefix}concurrent-owner`,
+    });
+
+    const responses = await Promise.all([
+      deleteRequest(booking.id, {cookie: ownerCookie}),
+      deleteRequest(booking.id, {cookie: ownerCookie}),
+    ]);
+
+    expect(responses.map(({status}) => status)).toEqual([204, 204]);
+    await expect(testDb.booking.findUniqueOrThrow({where: {id: booking.id}}))
+      .resolves.toMatchObject({cancelledAt: expect.any(Date)});
+  });
+
+  it('still forbids another user after the owner already cancelled', async () => {
+    const booking = await createBookingFixture({
+      roomId,
+      userId: ownerId,
+      title: `${taskPrefix}cancelled-other-owner`,
+      cancelledAt: new Date(),
+    });
+
+    const response = await deleteRequest(booking.id, {cookie: otherCookie});
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'BOOKING_FORBIDDEN',
+        message: 'You can only cancel your own bookings.',
+      },
+    });
+  });
+
   it('makes the cancelled interval bookable through the existing API', async () => {
     const startsAt = bookingInstant(13);
     const endsAt = bookingInstant(14);

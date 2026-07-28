@@ -1,4 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
+import {DateTime} from 'luxon';
 import {NextRequest} from 'next/server';
 import {seedDemoData} from '../../prisma/demo-seed';
 import {assertTestDatabaseUrl} from '../../scripts/reset-test-db';
@@ -18,6 +19,7 @@ let getRooms: GetHandler;
 let getSchedule: ScheduleGetHandler;
 let loginPost: PostHandler;
 let getHealthResponse: HealthResponse;
+const scheduleBoundaryPrefix = 'task-17-week-boundary-';
 
 function request(path: string, cookie?: string): NextRequest {
   return new NextRequest(new URL(path, process.env.APP_URL), {
@@ -52,7 +54,12 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await testDb.booking.deleteMany({
-    where: {id: 'cancelled-weekly-booking'},
+    where: {
+      OR: [
+        {id: 'cancelled-weekly-booking'},
+        {id: {startsWith: scheduleBoundaryPrefix}},
+      ],
+    },
   });
 
   const appEnv = readAppEnv();
@@ -127,6 +134,27 @@ describe('room seed', () => {
     expect(bookings).toHaveLength(3);
     expect(bookings.some((booking) => booking.endsAt < now)).toBe(true);
     expect(bookings.some((booking) => booking.startsAt > now)).toBe(true);
+    for (const booking of bookings) {
+      const startsAt = DateTime.fromJSDate(booking.startsAt, {
+        zone: appEnv.officeTimeZone,
+      });
+      const endsAt = DateTime.fromJSDate(booking.endsAt, {
+        zone: appEnv.officeTimeZone,
+      });
+      expect(startsAt.weekday).toBeLessThanOrEqual(5);
+      expect(startsAt.hour).toBeGreaterThanOrEqual(appEnv.officeOpenHour);
+      expect(endsAt.hour).toBeLessThanOrEqual(appEnv.officeCloseHour);
+      expect(startsAt.minute).toBe(0);
+      expect(endsAt.diff(startsAt, 'minutes').minutes).toBe(60);
+    }
+    const hasOverlap = bookings.some((booking, index) =>
+      bookings.slice(index + 1).some((candidate) =>
+        booking.roomId === candidate.roomId &&
+        booking.startsAt < candidate.endsAt &&
+        booking.endsAt > candidate.startsAt,
+      ),
+    );
+    expect(hasOverlap).toBe(false);
   });
 });
 
@@ -294,6 +322,58 @@ describe.sequential('room API', () => {
         message: 'Room was not found',
       },
     });
+  });
+
+  it('uses half-open weekly boundaries for spanning and touching bookings', async () => {
+    const room = await testDb.room.findUniqueOrThrow({where: {name: 'Oak'}});
+    const user = await testDb.user.findUniqueOrThrow({
+      where: {normalizedEmail: 'organizer@example.test'},
+    });
+    await testDb.booking.createMany({
+      data: [
+        {
+          id: `${scheduleBoundaryPrefix}spanning`,
+          roomId: room.id,
+          userId: user.id,
+          title: 'Spans weekly start',
+          startsAt: new Date('2026-07-26T20:30:00.000Z'),
+          endsAt: new Date('2026-07-26T21:30:00.000Z'),
+        },
+        {
+          id: `${scheduleBoundaryPrefix}touches-start`,
+          roomId: room.id,
+          userId: user.id,
+          title: 'Touches weekly start',
+          startsAt: new Date('2026-07-26T20:00:00.000Z'),
+          endsAt: new Date('2026-07-26T21:00:00.000Z'),
+        },
+        {
+          id: `${scheduleBoundaryPrefix}touches-end`,
+          roomId: room.id,
+          userId: user.id,
+          title: 'Touches weekly end',
+          startsAt: new Date('2026-08-02T21:00:00.000Z'),
+          endsAt: new Date('2026-08-02T22:00:00.000Z'),
+        },
+      ],
+    });
+
+    const response = await getSchedule(
+      request(
+        `/api/rooms/${room.id}/schedule?weekStart=2026-07-27`,
+        await loginAsDemoOrganizer(),
+      ),
+      {params: Promise.resolve({roomId: room.id})},
+    );
+    const body = await response.json();
+    const bookingIds = body.data.bookings.map(
+      (booking: {id: string}) => booking.id,
+    );
+
+    expect(response.status).toBe(200);
+    expect(bookingIds).toContain(`${scheduleBoundaryPrefix}spanning`);
+    expect(bookingIds).not.toContain(`${scheduleBoundaryPrefix}touches-start`);
+    expect(bookingIds).not.toContain(`${scheduleBoundaryPrefix}touches-end`);
   });
 
   it('rejects a week start that is not an office-local Monday', async () => {

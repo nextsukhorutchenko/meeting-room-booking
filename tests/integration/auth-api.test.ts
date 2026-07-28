@@ -388,7 +388,7 @@ describe.sequential('auth API', () => {
 
   it('strictly validates verification input without exposing internals', async () => {
     const response = await postJson(verifyPost, '/api/auth/verify', {
-      token: 'not-a-token',
+      token: 'A'.repeat(43),
       extra: 'not allowed',
     });
 

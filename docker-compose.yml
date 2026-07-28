@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -15,6 +15,50 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  setup:
+    build:
+      context: .
+      target: setup
+    environment:
+      APP_URL: ${APP_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      NOTIFY_BEFORE_MINUTES: ${NOTIFY_BEFORE_MINUTES}
+      OFFICE_CLOSE_HOUR: ${OFFICE_CLOSE_HOUR}
+      OFFICE_OPEN_HOUR: ${OFFICE_OPEN_HOUR}
+      OFFICE_TIMEZONE: ${OFFICE_TIMEZONE}
+      SESSION_DAYS: ${SESSION_DAYS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      APP_URL: ${APP_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      NOTIFY_BEFORE_MINUTES: ${NOTIFY_BEFORE_MINUTES}
+      OFFICE_CLOSE_HOUR: ${OFFICE_CLOSE_HOUR}
+      OFFICE_OPEN_HOUR: ${OFFICE_OPEN_HOUR}
+      OFFICE_TIMEZONE: ${OFFICE_TIMEZONE}
+      SESSION_DAYS: ${SESSION_DAYS}
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 volumes:
   postgres_data:

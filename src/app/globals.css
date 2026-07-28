@@ -694,7 +694,7 @@ select:disabled {
 .booking-block.booking-own {
   border-left-color: #2f7652;
   background: #e7f3eb;
-  padding-right: 2rem;
+  padding-right: 3rem;
   color: #194e35;
 }
 
@@ -707,12 +707,12 @@ select:disabled {
 .booking-cancel-button {
   position: absolute;
   top: 50%;
-  right: 0.25rem;
+  right: 0.125rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 2.5rem;
+  height: 2.5rem;
   border: 1px solid #8bb49a;
   border-radius: 0.25rem;
   background: #f7fbf8;

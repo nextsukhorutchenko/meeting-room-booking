@@ -131,7 +131,7 @@ test('@mobile daily schedule has stable geometry and reachable controls', async 
     };
   });
   expect(layout).toEqual({
-    boardHeight: 774,
+    boardHeight: 934,
     boardWithinViewport: true,
     controlsReachable: true,
     dayColumnCount: 1,

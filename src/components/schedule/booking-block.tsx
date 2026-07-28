@@ -25,6 +25,7 @@ export function BookingBlock({
 }: BookingBlockProps) {
   return (
     <article
+      aria-current={isHighlighted ? 'true' : undefined}
       aria-label={
         `${title}, ${timeLabel}, booked by ${authorName}` +
         `${isOwn ? ', yours' : ''}`

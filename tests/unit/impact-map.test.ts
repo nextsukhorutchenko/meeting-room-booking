@@ -16,13 +16,13 @@ const mappingCases: Array<{
     paths: ['src/modules/auth/auth.service.ts'],
     expectedTags: ['@auth', '@critical'],
     expectedReason:
-      'src/modules/auth/** affects authentication and critical access flows',
+      'authentication paths affect authentication and critical access flows',
   },
   {
     paths: ['src/components/schedule/week-grid.tsx'],
     expectedTags: ['@schedule', '@booking'],
     expectedReason:
-      'src/components/schedule/** affects schedule and booking flows',
+      'schedule and room paths affect schedule and booking flows',
   },
   {
     paths: ['src/lib/time/office-time.ts'],
@@ -57,7 +57,7 @@ describe('selectImpactedTests', () => {
       mode: 'selected',
       tags: ['@auth', '@critical'],
       reasons: [
-        'src/modules/auth/** affects authentication and critical access flows',
+        'authentication paths affect authentication and critical access flows',
       ],
     });
   });
@@ -70,7 +70,7 @@ describe('selectImpactedTests', () => {
       mode: 'selected',
       tags: ['@auth', '@critical'],
       reasons: [
-        'src/modules/auth/** affects authentication and critical access flows',
+        'authentication paths affect authentication and critical access flows',
       ],
     });
   });
@@ -84,7 +84,7 @@ describe('selectImpactedTests', () => {
       mode: 'selected',
       tags: ['@schedule', '@timezone', '@booking', '@critical'],
       reasons: [
-        'src/components/schedule/** affects schedule and booking flows',
+        'schedule and room paths affect schedule and booking flows',
         'src/lib/time/** affects timezone-sensitive booking flows',
       ],
     });
@@ -253,7 +253,7 @@ describe('select-impacted-tests CLI', () => {
         tags: ['@auth', '@critical'],
         grep: '@auth|@critical',
         reasons: [
-          'src/modules/auth/** affects authentication and critical access flows',
+          'authentication paths affect authentication and critical access flows',
         ],
       },
     });

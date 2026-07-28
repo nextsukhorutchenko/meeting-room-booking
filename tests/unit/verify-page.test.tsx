@@ -31,6 +31,11 @@ describe('VerifyPage', () => {
     expect(
       screen.getByRole('heading', {name: 'Verifying your email'}),
     ).toBeVisible();
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/verify');
+      expect(window.location.search).toBe('');
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
     resolveResponse(new Response(
       JSON.stringify({data: {verified: true}}),
