@@ -2,7 +2,7 @@
 
 ## Status
 
-Awaiting approval.
+Approved on 2026-07-28.
 
 ## Goal
 
