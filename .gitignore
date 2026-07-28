@@ -23,6 +23,9 @@ midscene_run/
 # production
 /build
 
+# isolated feature workspaces
+/.worktrees/
+
 # misc
 .DS_Store
 *.pem
