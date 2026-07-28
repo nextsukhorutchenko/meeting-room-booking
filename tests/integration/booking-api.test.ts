@@ -411,12 +411,16 @@ describe.sequential('booking API', () => {
 
     expect(response.status).toBe(201);
     const body = await response.json();
+    expect(body.data.startsAt).toBe(
+      toUtcIso(officeDate(bookingDaysFromNow, 10)),
+    );
     expect(body.data.endsAt).toBe(
       toUtcIso(officeDate(bookingDaysFromNow, 12)),
     );
     const persisted = await testDb.booking.findUniqueOrThrow({
       where: {id: body.data.id},
     });
+    expect(persisted.startsAt.toISOString()).toBe(body.data.startsAt);
     expect(persisted.endsAt.toISOString()).toBe(body.data.endsAt);
   });
 
