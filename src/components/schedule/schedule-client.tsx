@@ -543,7 +543,9 @@ export function ScheduleClient({
 
   function handleCancelled() {
     preserveScheduleOnRefreshRef.current = true;
-    setPreservedScheduleKey(activeScheduleKey);
+    if (scheduleState?.status === 'success') {
+      setPreservedScheduleKey(scheduleState.key);
+    }
     setCancellation(null);
     setToastMessage('Booking cancelled');
     setRefreshKey((key) => key + 1);

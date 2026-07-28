@@ -461,6 +461,98 @@ describe('ScheduleClient request state', () => {
     });
   });
 
+  it('keeps a cancelled block after closing a pending conflict refresh', async () => {
+    const retiredConflictRefresh = deferred<Response>();
+    const cancellationRefresh = deferred<Response>();
+    let scheduleRequestCount = 0;
+    const initialSchedule = scheduleBody(
+      '2026-08-03',
+      'Cancellation after conflict close',
+    );
+    const emptySchedule = {
+      data: {
+        ...initialSchedule.data,
+        bookings: [],
+      },
+    };
+
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        if (scheduleRequestCount === 1) {
+          return Promise.resolve(jsonResponse(initialSchedule));
+        }
+        return scheduleRequestCount === 2 ?
+          retiredConflictRefresh.promise :
+          cancellationRefresh.promise;
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          error: {
+            code: 'BOOKING_CONFLICT',
+            message: 'This time is already booked. Choose another slot.',
+          },
+        }, 409));
+      }
+      if (
+        url === '/api/bookings/cancellation-after-conflict-close' &&
+        init?.method === 'DELETE'
+      ) {
+        return Promise.resolve(jsonResponse(undefined, 204));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const block = await screen.findByRole('article', {
+      name: /Cancellation after conflict close/,
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {
+      name: /Book Tuesday.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Title'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await waitFor(() => {
+      expect(scheduleRequestCount).toBe(2);
+    });
+
+    await user.click(screen.getByRole('button', {name: 'Cancel'}));
+    await user.click(screen.getByRole('button', {
+      name: 'Cancel Cancellation after conflict close',
+    }));
+    await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+    await waitFor(() => {
+      expect(scheduleRequestCount).toBe(3);
+    });
+
+    expect(block).toBeVisible();
+
+    await act(async () => {
+      retiredConflictRefresh.resolve(
+        scheduleResponse('2026-08-03', 'Retired conflict result', 12),
+      );
+    });
+    expect(block).toBeVisible();
+    expect(screen.queryByText('Retired conflict result'))
+      .not.toBeInTheDocument();
+
+    await act(async () => {
+      cancellationRefresh.resolve(jsonResponse(emptySchedule));
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Cancellation after conflict close'))
+        .not.toBeInTheDocument();
+    });
+  });
+
   it('derives multiple end-time options after selecting a free start slot', async () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = requestUrl(input);
