@@ -721,7 +721,7 @@ describe.sequential('auth API', () => {
     })).resolves.toBe(1);
   });
 
-  it('rolls back registration when the development link writer fails', async () => {
+  it('commits registration before the development link writer fails', async () => {
     const email = `${testEmailPrefix}writer-failure@example.com`;
     const privateDetail = 'private writer failure detail';
     const service = new AuthService({
@@ -751,13 +751,13 @@ describe.sequential('auth API', () => {
     expect(JSON.stringify(failure)).not.toContain(privateDetail);
     await expect(testDb.user.findUnique({
       where: {normalizedEmail: email},
-    })).resolves.toBeNull();
+    })).resolves.not.toBeNull();
     await expect(testDb.session.count({
       where: {user: {normalizedEmail: email}},
-    })).resolves.toBe(0);
+    })).resolves.toBe(1);
     await expect(testDb.verificationToken.count({
       where: {user: {normalizedEmail: email}},
-    })).resolves.toBe(0);
+    })).resolves.toBe(1);
 
     const retry = new AuthService({
       repository: new PrismaAuthRepository(testDb),
@@ -772,8 +772,9 @@ describe.sequential('auth API', () => {
       name: 'Writer Failure',
       email,
       password: 'correct password',
-    })).resolves.toMatchObject({
-      user: {email, emailVerified: false},
+    })).rejects.toMatchObject({
+      code: 'EMAIL_TAKEN',
+      status: 409,
     });
     await expect(testDb.user.findUnique({
       where: {normalizedEmail: email},

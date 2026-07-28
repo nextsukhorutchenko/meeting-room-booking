@@ -440,7 +440,15 @@ describe.sequential('notification API', () => {
 
     const firstAck = await acknowledge(stored.id);
     const repeatedAck = await acknowledge(stored.id);
-    expect([firstAck.status, repeatedAck.status]).toEqual([204, 204]);
+    expect({
+      statuses: [firstAck.status, repeatedAck.status],
+      firstBody: await firstAck.text(),
+      repeatedBody: await repeatedAck.text(),
+    }).toEqual({
+      statuses: [204, 204],
+      firstBody: '',
+      repeatedBody: '',
+    });
     freezeClock(new Date('2026-07-28T09:56:00.000Z'));
     await expect(poll(cookie).then((response) => response.json()))
       .resolves.toEqual({data: []});

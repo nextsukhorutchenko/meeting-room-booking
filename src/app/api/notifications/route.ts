@@ -71,7 +71,7 @@ export function createNotificationsPost(
   return async (request: NextRequest): Promise<Response> => {
     try {
       assertSameOrigin(request);
-      const user = await dependencies.authenticate(request);
+      const user = await dependencies.authenticate(request.clone());
       const body = await readJsonBody(request);
       const notificationId =
         body && typeof body === 'object' && 'notificationId' in body ?
