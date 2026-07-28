@@ -43,6 +43,11 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
     name: /Book Tuesday.*10:00/i,
   }).click();
   const dialog = page.getByRole('dialog', {name: 'Book Pine'});
+  await expect(dialog.getByText('10:00-10:30', {exact: false})).toBeVisible();
+  await dialog.getByLabel('End time').selectOption({
+    label: '12:00 (2 hours)',
+  });
+  await expect(dialog.getByText('10:00-12:00', {exact: false})).toBeVisible();
   await dialog.getByLabel('Title').fill(title);
   const createRequest = page.waitForRequest((request) =>
     request.url().endsWith('/api/bookings') &&
@@ -53,21 +58,30 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
     endsAt: string;
     startsAt: string;
   };
-  expect(createPayload.startsAt).toMatch(/Z$/);
-  expect(createPayload.endsAt).toMatch(/Z$/);
+  expect(createPayload.startsAt).toBe(
+    officeSlot(weekStart, 1, 10).toUTC().toISO(),
+  );
+  expect(createPayload.endsAt).toBe(
+    officeSlot(weekStart, 1, 12).toUTC().toISO(),
+  );
 
   await expect(
     page.getByRole('status').filter({hasText: 'Booking created'}),
   ).toBeVisible();
-  await expect(page.getByRole('article', {name: new RegExp(title)}))
-    .toBeVisible();
+  const bookingBlock = page.getByRole('article', {name: new RegExp(title)});
+  await expect(bookingBlock).toBeVisible();
+  await expect(bookingBlock).toContainText('10:00-12:00');
+  await expect(bookingBlock).toHaveCSS('height', '172px');
+  const booking = await database.booking.findFirstOrThrow({where: {title}});
+  expect(booking.endsAt.toISOString()).toBe(
+    officeSlot(weekStart, 1, 12).toUTC().toISO(),
+  );
   await page.screenshot({
     fullPage: true,
     path: resolve(artifactsDirectory, 'mobile-booking-created.png'),
   });
 
   await page.getByRole('link', {name: 'My Bookings'}).click();
-  const booking = await database.booking.findFirstOrThrow({where: {title}});
   const row = page.locator(`[data-booking-id="${booking.id}"]`);
   await expect(row).toBeVisible();
   await row.getByRole('button', {name: `Cancel ${title}`}).click();
