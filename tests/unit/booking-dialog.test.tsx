@@ -93,7 +93,12 @@ describe('BookingDialog', () => {
       <BookingDialog
         onClose={vi.fn()}
         onCreated={vi.fn()}
-        selection={{...selection, dateLabel: 'Tuesday, July 28, 2026'}}
+        selection={{
+          ...selection,
+          endTimeOptions: selection.endTimeOptions.map((option) => ({
+            ...option,
+          })),
+        }}
       />,
     );
 
