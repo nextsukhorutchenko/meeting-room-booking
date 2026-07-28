@@ -279,7 +279,6 @@ using these responsibilities:
   display: flex;
   align-items: stretch;
   min-width: 0;
-  border-bottom: 1px solid #e2e7e3;
 }
 
 .booking-list-row-link {
@@ -289,6 +288,7 @@ using these responsibilities:
   flex: 1;
   gap: 1.25rem;
   min-width: 0;
+  border-bottom: 1px solid #e2e7e3;
   padding: 0.9rem 0.65rem 0.9rem 0;
   color: inherit;
   text-decoration: none;
@@ -323,8 +323,9 @@ using these responsibilities:
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 3rem;
+  width: 2.25rem;
   border: 0;
+  border-bottom: 1px solid #e2e7e3;
   background: transparent;
   padding: 0;
   color: #5a685f;
@@ -395,6 +396,10 @@ with:
 
 .booking-list-row-cancellable {
   grid-template-columns: minmax(0, 1fr) 3rem;
+}
+
+.booking-list-cancel {
+  width: 3rem;
 }
 ```
 

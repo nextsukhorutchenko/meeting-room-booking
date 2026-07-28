@@ -92,52 +92,100 @@ test('@booking Load more appends equal-time past records without duplicates', as
   expect(ids).toEqual(expectedIds);
   expect(new Set(ids).size).toBe(22);
 
-  await page.screenshot({
-    path: resolve(artifactsDirectory, 'my-bookings-desktop.png'),
-    fullPage: true,
-  });
-  await page.setViewportSize({width: 390, height: 844});
-  const layout = await page.evaluate(() => ({
-    horizontalOverflow:
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-    rowsContained: Array.from(
-      document.querySelectorAll<HTMLElement>('.booking-list-row'),
-    ).every((row) => {
-      const rect = row.getBoundingClientRect();
-      return rect.left >= 0 && rect.right <= window.innerWidth + 0.5;
-    }),
-    titlesContained: Array.from(
-      document.querySelectorAll<HTMLElement>('.booking-list-title'),
-    ).every((title) => title.scrollWidth <= title.clientWidth + 1),
-    hitTargetsCoverRows: Array.from(
+  const desktopLayout = await page.evaluate(() => {
+    const close = (first: number, second: number) =>
+      Math.abs(first - second) < 0.5;
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    return Array.from(
       document.querySelectorAll<HTMLElement>('.booking-list-row'),
     ).every((row) => {
       const link = row.querySelector<HTMLElement>('.booking-list-row-link');
-      const cancel =
-        row.querySelector<HTMLElement>('.booking-list-cancel');
+      const cancel = row.querySelector<HTMLElement>('.booking-list-cancel');
       if (!link) {
         return false;
       }
       const rowRect = row.getBoundingClientRect();
       const linkRect = link.getBoundingClientRect();
-      const fillsHeight =
-        Math.abs(linkRect.top - rowRect.top) <= 1 &&
-        Math.abs(linkRect.bottom - rowRect.bottom) <= 1;
+      const linkOwnsLeftAndHeight =
+        close(linkRect.left, rowRect.left) &&
+        close(linkRect.top, rowRect.top) &&
+        close(linkRect.bottom, rowRect.bottom);
       if (!cancel) {
-        return fillsHeight &&
-          Math.abs(linkRect.width - rowRect.width) <= 1;
+        return linkOwnsLeftAndHeight &&
+          close(linkRect.right, rowRect.right);
+      }
+      const cancelVisual = cancel.querySelector<HTMLElement>(
+        '.booking-list-cancel-visual',
+      );
+      const status = link.querySelector<HTMLElement>('.booking-status');
+      if (!cancelVisual || !status) {
+        return false;
       }
       const cancelRect = cancel.getBoundingClientRect();
-      return fillsHeight &&
-        Math.abs(cancelRect.top - rowRect.top) <= 1 &&
-        Math.abs(cancelRect.bottom - rowRect.bottom) <= 1 &&
-        Math.abs(linkRect.right - cancelRect.left) <= 1 &&
-        Math.abs(
-          linkRect.width + cancelRect.width - rowRect.width,
-        ) <= 1;
-    }),
-  }));
+      const visualRect = cancelVisual.getBoundingClientRect();
+      const statusRect = status.getBoundingClientRect();
+      return linkOwnsLeftAndHeight &&
+        close(cancelRect.top, rowRect.top) &&
+        close(cancelRect.bottom, rowRect.bottom) &&
+        close(linkRect.right, cancelRect.left) &&
+        close(cancelRect.right, rowRect.right) &&
+        close(visualRect.right, rowRect.right) &&
+        close(visualRect.left - statusRect.right, rootFontSize * 0.65);
+    });
+  });
+  expect(desktopLayout).toBe(true);
+
+  await page.screenshot({
+    path: resolve(artifactsDirectory, 'my-bookings-desktop.png'),
+    fullPage: true,
+  });
+  await page.setViewportSize({width: 390, height: 844});
+  const layout = await page.evaluate(() => {
+    const close = (first: number, second: number) =>
+      Math.abs(first - second) < 0.5;
+    return {
+      horizontalOverflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+      rowsContained: Array.from(
+        document.querySelectorAll<HTMLElement>('.booking-list-row'),
+      ).every((row) => {
+        const rect = row.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= window.innerWidth + 0.5;
+      }),
+      titlesContained: Array.from(
+        document.querySelectorAll<HTMLElement>('.booking-list-title'),
+      ).every((title) => title.scrollWidth <= title.clientWidth + 1),
+      hitTargetsCoverRows: Array.from(
+        document.querySelectorAll<HTMLElement>('.booking-list-row'),
+      ).every((row) => {
+        const link = row.querySelector<HTMLElement>('.booking-list-row-link');
+        const cancel =
+          row.querySelector<HTMLElement>('.booking-list-cancel');
+        if (!link) {
+          return false;
+        }
+        const rowRect = row.getBoundingClientRect();
+        const linkRect = link.getBoundingClientRect();
+        const linkOwnsLeftAndHeight =
+          close(linkRect.left, rowRect.left) &&
+          close(linkRect.top, rowRect.top) &&
+          close(linkRect.bottom, rowRect.bottom);
+        if (!cancel) {
+          return linkOwnsLeftAndHeight &&
+            close(linkRect.right, rowRect.right);
+        }
+        const cancelRect = cancel.getBoundingClientRect();
+        return linkOwnsLeftAndHeight &&
+          close(cancelRect.top, rowRect.top) &&
+          close(cancelRect.bottom, rowRect.bottom) &&
+          close(linkRect.right, cancelRect.left) &&
+          close(cancelRect.right, rowRect.right);
+      }),
+    };
+  });
   expect(layout).toEqual({
     horizontalOverflow: 0,
     rowsContained: true,
