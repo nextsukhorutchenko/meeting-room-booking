@@ -41,6 +41,7 @@ describe('canonical E2E runner contract', () => {
     const runner = readFileSync(resolve('scripts/run-e2e.ts'), 'utf8');
 
     expect(packageJson.scripts['test:e2e']).toBe(
+      'tsx scripts/check-test-database-url.ts e2e && ' +
       'npm run build && tsx scripts/run-e2e.ts',
     );
     expect(runner).toContain('/api/health');

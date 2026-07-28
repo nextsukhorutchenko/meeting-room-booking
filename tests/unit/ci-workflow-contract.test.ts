@@ -36,4 +36,26 @@ describe('CI dependency bootstrap contract', () => {
       );
     }
   });
+
+  it('keeps unit commands database-free and preflights database suites', () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve('package.json'), 'utf8'),
+    ) as {scripts: Record<string, string>};
+
+    expect(packageJson.scripts.test).toBe(
+      'vitest run --config vitest.config.ts',
+    );
+    expect(packageJson.scripts['test:unit']).toBe(
+      'vitest run --config vitest.config.ts',
+    );
+    expect(packageJson.scripts['test:coverage']).toBe(
+      'vitest run --coverage --config vitest.config.ts',
+    );
+    expect(packageJson.scripts['test:integration']).toMatch(
+      /^tsx scripts\/check-test-database-url\.ts integration && /,
+    );
+    expect(packageJson.scripts['test:e2e']).toMatch(
+      /^tsx scripts\/check-test-database-url\.ts e2e && npm run build && /,
+    );
+  });
 });
