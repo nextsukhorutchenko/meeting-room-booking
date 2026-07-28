@@ -860,6 +860,11 @@ select:disabled {
   min-width: 0;
 }
 
+.booking-form .control-field select {
+  width: 100%;
+  min-width: 0;
+}
+
 .booking-summary {
   display: grid;
   gap: 0.45rem;

@@ -7,7 +7,7 @@ import {
   formatInUserZone,
 } from '../../lib/time/browser-zone';
 import {BookingBlock} from './booking-block';
-import type {BookingSelection} from './booking-dialog';
+import type {StartSlotSelection} from './booking-selection';
 
 export const SCHEDULE_LAYOUT = {
   slotMinutes: 30,
@@ -33,7 +33,7 @@ type WeekGridProps = {
   officeOpenHour: number;
   officeTimeZone: string;
   onCancelBooking(booking: {id: string; title: string}): void;
-  onSelectSlot(selection: BookingSelection): void;
+  onSelectSlot(selection: StartSlotSelection): void;
   roomId: string;
   roomName: string;
   userTimeZone: string;
@@ -244,11 +244,6 @@ export function WeekGrid({
                     userTimeZone,
                     officeTimeZone,
                   );
-                  const userEndLabel = timeLabel(
-                    endsAt,
-                    userTimeZone,
-                    officeTimeZone,
-                  );
                   return (
                     <div
                       className="schedule-slot"
@@ -283,12 +278,10 @@ export function WeekGrid({
                               userTimeZone,
                               officeTimeZone,
                             ),
-                            endsAt: endsAt.toUTC().toISO() ?? '',
                             roomId,
                             roomName,
                             startsAt: startsAt.toUTC().toISO() ?? '',
-                            timeLabel:
-                              `${userStartLabel}-${userEndLabel}`,
+                            startTimeLabel: userStartLabel,
                             timeZoneLabel: userTimeZone,
                           })}
                           title={`Book ${userStartLabel}`}

@@ -6,7 +6,7 @@ import {
   formatInUserZone,
 } from '../../lib/time/browser-zone';
 import {BookingBlock} from './booking-block';
-import type {BookingSelection} from './booking-dialog';
+import type {StartSlotSelection} from './booking-selection';
 import {
   SCHEDULE_LAYOUT,
   type ScheduleBooking,
@@ -22,7 +22,7 @@ type DayScheduleProps = {
   officeOpenHour: number;
   officeTimeZone: string;
   onCancelBooking(booking: {id: string; title: string}): void;
-  onSelectSlot(selection: BookingSelection): void;
+  onSelectSlot(selection: StartSlotSelection): void;
   roomId: string;
   roomName: string;
   userTimeZone: string;
@@ -191,8 +191,6 @@ export function DaySchedule({
             const bookable = bookingEnabled && startsAt > now && !occupied;
             const userStartLabel =
               timeLabel(startsAt, userTimeZone, officeTimeZone);
-            const userEndLabel =
-              timeLabel(endsAt, userTimeZone, officeTimeZone);
             return (
               <div
                 className="schedule-slot"
@@ -216,11 +214,10 @@ export function DaySchedule({
                         userTimeZone,
                         officeTimeZone,
                       ),
-                      endsAt: endsAt.toUTC().toISO() ?? '',
                       roomId,
                       roomName,
                       startsAt: startsAt.toUTC().toISO() ?? '',
-                      timeLabel: `${userStartLabel}-${userEndLabel}`,
+                      startTimeLabel: userStartLabel,
                       timeZoneLabel: userTimeZone,
                     })}
                     title={`Book ${userStartLabel}`}

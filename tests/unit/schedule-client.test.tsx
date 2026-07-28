@@ -452,4 +452,27 @@ describe('ScheduleClient request state', () => {
         .not.toBeInTheDocument();
     });
   });
+
+  it('derives multiple end-time options after selecting a free start slot', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Booked at ten'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Book Tuesday.*11:00/i,
+    }));
+
+    expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
+    expect(screen.getByLabelText('End time').querySelectorAll('option').length)
+      .toBeGreaterThan(1);
+  });
 });

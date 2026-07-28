@@ -1,19 +1,17 @@
 'use client';
 
 import {CalendarDays, Clock3, MapPin} from 'lucide-react';
-import {useCallback, useRef, useState, type FormEvent} from 'react';
+import {
+  useCallback,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import {Button} from '../ui/button';
 import {Dialog} from '../ui/dialog';
+import type {BookingSelection} from './booking-selection';
 
-export type BookingSelection = {
-  dateLabel: string;
-  endsAt: string;
-  roomId: string;
-  roomName: string;
-  startsAt: string;
-  timeLabel: string;
-  timeZoneLabel: string;
-};
+export type {BookingSelection} from './booking-selection';
 
 type ErrorBody = {
   error?: {
@@ -36,9 +34,24 @@ export function BookingDialog({
 }: BookingDialogProps) {
   const [formError, setFormError] = useState('');
   const [titleError, setTitleError] = useState('');
+  const [endsAt, setEndsAt] = useState(
+    selection?.endTimeOptions[0]?.endsAt ?? '',
+  );
+  const [previousEndTimeOptions, setPreviousEndTimeOptions] = useState(
+    selection?.endTimeOptions,
+  );
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  if (selection?.endTimeOptions !== previousEndTimeOptions) {
+    setPreviousEndTimeOptions(selection?.endTimeOptions);
+    if (!selection?.endTimeOptions.some((option) => option.endsAt === endsAt)) {
+      setEndsAt(selection?.endTimeOptions[0]?.endsAt ?? '');
+    }
+  }
+  const selectedEndTime = selection?.endTimeOptions.find(
+    (option) => option.endsAt === endsAt,
+  );
 
   const close = useCallback(() => {
     if (!pendingRef.current) {
@@ -50,7 +63,7 @@ export function BookingDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selection || pendingRef.current) {
+    if (!selection || !selectedEndTime || pendingRef.current) {
       return;
     }
 
@@ -74,7 +87,7 @@ export function BookingDialog({
           roomId: selection.roomId,
           title,
           startsAt: selection.startsAt,
-          endsAt: selection.endsAt,
+          endsAt: selectedEndTime.endsAt,
         }),
       });
       const body = await response.json() as ErrorBody;
@@ -122,9 +135,15 @@ export function BookingDialog({
             </p>
             <p>
               <Clock3 aria-hidden="true" />
-              {selection.timeLabel} {selection.timeZoneLabel}
+              {selectedEndTime?.rangeLabel ?? selection.startTimeLabel}{' '}
+              {selection.timeZoneLabel}
             </p>
           </div>
+          {selection.endTimeOptions.length === 0 ? (
+            <p className="dialog-alert" role="alert">
+              This start time is no longer available. Choose another slot.
+            </p>
+          ) : null}
           {formError ? (
             <p className="dialog-alert" role="alert">{formError}</p>
           ) : null}
@@ -138,6 +157,20 @@ export function BookingDialog({
               ref={titleRef}
               type="text"
             />
+          </label>
+          <label className="control-field">
+            <span>End time</span>
+            <select
+              name="endsAt"
+              onChange={(event) => setEndsAt(event.target.value)}
+              value={endsAt}
+            >
+              {selection.endTimeOptions.map((option) => (
+                <option key={option.endsAt} value={option.endsAt}>
+                  {option.endTimeLabel} ({option.durationLabel})
+                </option>
+              ))}
+            </select>
           </label>
           {titleError ? (
             <p className="field-error" id="booking-title-error">
@@ -153,7 +186,7 @@ export function BookingDialog({
             >
               Cancel
             </button>
-            <Button pending={pending} type="submit">
+            <Button disabled={!selectedEndTime} pending={pending} type="submit">
               Create booking
             </Button>
           </div>

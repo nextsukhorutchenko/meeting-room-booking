@@ -131,8 +131,7 @@ describe('WeekGrid timezone semantics', () => {
     expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({
       dateLabel: 'Sunday, March 8, 2026',
       startsAt: '2026-03-08T07:00:00.000Z',
-      endsAt: '2026-03-08T07:30:00.000Z',
-      timeLabel: '03:00-03:30',
+      startTimeLabel: '03:00',
     }));
   });
 

@@ -12,16 +12,18 @@ import {
   useSyncExternalStore,
 } from 'react';
 import {getBrowserTimeZone} from '../../lib/time/browser-zone';
+import {buildBookingEndTimeOptions} from '../../modules/bookings/end-time-options';
 import {
   CancelBookingDialog,
   type CancellationSelection,
 } from '../bookings/cancel-booking-dialog';
 import {Spinner} from '../ui/spinner';
 import {Toast} from '../ui/toast';
-import {
-  BookingDialog,
-  type BookingSelection,
-} from './booking-dialog';
+import {BookingDialog} from './booking-dialog';
+import type {
+  BookingSelection,
+  StartSlotSelection,
+} from './booking-selection';
 import {DaySchedule} from './day-schedule';
 import {ScheduleToolbar} from './schedule-toolbar';
 import {TimezoneLabel} from './timezone-label';
@@ -148,7 +150,8 @@ export function ScheduleClient({
   const [roomsError, setRoomsError] = useState('');
   const [scheduleState, setScheduleState] =
     useState<ScheduleLoadState | null>(null);
-  const [selection, setSelection] = useState<BookingSelection | null>(null);
+  const [startSelection, setStartSelection] =
+    useState<StartSlotSelection | null>(null);
   const [cancellation, setCancellation] =
     useState<CancellationSelection | null>(null);
   const [toastMessage, setToastMessage] = useState('');
@@ -230,7 +233,7 @@ export function ScheduleClient({
     }
     if (roomChanged || weekChanged || dayChanged) {
       setCancellation(null);
-      setSelection(null);
+      setStartSelection(null);
     }
   }, [officeTimeZone, searchParams]);
 
@@ -266,7 +269,7 @@ export function ScheduleClient({
           setPreservedScheduleKey(null);
           scheduleRequestSequence.current += 1;
           setScheduleState(null);
-          setSelection(null);
+          setStartSelection(null);
         }
         updateUrl(
           roomId,
@@ -379,6 +382,24 @@ export function ScheduleClient({
     selectedRoomId &&
     (!isCurrentSchedule || scheduleState.status === 'loading'),
   );
+  const bookingSelection = useMemo<BookingSelection | null>(() => {
+    if (!startSelection || !schedule) return null;
+    return {
+      ...startSelection,
+      endTimeOptions: buildBookingEndTimeOptions({
+        bookings: schedule.bookings,
+        officeCloseHour,
+        officeTimeZone: schedule.officeTimeZone,
+        startsAt: startSelection.startsAt,
+        userTimeZone,
+      }),
+    };
+  }, [
+    officeCloseHour,
+    schedule,
+    startSelection,
+    userTimeZone,
+  ]);
 
   const selectedRoom = useMemo(
     () => rooms.find((room) => room.id === selectedRoomId) ??
@@ -397,7 +418,7 @@ export function ScheduleClient({
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
-    setSelection(null);
+    setStartSelection(null);
     setSelectedRoomId(roomId);
     updateUrl(roomId, weekStart, selectedDay, 'push');
   }
@@ -413,7 +434,7 @@ export function ScheduleClient({
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
-    setSelection(null);
+    setStartSelection(null);
     setWeekStart(nextWeek);
     setSelectedDay(nextDay);
     updateUrl(selectedRoomId, nextWeek, nextDay, 'push');
@@ -430,7 +451,7 @@ export function ScheduleClient({
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
-    setSelection(null);
+    setStartSelection(null);
     setWeekStart(nextWeek);
     setSelectedDay(nextDay);
     updateUrl(selectedRoomId, nextWeek, nextDay, 'push');
@@ -452,7 +473,7 @@ export function ScheduleClient({
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
-    setSelection(null);
+    setStartSelection(null);
     setWeekStart(currentWeek);
     setSelectedDay(today);
     updateUrl(selectedRoomId, currentWeek, today, 'push');
@@ -461,7 +482,7 @@ export function ScheduleClient({
   function handleCreated() {
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
-    setSelection(null);
+    setStartSelection(null);
     setToastMessage('Booking created');
     setRefreshKey((key) => key + 1);
   }
@@ -559,7 +580,7 @@ export function ScheduleClient({
               officeOpenHour={officeOpenHour}
               officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
               onCancelBooking={setCancellation}
-              onSelectSlot={setSelection}
+              onSelectSlot={setStartSelection}
               roomId={selectedRoom.id}
               roomName={selectedRoom.name}
               userTimeZone={userTimeZone}
@@ -577,7 +598,7 @@ export function ScheduleClient({
               officeOpenHour={officeOpenHour}
               officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
               onCancelBooking={setCancellation}
-              onSelectSlot={setSelection}
+              onSelectSlot={setStartSelection}
               roomId={selectedRoom.id}
               roomName={selectedRoom.name}
               userTimeZone={userTimeZone}
@@ -592,9 +613,9 @@ export function ScheduleClient({
       ) : null}
 
       <BookingDialog
-        onClose={() => setSelection(null)}
+        onClose={() => setStartSelection(null)}
         onCreated={handleCreated}
-        selection={selection}
+        selection={bookingSelection}
       />
       {cancellation ? (
         <CancelBookingDialog
