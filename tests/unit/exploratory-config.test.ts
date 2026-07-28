@@ -1,9 +1,18 @@
 import {describe, expect, it} from 'vitest';
-import standardConfig from '../../playwright.config';
-import exploratoryConfig from '../../playwright.midscene.config';
+import {
+  createDeterministicPlaywrightConfig,
+  createExploratoryPlaywrightConfig,
+} from '../../test-config/playwright-configs';
 
 describe('Playwright exploratory test boundary', () => {
-  it('keeps exploratory tests outside the deterministic suite', () => {
+  it('constructs deterministic and exploratory configs without process env', () => {
+    const standardConfig = createDeterministicPlaywrightConfig();
+    const exploratoryConfig = createExploratoryPlaywrightConfig({
+      baseUrl: 'http://127.0.0.1:3106',
+      testDatabaseUrl:
+        'postgresql://localhost/meeting_room_booking_test?schema=public',
+    });
+
     expect(standardConfig.testMatch).toBe('**/*.spec.ts');
     expect(standardConfig.testIgnore).toContain('**/exploratory/**');
     const desktopKyiv = standardConfig.projects?.find(
