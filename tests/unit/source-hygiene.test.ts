@@ -38,6 +38,40 @@ describe('findForbiddenControls', () => {
     ]);
   });
 
+  it('reports format controls outside the historical hand-picked ranges', () => {
+    expect(findForbiddenControls(
+      'src/example.ts',
+      `a\u00ADb\u2061c\u206Ad\u{E0001}e`,
+    )).toEqual([
+      {path: 'src/example.ts', index: 1, codePoint: 'U+00AD'},
+      {path: 'src/example.ts', index: 3, codePoint: 'U+2061'},
+      {path: 'src/example.ts', index: 5, codePoint: 'U+206A'},
+      {path: 'src/example.ts', index: 7, codePoint: 'U+E0001'},
+    ]);
+  });
+
+  it('reports forbidden C0, DEL, and C1 text controls', () => {
+    expect(findForbiddenControls(
+      'README.md',
+      'a\u0000b\u0008c\u000Bd\u001Fe\u007Ff\u0085g\u009F',
+    )).toEqual([
+      {path: 'README.md', index: 1, codePoint: 'U+0000'},
+      {path: 'README.md', index: 3, codePoint: 'U+0008'},
+      {path: 'README.md', index: 5, codePoint: 'U+000B'},
+      {path: 'README.md', index: 7, codePoint: 'U+001F'},
+      {path: 'README.md', index: 9, codePoint: 'U+007F'},
+      {path: 'README.md', index: 11, codePoint: 'U+0085'},
+      {path: 'README.md', index: 13, codePoint: 'U+009F'},
+    ]);
+  });
+
+  it('allows tab, line feed, and carriage return in text', () => {
+    expect(findForbiddenControls(
+      'README.md',
+      'first\tcolumn\r\nsecond line\n',
+    )).toEqual([]);
+  });
+
   it('accepts normal Ukrainian text', () => {
     expect(findForbiddenControls(
       'src/example.ts',

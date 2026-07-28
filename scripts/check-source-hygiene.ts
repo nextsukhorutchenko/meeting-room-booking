@@ -9,8 +9,9 @@ export type ForbiddenControl = {
   codePoint: string;
 };
 
+// Text permits horizontal tab, line feed, and carriage return from C0 only.
 const forbiddenControlPattern =
-  /[\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/gu;
+  /[\p{Cf}\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/gu;
 const excludedPaths = new Set(['package-lock.json']);
 const excludedPrefixes = [
   'coverage/',

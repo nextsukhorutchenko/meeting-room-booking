@@ -40,12 +40,38 @@ Open `http://localhost:3000`. To verify the complete startup against the
 running application in a second terminal:
 
 ```powershell
-npm run verify:clean-start
+$env:CLEAN_START_MUTATION_CONSENT = "database=postgresql://localhost:5432/meeting_room_booking;app=http://localhost:3000"
+try {
+  npm run verify:clean-start
+} finally {
+  Remove-Item Env:CLEAN_START_MUTATION_CONSENT
+}
 ```
 
 The verifier validates environment values and database readiness, deploys
 migrations, runs the seed twice, checks health, registers and logs in a temporary
 user, books and cancels one room, and removes its temporary records.
+
+The verifier accepts only local PostgreSQL and HTTP targets. The database host
+must be `localhost`, `127.0.0.1`, or `::1`, and the database name must be
+`meeting_room_booking` or `meeting_room_booking_test`. The application URL must
+be an HTTP loopback origin without a path. Consent must exactly match the
+canonical database host, port, and name plus the application origin. It is
+process-scoped, deliberately absent from `.env.example`, removed in `finally`,
+and never forwarded to migration or seed child processes.
+
+For the documented port overrides, bind the verifier to those exact targets:
+
+```powershell
+$env:DATABASE_URL = "postgresql://meeting_room_booking:meeting_room_booking@localhost:55432/meeting_room_booking?schema=public"
+$env:APP_URL = "http://localhost:3300"
+$env:CLEAN_START_MUTATION_CONSENT = "database=postgresql://localhost:55432/meeting_room_booking;app=http://localhost:3300"
+try {
+  npm run verify:clean-start
+} finally {
+  Remove-Item Env:CLEAN_START_MUTATION_CONSENT
+}
+```
 
 ## Docker startup
 
