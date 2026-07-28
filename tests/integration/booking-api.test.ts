@@ -370,6 +370,86 @@ describe.sequential('booking API', () => {
     });
   });
 
+  it('persists a multi-slot booking through the API', async () => {
+    const response = await postJson(
+      bookingPost,
+      '/api/bookings',
+      bookingBody(
+        officeDate(bookingDaysFromNow, 10),
+        officeDate(bookingDaysFromNow, 13, 30),
+      ),
+      {cookie},
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.endsAt).toBe(
+      toUtcIso(officeDate(bookingDaysFromNow, 13, 30)),
+    );
+    const persisted = await testDb.booking.findUniqueOrThrow({
+      where: {id: body.data.id},
+    });
+    expect(persisted.endsAt.toISOString()).toBe(body.data.endsAt);
+  });
+
+  it('allows a multi-slot booking ending at the next booking start', async () => {
+    await createBookingFixture({
+      roomId,
+      userId,
+      startsAt: officeDate(bookingDaysFromNow, 12).toJSDate(),
+      endsAt: officeDate(bookingDaysFromNow, 13).toJSDate(),
+    });
+    const response = await postJson(
+      bookingPost,
+      '/api/bookings',
+      bookingBody(
+        officeDate(bookingDaysFromNow, 10),
+        officeDate(bookingDaysFromNow, 12),
+      ),
+      {cookie},
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.endsAt).toBe(
+      toUtcIso(officeDate(bookingDaysFromNow, 12)),
+    );
+    const persisted = await testDb.booking.findUniqueOrThrow({
+      where: {id: body.data.id},
+    });
+    expect(persisted.endsAt.toISOString()).toBe(body.data.endsAt);
+  });
+
+  it('rejects a multi-slot booking that overlaps an existing booking', async () => {
+    const attemptedTitle = 'Multi-slot conflict';
+    await createBookingFixture({
+      roomId,
+      userId,
+      startsAt: officeDate(bookingDaysFromNow, 12).toJSDate(),
+      endsAt: officeDate(bookingDaysFromNow, 13).toJSDate(),
+    });
+    const response = await postJson(
+      bookingPost,
+      '/api/bookings',
+      {
+        ...bookingBody(
+          officeDate(bookingDaysFromNow, 10),
+          officeDate(bookingDaysFromNow, 13, 30),
+        ),
+        title: attemptedTitle,
+      },
+      {cookie},
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {code: 'BOOKING_CONFLICT'},
+    });
+    await expect(testDb.booking.count({
+      where: {userId, title: attemptedTitle},
+    })).resolves.toBe(0);
+  });
+
   it('allows an adjacent active booking', async () => {
     await createBookingFixture({
       roomId,
