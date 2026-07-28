@@ -51,11 +51,11 @@ jobs:
 
       - name: Checkout
         if: steps.model.outputs.configured == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         if: steps.model.outputs.configured == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           cache: npm
           node-version: 22
@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload Midscene artifacts
         if: always() && steps.model.outputs.configured == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           if-no-files-found: warn
           name: midscene-exploratory-${{ github.run_id }}
