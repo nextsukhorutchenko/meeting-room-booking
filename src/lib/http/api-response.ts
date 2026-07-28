@@ -3,10 +3,57 @@ import {DomainError} from './domain-error';
 
 export const sessionCookieName = 'mrb_session';
 
-export async function readJsonBody(request: Request): Promise<unknown> {
+function payloadTooLargeError(): DomainError {
+  return new DomainError({
+    code: 'PAYLOAD_TOO_LARGE',
+    message: 'Request body is too large',
+    status: 413,
+  });
+}
+
+export async function readJsonBody(
+  request: Request,
+  maxBytes = 1024 * 1024,
+): Promise<unknown> {
+  const declaredLength = request.headers.get('content-length');
+  if (
+    declaredLength !== null &&
+    /^\d+$/.test(declaredLength) &&
+    Number(declaredLength) > maxBytes
+  ) {
+    throw payloadTooLargeError();
+  }
+
   try {
-    return await request.json();
-  } catch {
+    if (!request.body) {
+      throw new Error('Request body is empty');
+    }
+    const reader = request.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) {
+        break;
+      }
+      byteLength += value.byteLength;
+      if (byteLength > maxBytes) {
+        await reader.cancel();
+        throw payloadTooLargeError();
+      }
+      chunks.push(value);
+    }
+    const content = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      content.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(content));
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw error;
+    }
     throw new DomainError({
       code: 'VALIDATION_FAILED',
       message: 'Request body must be valid JSON',
@@ -24,13 +71,17 @@ export function apiSuccess<T>(
 
 export function apiError(error: unknown): NextResponse {
   if (error instanceof DomainError) {
-    return NextResponse.json({
+    const response = NextResponse.json({
       error: {
         code: error.code,
         message: error.message,
         ...(error.fields ? {fields: error.fields} : {}),
       },
     }, {status: error.status});
+    if (error.retryAfterSeconds !== undefined) {
+      response.headers.set('retry-after', String(error.retryAfterSeconds));
+    }
+    return response;
   }
 
   return NextResponse.json({

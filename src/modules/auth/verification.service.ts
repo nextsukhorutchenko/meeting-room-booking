@@ -1,6 +1,9 @@
 import {createHash, randomBytes} from 'node:crypto';
 import {Prisma, type PrismaClient} from '@prisma/client';
-import {readAppEnv} from '../../lib/config/env';
+import {
+  readAppEnv,
+  type VerificationDeliveryConfig,
+} from '../../lib/config/env';
 import {DomainError} from '../../lib/http/domain-error';
 import type {Clock} from '../../lib/time/office-time';
 
@@ -8,7 +11,18 @@ const verificationLifetimeMilliseconds = 24 * 60 * 60 * 1_000;
 const rawTokenPattern = /^[A-Za-z0-9_-]{43}$/;
 
 export type VerificationLinkWriter = {
-  write(url: string): void;
+  write(delivery: VerificationDelivery): Promise<void> | void;
+};
+
+export type VerificationRecipient = {
+  email: string;
+  name: string;
+};
+
+export type VerificationDelivery = {
+  expiresAt: Date;
+  recipient: VerificationRecipient;
+  url: string;
 };
 
 export type PreparedVerification = {
@@ -18,13 +32,19 @@ export type PreparedVerification = {
 };
 
 export interface VerificationService {
-  issue(userId: string): Promise<{url: string; expiresAt: Date}>;
+  issue(
+    userId: string,
+    recipient: VerificationRecipient,
+  ): Promise<{url: string; expiresAt: Date}>;
   verify(rawToken: string): Promise<void>;
 }
 
 export interface RegistrationVerificationService extends VerificationService {
   prepare(): PreparedVerification;
-  writeLink(url: string): void;
+  deliver(
+    prepared: Pick<PreparedVerification, 'expiresAt' | 'url'>,
+    recipient: VerificationRecipient,
+  ): Promise<void>;
 }
 
 export interface VerificationRepository {
@@ -32,7 +52,7 @@ export interface VerificationRepository {
     tokenHash: string;
     userId: string;
     expiresAt: Date;
-  }, beforeCommit: () => void): Promise<void>;
+  }): Promise<void>;
   consumeAndVerify(input: {
     tokenHash: string;
     consumedAt: Date;
@@ -85,27 +105,36 @@ export class DefaultVerificationService
     };
   }
 
-  writeLink(url: string): void {
+  async deliver(
+    prepared: Pick<PreparedVerification, 'expiresAt' | 'url'>,
+    recipient: VerificationRecipient,
+  ): Promise<void> {
     try {
-      this.dependencies.writer.write(url);
+      await this.dependencies.writer.write({
+        expiresAt: prepared.expiresAt,
+        recipient,
+        url: prepared.url,
+      });
     } catch {
       throw serviceUnavailableError();
     }
   }
 
-  async issue(userId: string): Promise<{url: string; expiresAt: Date}> {
+  async issue(
+    userId: string,
+    recipient: VerificationRecipient,
+  ): Promise<{url: string; expiresAt: Date}> {
     const prepared = this.prepare();
     try {
       await this.dependencies.repository.create({
         tokenHash: prepared.tokenHash,
         userId,
         expiresAt: prepared.expiresAt,
-      }, () => {
-        this.writeLink(prepared.url);
       });
     } catch {
       throw serviceUnavailableError();
     }
+    await this.deliver(prepared, recipient);
     return {url: prepared.url, expiresAt: prepared.expiresAt};
   }
 
@@ -138,11 +167,10 @@ export class PrismaVerificationRepository implements VerificationRepository {
     tokenHash: string;
     userId: string;
     expiresAt: Date;
-  }, beforeCommit: () => void): Promise<void> {
-    await this.database.$transaction(async (transaction) => {
-      await transaction.verificationToken.create({data: input});
-      beforeCommit();
-    });
+  }): Promise<void> {
+    await this.database.$transaction((transaction) =>
+      transaction.verificationToken.create({data: input}).then(() => undefined),
+    );
   }
 
   async consumeAndVerify(input: {
@@ -181,9 +209,42 @@ const systemClock: Clock = {
   now: () => new Date(),
 };
 
-export const developmentVerificationLinkWriter: VerificationLinkWriter = {
-  write: (url) => console.info(url),
-};
+type VerificationFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export function createVerificationLinkWriter(
+  config: VerificationDeliveryConfig,
+  fetcher: VerificationFetch = fetch,
+): VerificationLinkWriter {
+  if (config.mode === 'console') {
+    return {
+      write: ({url}) => console.info(url),
+    };
+  }
+  return {
+    write: async (delivery) => {
+      const response = await fetcher(config.url, {
+        body: JSON.stringify({
+          expiresAt: delivery.expiresAt.toISOString(),
+          recipientEmail: delivery.recipient.email,
+          recipientName: delivery.recipient.name,
+          verificationUrl: delivery.url,
+        }),
+        headers: {
+          authorization: `Bearer ${config.bearerToken}`,
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) {
+        throw new Error('Verification delivery webhook rejected the request');
+      }
+    },
+  };
+}
 
 let defaultService: Promise<VerificationService> | undefined;
 
@@ -195,7 +256,7 @@ async function getDefaultService(): Promise<VerificationService> {
         repository: new PrismaVerificationRepository(prisma),
         clock: systemClock,
         appUrl: env.appUrl,
-        writer: developmentVerificationLinkWriter,
+        writer: createVerificationLinkWriter(env.verificationDelivery),
       });
     });
   }

@@ -28,7 +28,7 @@ import {
   verifyPassword,
 } from './password';
 import {
-  developmentVerificationLinkWriter,
+  createVerificationLinkWriter,
   DefaultVerificationService,
   type PreparedVerification,
   PrismaVerificationRepository,
@@ -51,8 +51,7 @@ export interface AuthRepository {
     normalizedEmail: string;
     passwordHash: string;
   }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>,
-  verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>,
-  beforeCommit: () => void):
+  verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>):
     Promise<AuthAccount>;
   findByNormalizedEmail(normalizedEmail: string): Promise<AuthAccount | null>;
 }
@@ -163,8 +162,10 @@ export class AuthService {
         email: parsed.data.email,
         normalizedEmail,
         passwordHash,
-      }, session, verification, () => {
-        this.dependencies.verification.writeLink(verification.url);
+      }, session, verification);
+      await this.dependencies.verification.deliver(verification, {
+        email: account.email,
+        name: account.name,
       });
     } catch (error) {
       if (error instanceof DuplicateEmailRepositoryError) {
@@ -255,8 +256,7 @@ export class PrismaAuthRepository implements AuthRepository {
     normalizedEmail: string;
     passwordHash: string;
   }, session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>,
-  verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>,
-  beforeCommit: () => void):
+  verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>):
     Promise<AuthAccount> {
     try {
       return await this.database.$transaction(async (transaction) => {
@@ -275,7 +275,6 @@ export class PrismaAuthRepository implements AuthRepository {
             expiresAt: verification.expiresAt,
           },
         });
-        beforeCommit();
         return account;
       });
     } catch (error) {
@@ -314,7 +313,7 @@ async function getDefaultService(): Promise<AuthService> {
           repository: new PrismaVerificationRepository(prisma),
           clock: systemClock,
           appUrl: env.appUrl,
-          writer: developmentVerificationLinkWriter,
+          writer: createVerificationLinkWriter(env.verificationDelivery),
         }),
         password: {
           hash: hashPassword,

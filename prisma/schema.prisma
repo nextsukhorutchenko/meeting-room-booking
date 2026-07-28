@@ -6,6 +6,15 @@ datasource db {
   provider = "postgresql"
 }
 
+model AuthRateLimitBucket {
+  key             String   @id @db.VarChar(64)
+  attempts        Int
+  windowStartedAt DateTime @db.Timestamptz(3)
+  expiresAt       DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}
+
 model User {
   id                 String              @id @default(cuid())
   name               String
@@ -84,12 +93,13 @@ model Notification {
   currentBookingId String
   nextBookingId    String
   deliverAt        DateTime         @db.Timestamptz(3)
-  deliveredAt      DateTime?        @db.Timestamptz(3)
+  leaseExpiresAt   DateTime?        @db.Timestamptz(3)
+  acknowledgedAt   DateTime?        @db.Timestamptz(3)
   createdAt        DateTime         @default(now()) @db.Timestamptz(3)
   recipient        User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   currentBooking   Booking          @relation("CurrentBooking", fields: [currentBookingId], references: [id], onDelete: Cascade)
   nextBooking      Booking          @relation("NextBooking", fields: [nextBookingId], references: [id], onDelete: Cascade)
 
   @@unique([type, recipientId, currentBookingId, nextBookingId])
-  @@index([recipientId, deliveredAt, deliverAt])
+  @@index([recipientId, acknowledgedAt, leaseExpiresAt, deliverAt])
 }

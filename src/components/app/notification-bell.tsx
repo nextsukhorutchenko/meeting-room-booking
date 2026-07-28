@@ -46,7 +46,7 @@ export function NotificationBell() {
     try {
       const response = await fetch('/api/notifications', {
         cache: 'no-store',
-        method: 'POST',
+        method: 'GET',
         signal,
       });
       const body: unknown = await response.json();
@@ -63,6 +63,14 @@ export function NotificationBell() {
             ...data.filter(({id}) => !knownIds.has(id)),
           ];
         });
+        await Promise.all(data.map(async ({id}) => {
+          await fetch('/api/notifications', {
+            body: JSON.stringify({notificationId: id}),
+            headers: {'content-type': 'application/json'},
+            method: 'POST',
+            signal,
+          });
+        }));
       }
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {

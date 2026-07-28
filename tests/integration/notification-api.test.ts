@@ -23,6 +23,10 @@ type PollHandler = (request: NextRequest) => Promise<Response>;
 const taskPrefix = 'task-14-notification-api-';
 const password = 'task-14-notification-password';
 let pollNotifications: PollHandler;
+let acknowledgeNotification: PostHandler;
+let createNotificationsGet: typeof import(
+  '../../src/app/api/notifications/route'
+)['createNotificationsGet'];
 let createNotificationsPost: typeof import(
   '../../src/app/api/notifications/route'
 )['createNotificationsPost'];
@@ -36,23 +40,32 @@ let sequence = 0;
 function poll(
   sessionCookie?: string,
   query = '',
-  origin: string | null = process.env.APP_URL ??
-    'http://127.0.0.1:3000',
 ): Promise<Response> {
   const headers = new Headers();
   if (sessionCookie) {
     headers.set('cookie', sessionCookie);
   }
-  if (origin) {
-    headers.set('origin', origin);
-  }
   return pollNotifications(new NextRequest(new URL(
     `/api/notifications${query}`,
     process.env.APP_URL ?? 'http://127.0.0.1:3000',
   ), {
-    method: 'POST',
+    method: 'GET',
     headers,
   }));
+}
+
+function acknowledge(
+  notificationId: string,
+  sessionCookie = cookie,
+  origin: string | null = process.env.APP_URL ??
+    'http://127.0.0.1:3000',
+): Promise<Response> {
+  return postJson(
+    acknowledgeNotification,
+    '/api/notifications',
+    {notificationId},
+    {cookie: sessionCookie, origin},
+  );
 }
 
 async function removeTaskFixtures(): Promise<void> {
@@ -112,18 +125,22 @@ async function createHandoff(options: {
 beforeAll(async () => {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
   process.env.NOTIFY_BEFORE_MINUTES = '10';
+  process.env.NOTIFICATION_LEASE_SECONDS = '30';
   const [notificationRoute, loginRoute] = await Promise.all([
     import('../../src/app/api/notifications/route'),
     import('../../src/app/api/auth/login/route'),
   ]);
+  createNotificationsGet = notificationRoute.createNotificationsGet;
   createNotificationsPost = notificationRoute.createNotificationsPost;
-  pollNotifications = notificationRoute.POST;
+  pollNotifications = notificationRoute.GET;
+  acknowledgeNotification = notificationRoute.POST;
   loginPost = loginRoute.POST;
 });
 
 beforeEach(async () => {
   await removeTaskFixtures();
-  pollNotifications = createNotificationsPost();
+  pollNotifications = createNotificationsGet();
+  acknowledgeNotification = createNotificationsPost();
   sequence += 1;
   const current = await createVerifiedUser({
     name: 'Current User',
@@ -156,7 +173,10 @@ afterAll(async () => {
 
 describe.sequential('notification API', () => {
   function freezeClock(now: Date): void {
-    pollNotifications = createNotificationsPost({
+    pollNotifications = createNotificationsGet({
+      clock: new TestClock(now),
+    });
+    acknowledgeNotification = createNotificationsPost({
       clock: new TestClock(now),
     });
   }
@@ -179,10 +199,10 @@ describe.sequential('notification API', () => {
   });
 
   it.each([
-    ['a cross-origin request', 'https://attacker.example'],
-    ['a request without an Origin header', null],
+    ['a cross-origin acknowledgement', 'https://attacker.example'],
+    ['an acknowledgement without an Origin header', null],
   ])('rejects %s before authentication', async (_name, origin) => {
-    const response = await poll(undefined, '', origin);
+    const response = await acknowledge('notification-id', '', origin);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
@@ -286,7 +306,7 @@ describe.sequential('notification API', () => {
     await expect(testDb.notification.count()).resolves.toBe(0);
   });
 
-  it('delivers an adjacent handoff exactly once across repeated polls', async () => {
+  it('leases an adjacent handoff exactly once across immediate polls', async () => {
     await createHandoff();
 
     const first = await poll(cookie);
@@ -298,7 +318,7 @@ describe.sequential('notification API', () => {
     await expect(testDb.notification.count({
       where: {
         recipientId: currentUserId,
-        deliveredAt: {not: null},
+        leaseExpiresAt: {not: null},
       },
     })).resolves.toBe(1);
   });
@@ -330,8 +350,11 @@ describe.sequential('notification API', () => {
       await expect(response.json()).resolves.toEqual({data: []});
       await expect(testDb.notification.findFirstOrThrow({
         where: {recipientId: currentUserId},
-        select: {deliveredAt: true},
-      })).resolves.toEqual({deliveredAt: null});
+        select: {acknowledgedAt: true, leaseExpiresAt: true},
+      })).resolves.toEqual({
+        acknowledgedAt: null,
+        leaseExpiresAt: null,
+      });
     },
   );
 
@@ -354,7 +377,7 @@ describe.sequential('notification API', () => {
     await expect(testDb.notification.count({
       where: {
         recipientId: currentUserId,
-        deliveredAt: {not: null},
+        leaseExpiresAt: {not: null},
       },
     })).resolves.toBe(1);
   });
@@ -385,7 +408,41 @@ describe.sequential('notification API', () => {
       ),
     ).toBe(1);
     await expect(testDb.notification.count({
-      where: {recipientId: currentUserId, deliveredAt: {not: null}},
+      where: {recipientId: currentUserId, leaseExpiresAt: {not: null}},
     })).resolves.toBe(1);
+  });
+
+  it('redelivers after a committed lease response is lost', async () => {
+    const now = new Date('2026-07-28T09:55:00.000Z');
+    freezeClock(now);
+    await createHandoff({now});
+
+    const lostResponse = await poll(cookie);
+    expect(lostResponse.status).toBe(200);
+    const stored = await testDb.notification.findFirstOrThrow({
+      where: {recipientId: currentUserId},
+      select: {id: true, acknowledgedAt: true, leaseExpiresAt: true},
+    });
+    expect(stored).toEqual({
+      id: expect.any(String),
+      acknowledgedAt: null,
+      leaseExpiresAt: new Date('2026-07-28T09:55:30.000Z'),
+    });
+    await expect(poll(cookie).then((response) => response.json()))
+      .resolves.toEqual({data: []});
+
+    freezeClock(new Date('2026-07-28T09:55:30.000Z'));
+    const redelivered = await poll(cookie);
+    const redeliveredBody = await redelivered.json();
+    expect(redeliveredBody.data).toEqual([
+      expect.objectContaining({id: stored.id}),
+    ]);
+
+    const firstAck = await acknowledge(stored.id);
+    const repeatedAck = await acknowledge(stored.id);
+    expect([firstAck.status, repeatedAck.status]).toEqual([204, 204]);
+    freezeClock(new Date('2026-07-28T09:56:00.000Z'));
+    await expect(poll(cookie).then((response) => response.json()))
+      .resolves.toEqual({data: []});
   });
 });

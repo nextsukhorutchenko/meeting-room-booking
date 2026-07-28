@@ -22,6 +22,15 @@ const appEnv: AppEnv = {
   officeCloseHour: 19,
   sessionDays: 7,
   notifyBeforeMinutes: 10,
+  notificationLeaseSeconds: 30,
+  authRequestBodyMaxBytes: 8_192,
+  authClientIpHeader: 'x-forwarded-for',
+  authRateLimitWindowSeconds: 60,
+  authLoginIpLimit: 30,
+  authLoginIdentityLimit: 10,
+  authRegisterIpLimit: 10,
+  authRegisterIdentityLimit: 5,
+  verificationDelivery: {mode: 'console'},
 };
 
 const baseInput: CreateBookingInput = {

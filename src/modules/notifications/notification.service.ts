@@ -35,7 +35,13 @@ export interface NotificationTransaction {
   claimActive(input: {
     recipientId: string;
     now: Date;
+    leaseExpiresAt: Date;
   }): Promise<DueNotification[]>;
+  acknowledge(input: {
+    recipientId: string;
+    notificationId: string;
+    acknowledgedAt: Date;
+  }): Promise<void>;
 }
 
 export interface NotificationRepository {
@@ -48,6 +54,13 @@ const claimInputSchema = z.strictObject({
   recipientId: z.string().trim().min(1),
   now: z.date(),
   leadMinutes: z.number().int().positive(),
+  leaseSeconds: z.number().int().min(5).max(300),
+});
+
+const acknowledgementInputSchema = z.strictObject({
+  recipientId: z.string().trim().min(1),
+  notificationId: z.string().trim().min(1),
+  now: z.date(),
 });
 
 function invalidInputError(): DomainError {
@@ -73,6 +86,7 @@ export class DefaultNotificationService {
     recipientId: string;
     now: Date;
     leadMinutes: number;
+    leaseSeconds: number;
   }): Promise<DueNotification[]> {
     const parsed = claimInputSchema.safeParse(input);
     if (!parsed.success) {
@@ -103,8 +117,36 @@ export class DefaultNotificationService {
         return transaction.claimActive({
           recipientId: parsed.data.recipientId,
           now: parsed.data.now,
+          leaseExpiresAt: new Date(
+            parsed.data.now.getTime() + parsed.data.leaseSeconds * 1_000,
+          ),
         });
       });
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      throw serviceUnavailableError();
+    }
+  }
+
+  async acknowledge(input: {
+    recipientId: string;
+    notificationId: string;
+    now: Date;
+  }): Promise<void> {
+    const parsed = acknowledgementInputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw invalidInputError();
+    }
+    try {
+      await this.repository.withTransaction((transaction) =>
+        transaction.acknowledge({
+          recipientId: parsed.data.recipientId,
+          notificationId: parsed.data.notificationId,
+          acknowledgedAt: parsed.data.now,
+        }),
+      );
     } catch (error) {
       if (error instanceof DomainError) {
         throw error;
@@ -116,7 +158,7 @@ export class DefaultNotificationService {
 
 type TransactionDatabase = Pick<
   Prisma.TransactionClient,
-  '$queryRaw' | 'notification'
+  '$executeRaw' | '$queryRaw' | 'notification'
 >;
 
 type DueHandoffRow = {
@@ -190,6 +232,7 @@ class PrismaNotificationTransaction implements NotificationTransaction {
   async claimActive(input: {
     recipientId: string;
     now: Date;
+    leaseExpiresAt: Date;
   }): Promise<DueNotification[]> {
     const rows = await this.transaction.$queryRaw<ClaimedNotificationRow[]>`
       WITH claimable AS (
@@ -202,7 +245,11 @@ class PrismaNotificationTransaction implements NotificationTransaction {
         WHERE notification."recipientId" = ${input.recipientId}
           AND notification."type" =
             CAST('BOOKING_END_HANDOFF' AS "NotificationType")
-          AND notification."deliveredAt" IS NULL
+          AND notification."acknowledgedAt" IS NULL
+          AND (
+            notification."leaseExpiresAt" IS NULL
+            OR notification."leaseExpiresAt" <= ${input.now}
+          )
           AND notification."deliverAt" <= ${input.now}
           AND current_booking."cancelledAt" IS NULL
           AND next_booking."cancelledAt" IS NULL
@@ -211,10 +258,14 @@ class PrismaNotificationTransaction implements NotificationTransaction {
       ),
       claimed AS (
         UPDATE "Notification" AS notification
-        SET "deliveredAt" = ${input.now}
+        SET "leaseExpiresAt" = ${input.leaseExpiresAt}
         FROM claimable
         WHERE notification."id" = claimable."id"
-          AND notification."deliveredAt" IS NULL
+          AND notification."acknowledgedAt" IS NULL
+          AND (
+            notification."leaseExpiresAt" IS NULL
+            OR notification."leaseExpiresAt" <= ${input.now}
+          )
         RETURNING
           notification."id",
           notification."currentBookingId",
@@ -245,6 +296,24 @@ class PrismaNotificationTransaction implements NotificationTransaction {
       endsAt: row.endsAt.toISOString(),
       nextAuthorName: row.nextAuthorName,
     }));
+  }
+
+  async acknowledge(input: {
+    recipientId: string;
+    notificationId: string;
+    acknowledgedAt: Date;
+  }): Promise<void> {
+    await this.transaction.$executeRaw`
+      UPDATE "Notification"
+      SET
+        "acknowledgedAt" = COALESCE(
+          "acknowledgedAt",
+          ${input.acknowledgedAt}
+        ),
+        "leaseExpiresAt" = NULL
+      WHERE "id" = ${input.notificationId}
+        AND "recipientId" = ${input.recipientId}
+    `;
   }
 }
 
@@ -279,6 +348,15 @@ export async function claimDueNotifications(input: {
   recipientId: string;
   now: Date;
   leadMinutes: number;
+  leaseSeconds: number;
 }): Promise<DueNotification[]> {
   return (await getDefaultService()).claimDueNotifications(input);
+}
+
+export async function acknowledgeNotification(input: {
+  recipientId: string;
+  notificationId: string;
+  now: Date;
+}): Promise<void> {
+  await (await getDefaultService()).acknowledge(input);
 }

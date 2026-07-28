@@ -29,6 +29,8 @@ FROM source AS builder
 
 RUN DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder \
     APP_URL=http://localhost:3000 \
+    APP_DEPLOYMENT_MODE=local-development \
+    VERIFICATION_DELIVERY_MODE=console \
     npm run build
 
 FROM source AS setup

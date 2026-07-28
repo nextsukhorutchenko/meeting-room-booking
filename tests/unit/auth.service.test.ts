@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import type {Clock} from '../../src/lib/time/office-time';
 import type {
   AuthUser as SessionUser,
@@ -15,6 +15,7 @@ import {
 } from '../../src/modules/auth/auth.service';
 import {dummyPasswordHash} from '../../src/modules/auth/password';
 import {
+  createVerificationLinkWriter,
   DefaultVerificationService,
   type PreparedVerification,
   type RegistrationVerificationService,
@@ -28,6 +29,7 @@ class InMemoryAuthRepository implements AuthRepository {
   private sequence = 0;
   private readonly accounts = new Map<string, AuthAccount>();
   failSessionInsert = false;
+  readonly lifecycleEvents: string[] = [];
 
   async createRegistration(input: {
     name: string;
@@ -35,8 +37,10 @@ class InMemoryAuthRepository implements AuthRepository {
     normalizedEmail: string;
     passwordHash: string;
   }, _session: Pick<PreparedSession, 'tokenHash' | 'expiresAt'>,
-  _verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>,
-  beforeCommit: () => void): Promise<AuthAccount> {
+  _verification: Pick<PreparedVerification, 'tokenHash' | 'expiresAt'>):
+    Promise<AuthAccount> {
+    void _session;
+    void _verification;
     if (this.failSessionInsert) {
       throw new Error('Session insert failed');
     }
@@ -49,8 +53,8 @@ class InMemoryAuthRepository implements AuthRepository {
       ...input,
       emailVerifiedAt: null,
     };
-    beforeCommit();
     this.accounts.set(input.normalizedEmail, account);
+    this.lifecycleEvents.push('committed');
     return account;
   }
 
@@ -93,6 +97,8 @@ class InMemorySessionService implements SessionService {
 class InMemoryVerificationService implements RegistrationVerificationService {
   readonly writtenUrls: string[] = [];
 
+  constructor(private readonly lifecycleEvents: string[] = []) {}
+
   prepare(): PreparedVerification {
     return {
       tokenHash: 'prepared-verification-hash',
@@ -101,13 +107,16 @@ class InMemoryVerificationService implements RegistrationVerificationService {
     };
   }
 
-  writeLink(url: string): void {
-    this.writtenUrls.push(url);
+  async deliver(
+    prepared: Pick<PreparedVerification, 'expiresAt' | 'url'>,
+  ): Promise<void> {
+    this.lifecycleEvents.push('delivered');
+    this.writtenUrls.push(prepared.url);
   }
 
   async issue(): Promise<{url: string; expiresAt: Date}> {
     const prepared = this.prepare();
-    this.writeLink(prepared.url);
+    await this.deliver(prepared);
     return {url: prepared.url, expiresAt: prepared.expiresAt};
   }
 
@@ -122,7 +131,9 @@ function createService(): {
 } {
   const repository = new InMemoryAuthRepository();
   const sessions = new InMemorySessionService();
-  const verification = new InMemoryVerificationService();
+  const verification = new InMemoryVerificationService(
+    repository.lifecycleEvents,
+  );
   const service = new AuthService({
     repository,
     sessions,
@@ -172,6 +183,18 @@ describe('AuthService', () => {
       },
     });
     expect(verification.writtenUrls).toHaveLength(2);
+  });
+
+  it('delivers verification only after registration persistence commits', async () => {
+    const {repository, service} = createService();
+
+    await service.register({
+      name: 'Ada',
+      email: 'ada@example.com',
+      password: 'correct password',
+    });
+
+    expect(repository.lifecycleEvents).toEqual(['committed', 'delivered']);
   });
 
   it('returns stable field errors before hashing invalid registration data', async () => {
@@ -329,22 +352,18 @@ type VerificationRecord = {
 class InMemoryVerificationRepository implements VerificationRepository {
   readonly records = new Map<string, VerificationRecord>();
   readonly verifiedUserIds = new Set<string>();
+  readonly lifecycleEvents: string[] = [];
 
   async create(input: {
     tokenHash: string;
     userId: string;
     expiresAt: Date;
-  }, beforeCommit: () => void): Promise<void> {
+  }): Promise<void> {
     if (this.records.has(input.tokenHash)) {
       throw new Error('Verification token hash already exists');
     }
     this.insert(input);
-    try {
-      beforeCommit();
-    } catch (error) {
-      this.records.delete(input.tokenHash);
-      throw error;
-    }
+    this.lifecycleEvents.push('committed');
   }
 
   insert(input: {
@@ -389,7 +408,9 @@ function verificationService(options: {
   const repository = options.repository ?? new InMemoryVerificationRepository();
   const urls: string[] = [];
   const writer = options.writer ?? {
-    write: (url) => urls.push(url),
+    write: ({url}) => {
+      urls.push(url);
+    },
   };
   const service = new DefaultVerificationService({
     repository,
@@ -406,11 +427,41 @@ function verificationService(options: {
 }
 
 describe('DefaultVerificationService', () => {
+  it('does not log production webhook verification bearer URLs', async () => {
+    const rawToken = 'production-verification-bearer';
+    const verificationUrl =
+      `https://booking.example.com/verify?token=${rawToken}`;
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, {status: 204}));
+    const writer = createVerificationLinkWriter({
+      mode: 'webhook',
+      url: 'https://mail.example.com/verification',
+      bearerToken: 'configured-delivery-credential',
+    }, fetcher);
+
+    await writer.write({
+      expiresAt: new Date('2026-07-28T06:00:00.000Z'),
+      recipient: {email: 'ada@example.com', name: 'Ada'},
+      url: verificationUrl,
+    });
+
+    expect(info).not.toHaveBeenCalled();
+    expect(JSON.stringify(info.mock.calls)).not.toContain(rawToken);
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://mail.example.com/verification',
+      expect.objectContaining({method: 'POST'}),
+    );
+    info.mockRestore();
+  });
+
   it('issues through the public contract without leaking its token hash', async () => {
     const {repository, service, urls} = verificationService();
     const publicService: VerificationService = service;
 
-    const issued = await publicService.issue('user-1');
+    const issued = await publicService.issue('user-1', {
+      email: 'ada@example.com',
+      name: 'Ada',
+    });
     const rawToken = new URL(issued.url).searchParams.get('token');
 
     expect(rawToken).toEqual(expect.any(String));
@@ -432,7 +483,26 @@ describe('DefaultVerificationService', () => {
     expect(urls).toEqual([issued.url]);
   });
 
-  it('rolls back public issuance when the link writer fails', async () => {
+  it('delivers a public issuance only after persistence commits', async () => {
+    const repository = new InMemoryVerificationRepository();
+    const {service} = verificationService({
+      repository,
+      writer: {
+        write: () => {
+          repository.lifecycleEvents.push('writer');
+        },
+      },
+    });
+
+    await service.issue('user-1', {
+      email: 'ada@example.com',
+      name: 'Ada',
+    });
+
+    expect(repository.lifecycleEvents).toEqual(['committed', 'writer']);
+  });
+
+  it('keeps committed issuance when post-commit delivery fails', async () => {
     const privateDetail = 'private writer failure detail';
     const {repository, service} = verificationService({
       writer: {
@@ -442,7 +512,10 @@ describe('DefaultVerificationService', () => {
       },
     });
 
-    const failure = await service.issue('user-1')
+    const failure = await service.issue('user-1', {
+      email: 'ada@example.com',
+      name: 'Ada',
+    })
       .catch((error: unknown) => error);
 
     expect(failure).toMatchObject({
@@ -451,7 +524,7 @@ describe('DefaultVerificationService', () => {
       status: 503,
     });
     expect(JSON.stringify(failure)).not.toContain(privateDetail);
-    expect(repository.records.size).toBe(0);
+    expect(repository.records.size).toBe(1);
   });
 
   it('verifies a user once and rejects a consumed token', async () => {

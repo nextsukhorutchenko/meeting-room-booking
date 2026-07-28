@@ -25,7 +25,8 @@ type StoredNotification = {
   currentBookingId: string;
   nextBookingId: string;
   deliverAt: Date;
-  deliveredAt: Date | null;
+  leaseExpiresAt: Date | null;
+  acknowledgedAt: Date | null;
 };
 
 const recipientId = 'current-user';
@@ -101,7 +102,8 @@ class MemoryNotificationTransaction implements NotificationTransaction {
       this.notifications.push({
         id: `notification-${this.notifications.length + 1}`,
         ...input,
-        deliveredAt: null,
+        leaseExpiresAt: null,
+        acknowledgedAt: null,
       });
     }
   }
@@ -109,6 +111,7 @@ class MemoryNotificationTransaction implements NotificationTransaction {
   async claimActive(input: {
     recipientId: string;
     now: Date;
+    leaseExpiresAt: Date;
   }): Promise<DueNotification[]> {
     return this.notifications.flatMap((notification) => {
       const current = this.bookings.find(
@@ -119,7 +122,11 @@ class MemoryNotificationTransaction implements NotificationTransaction {
       );
       if (
         notification.recipientId !== input.recipientId ||
-        notification.deliveredAt !== null ||
+        notification.acknowledgedAt !== null ||
+        (
+          notification.leaseExpiresAt !== null &&
+          notification.leaseExpiresAt > input.now
+        ) ||
         notification.deliverAt > input.now ||
         !current ||
         !next ||
@@ -128,7 +135,7 @@ class MemoryNotificationTransaction implements NotificationTransaction {
       ) {
         return [];
       }
-      notification.deliveredAt = input.now;
+      notification.leaseExpiresAt = input.leaseExpiresAt;
       return [{
         id: notification.id,
         roomName: current.roomName,
@@ -137,6 +144,21 @@ class MemoryNotificationTransaction implements NotificationTransaction {
         nextAuthorName: next.authorName,
       }];
     });
+  }
+
+  async acknowledge(input: {
+    recipientId: string;
+    notificationId: string;
+    acknowledgedAt: Date;
+  }): Promise<void> {
+    const notification = this.notifications.find((candidate) =>
+      candidate.id === input.notificationId &&
+      candidate.recipientId === input.recipientId,
+    );
+    if (notification) {
+      notification.acknowledgedAt ??= input.acknowledgedAt;
+      notification.leaseExpiresAt = null;
+    }
   }
 }
 
@@ -177,6 +199,7 @@ describe('DefaultNotificationService', () => {
       recipientId,
       now,
       leadMinutes: 0,
+      leaseSeconds: 30,
     })).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       message: 'Invalid notification claim input.',
@@ -192,6 +215,7 @@ describe('DefaultNotificationService', () => {
       recipientId,
       now,
       leadMinutes: 10,
+      leaseSeconds: 30,
     })).resolves.toEqual([{
       id: 'notification-1',
       roomName: 'Oak',
@@ -211,6 +235,7 @@ describe('DefaultNotificationService', () => {
       recipientId,
       now,
       leadMinutes: 10,
+      leaseSeconds: 30,
     })).resolves.toEqual([]);
     expect(subject.notifications).toEqual([]);
   });
@@ -231,6 +256,7 @@ describe('DefaultNotificationService', () => {
         recipientId,
         now,
         leadMinutes: 10,
+        leaseSeconds: 30,
       })).resolves.toEqual([]);
     },
   );
@@ -248,13 +274,14 @@ describe('DefaultNotificationService', () => {
       recipientId,
       now,
       leadMinutes: 10,
+      leaseSeconds: 30,
     })).resolves.toEqual([]);
     expect(subject.notifications).toEqual([]);
   });
 
   it('returns a handoff exactly once across repeated polls', async () => {
     const subject = service([booking('current'), booking('next')]);
-    const input = {recipientId, now, leadMinutes: 10};
+    const input = {recipientId, now, leadMinutes: 10, leaseSeconds: 30};
 
     const first = await subject.service.claimDueNotifications(input);
     const second = await subject.service.claimDueNotifications(input);
@@ -262,6 +289,47 @@ describe('DefaultNotificationService', () => {
     expect(first).toHaveLength(1);
     expect(second).toEqual([]);
     expect(subject.notifications).toHaveLength(1);
+  });
+
+  it('redelivers the same ID after lease expiry until acknowledged', async () => {
+    const subject = service([booking('current'), booking('next')]);
+    const first = await subject.service.claimDueNotifications({
+      recipientId,
+      now,
+      leadMinutes: 10,
+      leaseSeconds: 30,
+    });
+
+    const afterExpiry = new Date(now.getTime() + 30_000);
+    const redelivered = await subject.service.claimDueNotifications({
+      recipientId,
+      now: afterExpiry,
+      leadMinutes: 10,
+      leaseSeconds: 30,
+    });
+    await subject.service.acknowledge({
+      recipientId,
+      notificationId: first[0].id,
+      now: afterExpiry,
+    });
+    await subject.service.acknowledge({
+      recipientId,
+      notificationId: first[0].id,
+      now: afterExpiry,
+    });
+    const afterAck = await subject.service.claimDueNotifications({
+      recipientId,
+      now: new Date(afterExpiry.getTime() + 30_000),
+      leadMinutes: 10,
+      leaseSeconds: 30,
+    });
+
+    expect(redelivered).toEqual(first);
+    expect(afterAck).toEqual([]);
+    expect(subject.notifications[0]).toMatchObject({
+      acknowledgedAt: afterExpiry,
+      leaseExpiresAt: null,
+    });
   });
 
   it('rechecks cancellation when claiming an existing notification', async () => {
@@ -274,7 +342,8 @@ describe('DefaultNotificationService', () => {
       currentBookingId: current.id,
       nextBookingId: next.id,
       deliverAt: new Date('2026-07-28T09:50:00.000Z'),
-      deliveredAt: null,
+      leaseExpiresAt: null,
+      acknowledgedAt: null,
     });
     next.cancelledAt = now;
 
@@ -282,7 +351,8 @@ describe('DefaultNotificationService', () => {
       recipientId,
       now,
       leadMinutes: 10,
+      leaseSeconds: 30,
     })).resolves.toEqual([]);
-    expect(subject.notifications[0].deliveredAt).toBeNull();
+    expect(subject.notifications[0].leaseExpiresAt).toBeNull();
   });
 });

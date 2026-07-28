@@ -10,6 +10,7 @@ import {
 
 const baseEnvironment = {
   APP_URL: 'http://localhost:3000',
+  APP_DEPLOYMENT_MODE: 'local-development',
   DATABASE_URL:
     'postgresql://meeting_room_booking:password@localhost:5432/' +
     'meeting_room_booking?schema=public',
@@ -18,6 +19,7 @@ const baseEnvironment = {
   OFFICE_OPEN_HOUR: '9',
   OFFICE_TIMEZONE: 'Europe/Kyiv',
   SESSION_DAYS: '7',
+  VERIFICATION_DELIVERY_MODE: 'console',
   [CLEAN_START_MUTATION_CONSENT]:
     'database=postgresql://localhost:5432/meeting_room_booking;' +
     'app=http://localhost:3000',

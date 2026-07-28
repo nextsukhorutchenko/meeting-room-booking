@@ -147,9 +147,23 @@ local credentials, not secrets:
 | Demo Organizer | `organizer@example.test` | `demo-booking-password` |
 | Demo Guest | `guest@example.test` | `demo-booking-password` |
 
-New registrations are unverified. In development, the server prints a one-time
-verification URL instead of sending email. The token expires after 24 hours and
-is removed from browser history as soon as the verification page captures it.
+New registrations are unverified. `APP_DEPLOYMENT_MODE` and
+`VERIFICATION_DELIVERY_MODE` are required.
+`console` prints a one-time verification URL only when `APP_URL` is loopback.
+It is rejected unless `APP_DEPLOYMENT_MODE=local-development`. Production
+deployments must select `production` plus `webhook`, an HTTPS endpoint, and
+`VERIFICATION_WEBHOOK_BEARER_TOKEN`. After registration commits, the app sends
+an authenticated JSON request containing `recipientEmail`, `recipientName`,
+`verificationUrl`, and `expiresAt`. Delivery failures never roll back or expose
+the committed token through logs. The token expires after 24 hours and is
+removed from browser history as soon as the verification page captures it.
+
+The auth routes read at most `AUTH_REQUEST_BODY_MAX_BYTES` before parsing JSON,
+including chunked requests. Login and registration use PostgreSQL-backed
+per-client-IP and normalized-email windows. Configure their limits with the
+`AUTH_*_LIMIT` values. `AUTH_CLIENT_IP_HEADER` must name a header overwritten by
+the trusted reverse proxy; direct clients without it share the conservative
+`unknown` bucket.
 
 ## Verification
 
@@ -177,7 +191,9 @@ npx playwright test --config playwright.config.ts --list
 ```
 
 The deterministic Playwright suite excludes `e2e/exploratory` and is the
-required browser gate. Pull requests use the impact map to select known-safe
+required browser gate. The canonical command always rebuilds current source,
+starts the standalone server, and waits on `/api/health` before Playwright.
+Pull requests use the impact map to select known-safe
 tagged slices; unknown, deleted, renamed, copied, infrastructure, test, or
 configuration paths fall back to the full suite. The custom reporter records
 selection evidence without changing Playwright's result.
@@ -199,8 +215,8 @@ environment-configurable.
 
 ## Delivered extensions
 
-- One-time development email verification with hashed, expiring tokens
-- Booking handoff notifications for an immediately following active booking
+- One-time verification delivery with hashed, expiring tokens
+- Leased and explicitly acknowledged booking handoff notifications
 - Responsive daily mobile schedule and IANA timezone display
 - Deterministic pull-request E2E impact selection and result reporting
 - Optional Midscene visual exploration kept outside the required test suite
@@ -218,7 +234,10 @@ No credentialed Midscene result is implied by the deterministic gates.
 ## Known limitations
 
 - Notifications use in-app polling every 60 seconds; there is no email, push,
-  WebSocket, or background delivery channel.
+  WebSocket, or background delivery channel. Polling leases each durable ID,
+  the browser acknowledges after accepting a valid response, and an
+  unacknowledged lease is redelivered after `NOTIFICATION_LEASE_SECONDS`.
+  Delivery is therefore at least once and the browser deduplicates by ID.
 - Midscene exploration is optional and unavailable without separate provider
   credentials.
 - Recurring bookings are not implemented.

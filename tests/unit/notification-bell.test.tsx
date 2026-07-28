@@ -44,10 +44,19 @@ describe('NotificationBell', () => {
 
     render(<NotificationBell />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    await waitFor(() => expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       '/api/notifications',
       expect.objectContaining({
         cache: 'no-store',
+        method: 'GET',
+      }),
+    ));
+    await waitFor(() => expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/notifications',
+      expect.objectContaining({
+        body: JSON.stringify({notificationId: 'notification-1'}),
         method: 'POST',
       }),
     ));

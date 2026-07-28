@@ -1,4 +1,5 @@
 import {createHash, randomBytes} from 'node:crypto';
+import {NextRequest} from 'next/server';
 import {
   afterAll,
   afterEach,
@@ -68,7 +69,9 @@ function createPreparedVerificationService(input: {
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
       url: url.toString(),
     }),
-    writeLink: input.writeLink ?? (() => {}),
+    deliver: async (prepared) => {
+      (input.writeLink ?? (() => {}))(prepared.url);
+    },
     issue: async () => {
       throw new Error('Unexpected public verification issuance');
     },
@@ -78,6 +81,9 @@ function createPreparedVerificationService(input: {
 
 beforeAll(async () => {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  process.env.AUTH_REQUEST_BODY_MAX_BYTES = '1024';
+  process.env.APP_DEPLOYMENT_MODE = 'local-development';
+  process.env.VERIFICATION_DELIVERY_MODE = 'console';
   const [registerRoute, loginRoute, logoutRoute, verifyRoute, authModule] =
     await Promise.all([
       import('../../src/app/api/auth/register/route'),
@@ -100,6 +106,7 @@ beforeEach(async () => {
       verificationUrls.push(value);
     }
   });
+  await testDb.authRateLimitBucket.deleteMany();
   await testDb.user.deleteMany({
     where: {normalizedEmail: {startsWith: testEmailPrefix}},
   });
@@ -110,6 +117,7 @@ afterEach(() => {
 });
 
 afterAll(async () => {
+  await testDb.authRateLimitBucket.deleteMany();
   await testDb.user.deleteMany({
     where: {normalizedEmail: {startsWith: testEmailPrefix}},
   });
@@ -117,6 +125,147 @@ afterAll(async () => {
 });
 
 describe.sequential('auth API', () => {
+  it.each([
+    ['/api/auth/register', () => registerPost],
+    ['/api/auth/login', () => loginPost],
+  ] as const)('rejects oversized chunked bodies on %s', async (
+    path,
+    handler,
+  ) => {
+    const chunks = [
+      `{"email":"${'a'.repeat(700)}`,
+      `${'b'.repeat(700)}","password":"correct password"}`,
+      '{"unreachable":true}',
+    ];
+    let nextChunk = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks[nextChunk];
+        nextChunk += 1;
+        if (chunk === undefined) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode(chunk));
+      },
+    });
+    const response = await handler()(new NextRequest(
+      new URL(path, process.env.APP_URL ?? 'http://127.0.0.1:3000'),
+      {
+        body,
+        duplex: 'half',
+        headers: {
+          'content-type': 'application/json',
+          origin: new URL(
+            process.env.APP_URL ?? 'http://127.0.0.1:3000',
+          ).origin,
+        },
+        method: 'POST',
+      } as ConstructorParameters<typeof NextRequest>[1],
+    ));
+
+    expect(response.status).toBe(413);
+    expect(nextChunk).toBeLessThan(chunks.length);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        message: 'Request body is too large',
+      },
+    });
+  });
+
+  it('shares login throttling and recovers after the database window expires', async () => {
+    const previousIdentityLimit = process.env.AUTH_LOGIN_IDENTITY_LIMIT;
+    const previousIpLimit = process.env.AUTH_LOGIN_IP_LIMIT;
+    process.env.AUTH_LOGIN_IDENTITY_LIMIT = '2';
+    process.env.AUTH_LOGIN_IP_LIMIT = '20';
+    const credentials = {
+      email: `${testEmailPrefix}unknown-rate-limit@example.com`,
+      password: 'correct password',
+    };
+    try {
+      const first = await postJson(
+        loginPost,
+        '/api/auth/login',
+        credentials,
+      );
+      const second = await postJson(
+        loginPost,
+        '/api/auth/login',
+        credentials,
+      );
+      const limited = await postJson(
+        loginPost,
+        '/api/auth/login',
+        credentials,
+      );
+
+      expect([first.status, second.status]).toEqual([401, 401]);
+      await expect(first.json()).resolves.toEqual(await second.json());
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get('retry-after')).toMatch(/^\d+$/);
+      await expect(limited.json()).resolves.toEqual({
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many attempts. Try again later.',
+        },
+      });
+
+      await testDb.authRateLimitBucket.updateMany({
+        data: {expiresAt: new Date(0)},
+      });
+      const recovered = await postJson(
+        loginPost,
+        '/api/auth/login',
+        credentials,
+      );
+      expect(recovered.status).toBe(401);
+    } finally {
+      if (previousIdentityLimit === undefined) {
+        delete process.env.AUTH_LOGIN_IDENTITY_LIMIT;
+      } else {
+        process.env.AUTH_LOGIN_IDENTITY_LIMIT = previousIdentityLimit;
+      }
+      if (previousIpLimit === undefined) {
+        delete process.env.AUTH_LOGIN_IP_LIMIT;
+      } else {
+        process.env.AUTH_LOGIN_IP_LIMIT = previousIpLimit;
+      }
+    }
+  });
+
+  it('throttles repeated registration identities before password hashing', async () => {
+    const previousLimit = process.env.AUTH_REGISTER_IDENTITY_LIMIT;
+    process.env.AUTH_REGISTER_IDENTITY_LIMIT = '1';
+    const registration = {
+      name: 'Rate Limited Registration',
+      email: `${testEmailPrefix}register-rate-limit@example.com`,
+      password: 'correct password',
+    };
+    try {
+      const first = await postJson(
+        registerPost,
+        '/api/auth/register',
+        registration,
+      );
+      const limited = await postJson(
+        registerPost,
+        '/api/auth/register',
+        registration,
+      );
+
+      expect(first.status).toBe(201);
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get('retry-after')).toMatch(/^\d+$/);
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.AUTH_REGISTER_IDENTITY_LIMIT;
+      } else {
+        process.env.AUTH_REGISTER_IDENTITY_LIMIT = previousLimit;
+      }
+    }
+  });
+
   it('rejects every cross-origin POST before processing its body', async () => {
     const routes = [
       ['/api/auth/register', registerPost],
