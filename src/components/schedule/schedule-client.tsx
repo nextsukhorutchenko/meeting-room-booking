@@ -497,9 +497,9 @@ export function ScheduleClient({
     if (nextWeek !== weekStart) {
       conflictRefreshRequestRef.current = false;
       setConflictRefresh({status: 'idle'});
+      setPreservedScheduleKey(null);
     }
     preserveScheduleOnRefreshRef.current = false;
-    setPreservedScheduleKey(null);
     setCancellation(null);
     setStartSelection(null);
     setWeekStart(nextWeek);
@@ -523,7 +523,9 @@ export function ScheduleClient({
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
     setConflictRefresh({status: 'idle'});
-    setPreservedScheduleKey(null);
+    if (currentWeek !== weekStart) {
+      setPreservedScheduleKey(null);
+    }
     setCancellation(null);
     setStartSelection(null);
     setWeekStart(currentWeek);

@@ -709,6 +709,80 @@ describe('ScheduleClient request state', () => {
     expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
   });
 
+  it.each([
+    {
+      navigationLabel: 'Next day',
+      selectedDay: '2026-08-03',
+    },
+    {
+      navigationLabel: 'Today',
+      selectedDay: '2026-08-05',
+    },
+  ])(
+    'keeps a failed conflict schedule usable after same-week $navigationLabel',
+    async ({navigationLabel, selectedDay}) => {
+      navigation.searchParams = new URLSearchParams(
+        `roomId=oak&weekStart=2026-08-03&day=${selectedDay}`,
+      );
+      let scheduleRequestCount = 0;
+
+      fetchMock.mockImplementation((
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        const url = requestUrl(input);
+        if (url === '/api/rooms') {
+          return Promise.resolve(jsonResponse({data: rooms}));
+        }
+        if (url.includes('/api/rooms/oak/schedule')) {
+          scheduleRequestCount += 1;
+          return scheduleRequestCount === 1 ?
+            Promise.resolve(
+              scheduleResponse('2026-08-03', 'Same-week schedule'),
+            ) :
+            Promise.resolve(jsonResponse({
+              error: {message: 'Service unavailable'},
+            }, 503));
+        }
+        if (url === '/api/bookings' && init?.method === 'POST') {
+          return Promise.resolve(jsonResponse({
+            error: {
+              code: 'BOOKING_CONFLICT',
+              message: 'This time is already booked. Choose another slot.',
+            },
+          }, 409));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      renderScheduleClient();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', {
+        name: /Book Tuesday.*11:00/i,
+      }));
+      await user.type(screen.getByLabelText('Title'), 'Planning');
+      await user.click(screen.getByRole('button', {name: 'Create booking'}));
+      expect(await screen.findByText('Unable to refresh availability.'))
+        .toBeVisible();
+
+      await user.click(screen.getByRole('button', {name: 'Cancel'}));
+      await user.click(screen.getByRole('button', {name: navigationLabel}));
+
+      expect(scheduleRequestCount).toBe(2);
+      expect(screen.getAllByText('Same-week schedule')[0]).toBeVisible();
+      expect(screen.queryByText('Loading schedule')).not.toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', {name: /^Book /}).length,
+      ).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole('button', {
+        name: /Book Thursday.*13:00/i,
+      }));
+      expect(screen.getByRole('button', {name: 'Create booking'}))
+        .toBeEnabled();
+    },
+  );
+
   it('clears a failed conflict refresh when day navigation changes week', async () => {
     navigation.searchParams = new URLSearchParams(
       'roomId=oak&weekStart=2026-08-03&day=2026-08-09',
