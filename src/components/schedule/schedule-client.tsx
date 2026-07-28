@@ -169,6 +169,7 @@ export function ScheduleClient({
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
   const conflictRefreshRequestRef = useRef(false);
+  const conflictRefreshGenerationRef = useRef(0);
   const linkedBookingId = searchParams.get('bookingId');
   const linkedBookingIdRef = useRef(linkedBookingId);
 
@@ -318,6 +319,14 @@ export function ScheduleClient({
     const requestKey = activeScheduleKey;
     const preserveSchedule = preserveScheduleOnRefreshRef.current;
     const conflictRefreshRequest = conflictRefreshRequestRef.current;
+    const conflictRefreshGeneration = conflictRefreshGenerationRef.current;
+    function isActiveConflictRefreshRequest(): boolean {
+      return (
+        conflictRefreshRequest &&
+        conflictRefreshRequestRef.current &&
+        conflictRefreshGeneration === conflictRefreshGenerationRef.current
+      );
+    }
     async function loadSchedule() {
       if (!preserveSchedule) {
         setScheduleState({key: requestKey, status: 'loading'});
@@ -340,7 +349,7 @@ export function ScheduleClient({
           );
         }
         preserveScheduleOnRefreshRef.current = false;
-        if (conflictRefreshRequest) {
+        if (isActiveConflictRefreshRequest()) {
           conflictRefreshRequestRef.current = false;
           setConflictRefresh({status: 'idle'});
         }
@@ -360,11 +369,13 @@ export function ScheduleClient({
         }
         preserveScheduleOnRefreshRef.current = false;
         if (conflictRefreshRequest) {
-          conflictRefreshRequestRef.current = false;
-          setConflictRefresh({
-            status: 'error',
-            message: 'Unable to refresh availability.',
-          });
+          if (isActiveConflictRefreshRequest()) {
+            conflictRefreshRequestRef.current = false;
+            setConflictRefresh({
+              status: 'error',
+              message: 'Unable to refresh availability.',
+            });
+          }
           return;
         }
         setPreservedScheduleKey(null);
@@ -538,11 +549,20 @@ export function ScheduleClient({
     setRefreshKey((key) => key + 1);
   }
 
+  function closeBookingDialog() {
+    conflictRefreshGenerationRef.current += 1;
+    conflictRefreshRequestRef.current = false;
+    preserveScheduleOnRefreshRef.current = false;
+    setConflictRefresh({status: 'idle'});
+    setStartSelection(null);
+  }
+
   function refreshAfterConflict() {
     if (scheduleState?.status === 'success') {
       setPreservedScheduleKey(scheduleState.key);
     }
     preserveScheduleOnRefreshRef.current = true;
+    conflictRefreshGenerationRef.current += 1;
     conflictRefreshRequestRef.current = true;
     setConflictRefresh({status: 'loading'});
     setRefreshKey((key) => key + 1);
@@ -667,7 +687,7 @@ export function ScheduleClient({
 
       <BookingDialog
         conflictRefresh={conflictRefresh}
-        onClose={() => setStartSelection(null)}
+        onClose={closeBookingDialog}
         onConflict={refreshAfterConflict}
         onCreated={handleCreated}
         onRetryConflictRefresh={refreshAfterConflict}

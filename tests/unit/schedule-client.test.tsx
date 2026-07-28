@@ -25,6 +25,7 @@ vi.mock('next/navigation', () => ({
 
 type Deferred<T> = {
   promise: Promise<T>;
+  reject(reason?: unknown): void;
   resolve(value: T): void;
 };
 
@@ -35,11 +36,16 @@ const rooms = [
 
 function deferred<T>(): Deferred<T> {
   let resolvePromise: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
+  let rejectPromise: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
     resolvePromise = resolve;
+    rejectPromise = reject;
   });
   return {
     promise,
+    reject(reason) {
+      rejectPromise?.(reason);
+    },
     resolve(value) {
       resolvePromise?.(value);
     },
@@ -677,4 +683,139 @@ describe('ScheduleClient request state', () => {
       .not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
   });
+
+  it('clears a failed conflict refresh when the booking dialog closes', async () => {
+    let scheduleRequestCount = 0;
+
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        return scheduleRequestCount === 1 ?
+          Promise.resolve(scheduleResponse('2026-08-03', 'Prior schedule')) :
+          Promise.resolve(jsonResponse({
+            error: {message: 'Service unavailable'},
+          }, 503));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          error: {
+            code: 'BOOKING_CONFLICT',
+            message: 'This time is already booked. Choose another slot.',
+          },
+        }, 409));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Book Tuesday.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Title'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    expect(await screen.findByText('Unable to refresh availability.'))
+      .toBeVisible();
+
+    await user.click(screen.getByRole('button', {name: 'Cancel'}));
+    await user.click(screen.getByRole('button', {
+      name: /Book Tuesday.*13:00/i,
+    }));
+
+    expect(screen.queryByText('Unable to refresh availability.'))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Retry availability'}))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
+  });
+
+  it.each(['success', 'rejection'] as const)(
+    'ignores late conflict refresh %s after the booking dialog closes',
+    async (completion) => {
+      const lateRefresh = deferred<Response>();
+      let scheduleRequestCount = 0;
+
+      fetchMock.mockImplementation((
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        const url = requestUrl(input);
+        if (url === '/api/rooms') {
+          return Promise.resolve(jsonResponse({data: rooms}));
+        }
+        if (url.includes('/api/rooms/oak/schedule')) {
+          scheduleRequestCount += 1;
+          return scheduleRequestCount === 1 ?
+            Promise.resolve(
+              scheduleResponse('2026-08-03', 'Prior schedule'),
+            ) :
+            lateRefresh.promise;
+        }
+        if (url === '/api/bookings' && init?.method === 'POST') {
+          return Promise.resolve(jsonResponse({
+            error: {
+              code: 'BOOKING_CONFLICT',
+              message: 'This time is already booked. Choose another slot.',
+            },
+          }, 409));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      renderScheduleClient();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', {
+        name: /Book Tuesday.*11:00/i,
+      }));
+      await user.type(screen.getByLabelText('Title'), 'Planning');
+      await user.click(screen.getByRole('button', {name: 'Create booking'}));
+      await waitFor(() => {
+        expect(scheduleRequestCount).toBe(2);
+      });
+      expect(screen.getByRole('button', {name: 'Create booking'}))
+        .toBeDisabled();
+
+      await user.click(screen.getByRole('button', {name: 'Cancel'}));
+      expect(screen.queryByRole('dialog', {name: 'Book Oak'}))
+        .not.toBeInTheDocument();
+      expect(screen.getByText('Prior schedule')).toBeVisible();
+
+      await user.click(screen.getByRole('button', {
+        name: /Book Tuesday.*13:00/i,
+      }));
+      expect(screen.queryByText('Unable to refresh availability.'))
+        .not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Retry availability'}))
+        .not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Create booking'}))
+        .toBeEnabled();
+
+      await act(async () => {
+        if (completion === 'success') {
+          lateRefresh.resolve(
+            scheduleResponse('2026-08-03', 'Refreshed schedule', 12),
+          );
+        } else {
+          lateRefresh.reject(new Error('Refresh failed'));
+        }
+      });
+      if (completion === 'success') {
+        expect(await screen.findByText('Refreshed schedule')).toBeVisible();
+      }
+
+      expect(screen.queryByText('Unable to refresh availability.'))
+        .not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Retry availability'}))
+        .not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Create booking'}))
+        .toBeEnabled();
+    },
+  );
 });
