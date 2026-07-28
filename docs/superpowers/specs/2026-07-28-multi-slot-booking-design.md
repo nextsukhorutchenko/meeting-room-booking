@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved on 2026-07-28.
+Awaiting approval.
 
 ## Goal
 
@@ -85,11 +85,12 @@ It returns immutable, ready-to-render end-time options. Each option contains:
 - a browser-zone range label;
 - a concise duration label.
 
-The desktop and mobile schedule components emit the same start-slot selection.
-`ScheduleClient`, which already owns the latest schedule response, calls the
-generator and derives a `BookingSelection` containing `endTimeOptions`. The
-booking dialog receives that derived selection and never receives the complete
-booking list.
+The desktop and mobile schedule components emit the same
+`StartSlotSelection`. Only that start-slot selection is stored in client state.
+`ScheduleClient`, which already owns the latest schedule response, uses a
+derived calculation to call the generator and form a `BookingSelection`
+containing `endTimeOptions`. The booking dialog receives that derived selection
+and never receives the complete booking list.
 
 Because the options are derived from the current schedule response instead of
 being stored as a click-time snapshot, a schedule refresh automatically
@@ -120,13 +121,21 @@ The server remains the final concurrency boundary. If booking creation returns
 
 1. keeps the dialog open;
 2. shows a clear conflict message;
-3. asks the schedule client to reload the current room and week;
-4. receives recomputed end-time options from the refreshed schedule;
-5. retains the selected end time if still valid, or resets it to the first
+3. disables the create action while the schedule client reloads the current
+   room and week;
+4. keeps the previous schedule visible until the replacement response arrives;
+5. receives recomputed end-time options from the refreshed schedule;
+6. retains the selected end time if still valid, or resets it to the first
    available option.
 
 This handles a race where another user books one or more slots after the dialog
 was opened.
+
+If the schedule refresh fails, the previous schedule remains visible, the
+dialog shows a separate refresh error, and the user can retry the refresh. The
+create action remains disabled until a refresh succeeds or the dialog is
+closed, so the UI cannot immediately repeat a request against known-stale
+availability.
 
 ## Data Flow
 
@@ -178,6 +187,16 @@ The booking dialog covers:
 - resetting an unavailable value to the first available option;
 - disabling submission when no options remain;
 - conflict feedback and the schedule-refresh callback.
+
+`ScheduleClient` component coverage verifies that:
+
+- client state stores only `StartSlotSelection`;
+- a new schedule response recomputes the derived `endTimeOptions`;
+- the dialog receives the recomputed options without closing;
+- a failed conflict refresh preserves the previous schedule and exposes a
+  retry action;
+- creation remains disabled during a conflict refresh and until a failed
+  refresh is successfully retried.
 
 ### Integration
 
