@@ -60,9 +60,10 @@ function jsonResponse<T>(
 function scheduleBody(
   weekStart: string,
   title: string,
+  bookingHour = 10,
 ) {
   const startsAt = DateTime.fromISO(weekStart, {zone: 'Europe/Kyiv'})
-    .plus({days: 1, hours: 10})
+    .plus({days: 1, hours: bookingHour})
     .toUTC();
   return {
     data: {
@@ -88,8 +89,9 @@ function scheduleBody(
 function scheduleResponse(
   weekStart: string,
   title: string,
+  bookingHour = 10,
 ): Response {
-  return jsonResponse(scheduleBody(weekStart, title));
+  return jsonResponse(scheduleBody(weekStart, title, bookingHour));
 }
 
 function requestUrl(input: RequestInfo | URL): string {
@@ -474,5 +476,205 @@ describe('ScheduleClient request state', () => {
     expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
     expect(screen.getByLabelText('End time').querySelectorAll('option').length)
       .toBeGreaterThan(1);
+  });
+
+  it('preserves the schedule and recomputes end times after a conflict refresh', async () => {
+    const refreshedSchedule = deferred<Response>();
+    let scheduleRequestCount = 0;
+
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        return scheduleRequestCount === 1 ?
+          Promise.resolve(scheduleResponse('2026-08-03', 'Booked at ten')) :
+          refreshedSchedule.promise;
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          error: {
+            code: 'BOOKING_CONFLICT',
+            message: 'This time is already booked. Choose another slot.',
+          },
+        }, 409));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Book Tuesday.*11:00/i,
+    }));
+    await user.selectOptions(
+      screen.getByLabelText('End time'),
+      '2026-08-04T10:00:00.000Z',
+    );
+    await user.type(screen.getByLabelText('Title'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await waitFor(() => {
+      expect(scheduleRequestCount).toBe(2);
+    });
+
+    expect(screen.getByText('Booked at ten')).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+
+    await act(async () => {
+      refreshedSchedule.resolve(
+        scheduleResponse('2026-08-03', 'Booked at noon', 12),
+      );
+    });
+
+    expect(await screen.findByText('Booked at noon')).toBeVisible();
+    expect(screen.getByLabelText('End time')).toHaveValue(
+      '2026-08-04T08:30:00.000Z',
+    );
+    expect(screen.queryByRole('option', {name: '13:00 (2 hours)'}))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
+    expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
+  });
+
+  it('preserves the schedule and retries a failed conflict refresh', async () => {
+    const retriedSchedule = deferred<Response>();
+    let scheduleRequestCount = 0;
+
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        if (scheduleRequestCount === 1) {
+          return Promise.resolve(
+            scheduleResponse('2026-08-03', 'Prior schedule'),
+          );
+        }
+        if (scheduleRequestCount === 2) {
+          return Promise.resolve(jsonResponse({
+            error: {message: 'Service unavailable'},
+          }, 503));
+        }
+        return retriedSchedule.promise;
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          error: {
+            code: 'BOOKING_CONFLICT',
+            message: 'This time is already booked. Choose another slot.',
+          },
+        }, 409));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Book Tuesday.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Title'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+
+    expect(await screen.findByText('Unable to refresh availability.'))
+      .toBeVisible();
+    expect(screen.getByText('Prior schedule')).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('button', {name: 'Retry availability'}),
+    );
+    await waitFor(() => {
+      expect(scheduleRequestCount).toBe(3);
+    });
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+
+    await act(async () => {
+      retriedSchedule.resolve(
+        scheduleResponse('2026-08-03', 'Retry schedule'),
+      );
+    });
+
+    expect(await screen.findByText('Retry schedule')).toBeVisible();
+    expect(screen.queryByText('Unable to refresh availability.'))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
+  });
+
+  it('clears a failed conflict refresh when day navigation changes week', async () => {
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-09',
+    );
+    let scheduleRequestCount = 0;
+
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequestCount += 1;
+        if (scheduleRequestCount === 1) {
+          return Promise.resolve(
+            scheduleResponse('2026-08-03', 'Prior week'),
+          );
+        }
+        if (scheduleRequestCount === 2) {
+          return Promise.resolve(jsonResponse({
+            error: {message: 'Service unavailable'},
+          }, 503));
+        }
+        return Promise.resolve(
+          scheduleResponse('2026-08-10', 'Next week schedule'),
+        );
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({
+          error: {
+            code: 'BOOKING_CONFLICT',
+            message: 'This time is already booked. Choose another slot.',
+          },
+        }, 409));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    const sundaySlots = await screen.findAllByRole('button', {
+      name: /Book Sunday.*11:00/i,
+    });
+    await user.click(sundaySlots[0]);
+    await user.type(screen.getByLabelText('Title'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    expect(await screen.findByText('Unable to refresh availability.'))
+      .toBeVisible();
+
+    await user.click(screen.getByRole('button', {name: 'Cancel'}));
+    await user.click(screen.getByRole('button', {name: 'Next day'}));
+    expect(await screen.findByText('Next week schedule')).toBeVisible();
+    const mondaySlots = screen.getAllByRole('button', {
+      name: /Book Monday.*11:00/i,
+    });
+    await user.click(mondaySlots[0]);
+
+    expect(screen.queryByText('Unable to refresh availability.'))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Retry availability'}))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
   });
 });

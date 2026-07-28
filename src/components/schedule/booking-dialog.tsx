@@ -13,6 +13,11 @@ import type {BookingSelection} from './booking-selection';
 
 export type {BookingSelection} from './booking-selection';
 
+export type ConflictRefreshState =
+  | {status: 'idle'}
+  | {status: 'loading'}
+  | {message: string; status: 'error'};
+
 type ErrorBody = {
   error?: {
     code?: string;
@@ -22,14 +27,20 @@ type ErrorBody = {
 };
 
 type BookingDialogProps = {
+  conflictRefresh: ConflictRefreshState;
   onClose(): void;
+  onConflict(): void;
   onCreated(): void;
+  onRetryConflictRefresh(): void;
   selection: BookingSelection | null;
 };
 
 export function BookingDialog({
+  conflictRefresh,
   onClose,
+  onConflict,
   onCreated,
+  onRetryConflictRefresh,
   selection,
 }: BookingDialogProps) {
   const [formError, setFormError] = useState('');
@@ -63,7 +74,12 @@ export function BookingDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selection || !selectedEndTime || pendingRef.current) {
+    if (
+      !selection ||
+      !selectedEndTime ||
+      pendingRef.current ||
+      conflictRefresh.status !== 'idle'
+    ) {
       return;
     }
 
@@ -92,6 +108,14 @@ export function BookingDialog({
       });
       const body = await response.json() as ErrorBody;
       if (!response.ok) {
+        if (body.error?.code === 'BOOKING_CONFLICT') {
+          setFormError(
+            body.error.message ??
+            'This time is already booked. Choose another slot.',
+          );
+          onConflict();
+          return;
+        }
         setTitleError(body.error?.fields?.title ?? '');
         setFormError(
           body.error?.code === 'EMAIL_NOT_VERIFIED' ?
@@ -119,7 +143,9 @@ export function BookingDialog({
     >
       {selection ? (
         <form
-          aria-busy={pending}
+          aria-busy={
+            pending || conflictRefresh.status === 'loading'
+          }
           className="booking-form"
           noValidate
           onSubmit={handleSubmit}
@@ -146,6 +172,20 @@ export function BookingDialog({
           ) : null}
           {formError ? (
             <p className="dialog-alert" role="alert">{formError}</p>
+          ) : null}
+          {conflictRefresh.status === 'error' ? (
+            <>
+              <p className="dialog-alert" role="alert">
+                {conflictRefresh.message}
+              </p>
+              <button
+                className="secondary-button"
+                onClick={onRetryConflictRefresh}
+                type="button"
+              >
+                Retry availability
+              </button>
+            </>
           ) : null}
           <label className="control-field">
             <span>Title</span>
@@ -186,7 +226,13 @@ export function BookingDialog({
             >
               Cancel
             </button>
-            <Button disabled={!selectedEndTime} pending={pending} type="submit">
+            <Button
+              disabled={
+                !selectedEndTime || conflictRefresh.status !== 'idle'
+              }
+              pending={pending}
+              type="submit"
+            >
               Create booking
             </Button>
           </div>

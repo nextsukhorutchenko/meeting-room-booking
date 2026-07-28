@@ -19,7 +19,10 @@ import {
 } from '../bookings/cancel-booking-dialog';
 import {Spinner} from '../ui/spinner';
 import {Toast} from '../ui/toast';
-import {BookingDialog} from './booking-dialog';
+import {
+  BookingDialog,
+  type ConflictRefreshState,
+} from './booking-dialog';
 import type {
   BookingSelection,
   StartSlotSelection,
@@ -158,11 +161,14 @@ export function ScheduleClient({
   const [refreshKey, setRefreshKey] = useState(0);
   const [preservedScheduleKey, setPreservedScheduleKey] =
     useState<string | null>(null);
+  const [conflictRefresh, setConflictRefresh] =
+    useState<ConflictRefreshState>({status: 'idle'});
   const selectedRoomIdRef = useRef(selectedRoomId);
   const weekStartRef = useRef(weekStart);
   const selectedDayRef = useRef(selectedDay);
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
+  const conflictRefreshRequestRef = useRef(false);
   const linkedBookingId = searchParams.get('bookingId');
   const linkedBookingIdRef = useRef(linkedBookingId);
 
@@ -227,6 +233,8 @@ export function ScheduleClient({
     }
     if (roomChanged || weekChanged) {
       preserveScheduleOnRefreshRef.current = false;
+      conflictRefreshRequestRef.current = false;
+      setConflictRefresh({status: 'idle'});
       setPreservedScheduleKey(null);
       scheduleRequestSequence.current += 1;
       setScheduleState(null);
@@ -266,6 +274,8 @@ export function ScheduleClient({
         setSelectedRoomId(roomId);
         if (roomId !== currentRoomId) {
           preserveScheduleOnRefreshRef.current = false;
+          conflictRefreshRequestRef.current = false;
+          setConflictRefresh({status: 'idle'});
           setPreservedScheduleKey(null);
           scheduleRequestSequence.current += 1;
           setScheduleState(null);
@@ -306,8 +316,10 @@ export function ScheduleClient({
     const controller = new AbortController();
     const requestSequence = ++scheduleRequestSequence.current;
     const requestKey = activeScheduleKey;
+    const preserveSchedule = preserveScheduleOnRefreshRef.current;
+    const conflictRefreshRequest = conflictRefreshRequestRef.current;
     async function loadSchedule() {
-      if (!preserveScheduleOnRefreshRef.current) {
+      if (!preserveSchedule) {
         setScheduleState({key: requestKey, status: 'loading'});
       }
       try {
@@ -328,6 +340,10 @@ export function ScheduleClient({
           );
         }
         preserveScheduleOnRefreshRef.current = false;
+        if (conflictRefreshRequest) {
+          conflictRefreshRequestRef.current = false;
+          setConflictRefresh({status: 'idle'});
+        }
         setPreservedScheduleKey(null);
         setScheduleState({
           data: body.data,
@@ -343,6 +359,14 @@ export function ScheduleClient({
           return;
         }
         preserveScheduleOnRefreshRef.current = false;
+        if (conflictRefreshRequest) {
+          conflictRefreshRequestRef.current = false;
+          setConflictRefresh({
+            status: 'error',
+            message: 'Unable to refresh availability.',
+          });
+          return;
+        }
         setPreservedScheduleKey(null);
         setScheduleState({
           error: error instanceof Error ?
@@ -380,7 +404,14 @@ export function ScheduleClient({
       '';
   const scheduleLoading = Boolean(
     selectedRoomId &&
-    (!isCurrentSchedule || scheduleState.status === 'loading'),
+    (
+      conflictRefresh.status === 'loading' ||
+      (
+        !isCurrentSchedule &&
+        !isPreservedSchedule
+      ) ||
+      scheduleState?.status === 'loading'
+    ),
   );
   const bookingSelection = useMemo<BookingSelection | null>(() => {
     if (!startSelection || !schedule) return null;
@@ -416,6 +447,8 @@ export function ScheduleClient({
   function changeRoom(roomId: string) {
     linkedBookingIdRef.current = null;
     preserveScheduleOnRefreshRef.current = false;
+    conflictRefreshRequestRef.current = false;
+    setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setCancellation(null);
     setStartSelection(null);
@@ -432,6 +465,8 @@ export function ScheduleClient({
       .plus({weeks})
       .toFormat('yyyy-LL-dd');
     preserveScheduleOnRefreshRef.current = false;
+    conflictRefreshRequestRef.current = false;
+    setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setCancellation(null);
     setStartSelection(null);
@@ -448,6 +483,10 @@ export function ScheduleClient({
     linkedBookingIdRef.current = null;
     const nextDay = nextDayValue.toFormat('yyyy-LL-dd');
     const nextWeek = nextDayValue.startOf('week').toFormat('yyyy-LL-dd');
+    if (nextWeek !== weekStart) {
+      conflictRefreshRequestRef.current = false;
+      setConflictRefresh({status: 'idle'});
+    }
     preserveScheduleOnRefreshRef.current = false;
     setPreservedScheduleKey(null);
     setCancellation(null);
@@ -471,6 +510,8 @@ export function ScheduleClient({
       .toFormat('yyyy-LL-dd');
     const currentWeek = currentOfficeWeek(officeTimeZone);
     preserveScheduleOnRefreshRef.current = false;
+    conflictRefreshRequestRef.current = false;
+    setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setCancellation(null);
     setStartSelection(null);
@@ -481,6 +522,8 @@ export function ScheduleClient({
 
   function handleCreated() {
     preserveScheduleOnRefreshRef.current = false;
+    conflictRefreshRequestRef.current = false;
+    setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setStartSelection(null);
     setToastMessage('Booking created');
@@ -492,6 +535,16 @@ export function ScheduleClient({
     setPreservedScheduleKey(activeScheduleKey);
     setCancellation(null);
     setToastMessage('Booking cancelled');
+    setRefreshKey((key) => key + 1);
+  }
+
+  function refreshAfterConflict() {
+    if (scheduleState?.status === 'success') {
+      setPreservedScheduleKey(scheduleState.key);
+    }
+    preserveScheduleOnRefreshRef.current = true;
+    conflictRefreshRequestRef.current = true;
+    setConflictRefresh({status: 'loading'});
     setRefreshKey((key) => key + 1);
   }
 
@@ -613,8 +666,11 @@ export function ScheduleClient({
       ) : null}
 
       <BookingDialog
+        conflictRefresh={conflictRefresh}
         onClose={() => setStartSelection(null)}
+        onConflict={refreshAfterConflict}
         onCreated={handleCreated}
+        onRetryConflictRefresh={refreshAfterConflict}
         selection={bookingSelection}
       />
       {cancellation ? (

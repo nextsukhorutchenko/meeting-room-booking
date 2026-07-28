@@ -48,8 +48,11 @@ describe('BookingDialog', () => {
   function renderDialog(nextSelection: BookingSelection = selection) {
     return render(
       <BookingDialog
+        conflictRefresh={{status: 'idle'}}
         onClose={vi.fn()}
+        onConflict={vi.fn()}
         onCreated={vi.fn()}
+        onRetryConflictRefresh={vi.fn()}
         selection={nextSelection}
       />,
     );
@@ -91,8 +94,11 @@ describe('BookingDialog', () => {
 
     view.rerender(
       <BookingDialog
+        conflictRefresh={{status: 'idle'}}
         onClose={vi.fn()}
+        onConflict={vi.fn()}
         onCreated={vi.fn()}
+        onRetryConflictRefresh={vi.fn()}
         selection={{
           ...selection,
           endTimeOptions: selection.endTimeOptions.map((option) => ({
@@ -117,8 +123,11 @@ describe('BookingDialog', () => {
 
     view.rerender(
       <BookingDialog
+        conflictRefresh={{status: 'idle'}}
         onClose={vi.fn()}
+        onConflict={vi.fn()}
         onCreated={vi.fn()}
+        onRetryConflictRefresh={vi.fn()}
         selection={{...selection, endTimeOptions: [selection.endTimeOptions[0]]}}
       />,
     );
@@ -159,5 +168,88 @@ describe('BookingDialog', () => {
       'Verify your email before booking a room.',
     );
     expect(screen.queryByText('Generic server message')).not.toBeInTheDocument();
+  });
+
+  it('keeps the dialog open and requests a refresh after a booking conflict', async () => {
+    const onConflict = vi.fn();
+    fetchMock.mockResolvedValue(jsonResponse({
+      error: {
+        code: 'BOOKING_CONFLICT',
+        message: 'This time is already booked. Choose another slot.',
+      },
+    }, 409));
+    render(
+      <BookingDialog
+        conflictRefresh={{status: 'idle'}}
+        onClose={vi.fn()}
+        onConflict={onConflict}
+        onCreated={vi.fn()}
+        onRetryConflictRefresh={vi.fn()}
+        selection={selection}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Title'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This time is already booked. Choose another slot.',
+    );
+    expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
+    expect(onConflict).toHaveBeenCalledOnce();
+  });
+
+  it('blocks creation during refresh and exposes deterministic retry', async () => {
+    const onClose = vi.fn();
+    const onRetryConflictRefresh = vi.fn();
+    const view = render(
+      <BookingDialog
+        conflictRefresh={{status: 'idle'}}
+        onClose={onClose}
+        onConflict={vi.fn()}
+        onCreated={vi.fn()}
+        onRetryConflictRefresh={onRetryConflictRefresh}
+        selection={selection}
+      />,
+    );
+
+    view.rerender(
+      <BookingDialog
+        conflictRefresh={{status: 'loading'}}
+        onClose={onClose}
+        onConflict={vi.fn()}
+        onCreated={vi.fn()}
+        onRetryConflictRefresh={onRetryConflictRefresh}
+        selection={selection}
+      />,
+    );
+
+    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Cancel'})).toBeEnabled();
+    expect(screen.getByRole('dialog').querySelector('form'))
+      .toHaveAttribute('aria-busy', 'true');
+
+    view.rerender(
+      <BookingDialog
+        conflictRefresh={{
+          status: 'error',
+          message: 'Unable to refresh availability.',
+        }}
+        onClose={onClose}
+        onConflict={vi.fn()}
+        onCreated={vi.fn()}
+        onRetryConflictRefresh={onRetryConflictRefresh}
+        selection={selection}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Unable to refresh availability.',
+    );
+    await userEvent.setup().click(
+      screen.getByRole('button', {name: 'Retry availability'}),
+    );
+    expect(onRetryConflictRefresh).toHaveBeenCalledOnce();
   });
 });
