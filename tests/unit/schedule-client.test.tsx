@@ -23,6 +23,13 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => navigation.searchParams,
 }));
 
+vi.mock('../../src/lib/time/browser-zone', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../src/lib/time/browser-zone')
+  >()),
+  getBrowserTimeZone: () => 'Europe/Kyiv',
+}));
+
 type Deferred<T> = {
   promise: Promise<T>;
   reject(reason?: unknown): void;
