@@ -43,10 +43,15 @@ test('@booking @critical own booking exposes Cancel and confirmation is required
   await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
   const block = page.getByRole('article', {name: new RegExp(title)});
   await expect(block).toBeVisible();
-  await block.getByRole('button', {name: `Cancel ${title}`}).click();
+  const cancelTrigger = block.getByRole('button', {name: `Cancel ${title}`});
+  await cancelTrigger.click();
 
   const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+  await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
+  await expect(page.locator('.app-shell')).toHaveAttribute('aria-hidden', 'true');
   await expect(dialog.getByRole('button', {name: 'Keep booking'}))
     .toBeFocused();
   await expect(database.booking.findUniqueOrThrow({where: {id: booking.id}}))
@@ -113,11 +118,68 @@ test('@booking @critical own booking exposes Cancel and confirmation is required
     path: resolve(artifactsDirectory, 'cancel-confirmation.png'),
   });
 
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(cancelTrigger).toBeFocused();
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
+
+  await cancelTrigger.click();
   await dialog.getByRole('button', {name: 'Keep booking'}).click();
   await expect(dialog).toBeHidden();
+  await expect(cancelTrigger).toBeFocused();
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
   await expect(block).toBeVisible();
   await expect(database.booking.findUniqueOrThrow({where: {id: booking.id}}))
     .resolves.toMatchObject({cancelledAt: null});
+});
+
+test('@booking cancellation error closes to its exact trigger', async ({
+  database,
+  page,
+}) => {
+  const room = await roomByName(database, 'Oak');
+  const organizer = await database.user.findUniqueOrThrow({
+    where: {normalizedEmail: DEMO_USER.email},
+  });
+  const weekStart = officeMonday(1);
+  const startsAt = officeSlot(weekStart, 2, 13);
+  const title = `${TASK_10_BOOKING_PREFIX}error-close`;
+  const booking = await database.booking.create({
+    data: {
+      roomId: room.id,
+      userId: organizer.id,
+      title,
+      startsAt: startsAt.toUTC().toJSDate(),
+      endsAt: startsAt.plus({minutes: 30}).toUTC().toJSDate(),
+    },
+  });
+
+  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
+  await page.route(`**/api/bookings/${booking.id}`, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({
+        body: JSON.stringify({error: {message: 'Unable to cancel booking.'}}),
+        contentType: 'application/json',
+        status: 500,
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  const trigger = page.getByRole('article', {name: new RegExp(title)})
+    .getByRole('button', {name: `Cancel ${title}`});
+  await trigger.click();
+  const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
+  await dialog.getByRole('button', {name: 'Cancel booking'}).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Unable to cancel booking.');
+
+  await dialog.getByRole('button', {name: 'Close dialog'}).click();
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
 });
 
 test("@booking other user's booking has no cancellation command", async ({

@@ -83,6 +83,12 @@ function fallbackFocus(): void {
   }
 }
 
+function setBackgroundModalState(element: HTMLElement, modalOpen: boolean): void {
+  element.inert = modalOpen;
+  element.toggleAttribute('inert', modalOpen);
+  element.toggleAttribute('aria-hidden', modalOpen);
+}
+
 export function usePresentationCoordinator(): PresentationContextValue {
   const context = useContext(PresentationContext);
   return context ?? standalonePresentation;
@@ -107,7 +113,13 @@ export function usePresentationSurface(
   return context ? context.modalOwner === owner : true;
 }
 
-export function PresentationCoordinator({children}: {children: ReactNode}) {
+export function PresentationCoordinator({
+  children,
+  pathname,
+}: {
+  children: ReactNode;
+  pathname?: string | null;
+}) {
   const [modalOwner, setModalOwner] = useState<ModalOwner>('none');
   const [surfaceVersion, setSurfaceVersion] = useState(0);
   const modalOwnerRef = useRef<ModalOwner>('none');
@@ -119,16 +131,26 @@ export function PresentationCoordinator({children}: {children: ReactNode}) {
   const closeFocusRef = useRef<HTMLElement | null | 'fallback'>(null);
   const focusedOwnerRef = useRef<ModalOwner>('none');
   const modalInvokerRef = useRef<HTMLElement | null>(null);
+  const pathnameRef = useRef(pathname);
+
+  const commitOwner = useCallback((owner: ModalOwner) => {
+    modalOwnerRef.current = owner;
+    setModalOwner(owner);
+  }, []);
+
+  const resetPresentation = useCallback(() => {
+    cancellationOriginRef.current = null;
+    closeFocusRef.current = null;
+    focusedOwnerRef.current = 'none';
+    modalInvokerRef.current = null;
+    surfacesRef.current.clear();
+    commitOwner('none');
+  }, [commitOwner]);
 
   const registerBackground = useCallback((element: HTMLElement | null) => {
     backgroundRef.current = element;
     if (element) {
-      element.inert = modalOwnerRef.current !== 'none';
-      if (modalOwnerRef.current !== 'none') {
-        element.setAttribute('aria-hidden', 'true');
-      } else {
-        element.removeAttribute('aria-hidden');
-      }
+      setBackgroundModalState(element, modalOwnerRef.current !== 'none');
     }
   }, []);
 
@@ -147,13 +169,18 @@ export function PresentationCoordinator({children}: {children: ReactNode}) {
       }
     } else {
       surfacesRef.current.delete(owner);
+      // A portal move briefly detaches and reattaches its ref in the same
+      // commit. Defer ownership cleanup so only a genuine active unmount wins.
+      queueMicrotask(() => {
+        if (
+          modalOwnerRef.current === owner &&
+          !surfacesRef.current.has(owner)
+        ) {
+          resetPresentation();
+        }
+      });
     }
-  }, []);
-
-  const commitOwner = useCallback((owner: ModalOwner) => {
-    modalOwnerRef.current = owner;
-    setModalOwner(owner);
-  }, []);
+  }, [resetPresentation]);
 
   const request = useCallback((command: PresentationCommand) => {
     const owner = modalOwnerRef.current;
@@ -219,22 +246,21 @@ export function PresentationCoordinator({children}: {children: ReactNode}) {
       case 'CLOSE_NOTIFICATIONS':
         return close('notifications', modalInvokerRef.current);
       case 'ROUTE_NAVIGATION':
-        cancellationOriginRef.current = null;
-        closeFocusRef.current = 'fallback';
-        commitOwner('none');
+        resetPresentation();
         return 'ACCEPTED';
     }
-  }, [commitOwner]);
+  }, [commitOwner, resetPresentation]);
+
+  useEffect(() => {
+    if (pathname === undefined || pathnameRef.current === pathname) return;
+    pathnameRef.current = pathname;
+    resetPresentation();
+  }, [pathname, resetPresentation]);
 
   useEffect(() => {
     const background = backgroundRef.current;
     if (background) {
-      background.inert = modalOwner !== 'none';
-      if (modalOwner !== 'none') {
-        background.setAttribute('aria-hidden', 'true');
-      } else {
-        background.removeAttribute('aria-hidden');
-      }
+      setBackgroundModalState(background, modalOwner !== 'none');
     }
 
     const closeFocus = closeFocusRef.current;

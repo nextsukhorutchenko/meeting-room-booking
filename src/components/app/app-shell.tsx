@@ -2,6 +2,7 @@
 
 import {CalendarDays, ListChecks} from 'lucide-react';
 import Link from 'next/link';
+import {usePathname} from 'next/navigation';
 import {useRef, type ReactElement, type ReactNode} from 'react';
 import {AppHeader} from './app-header';
 import {
@@ -15,8 +16,9 @@ export type AppShellProps = {
 };
 
 export function AppShell({children, user}: AppShellProps): ReactElement {
+  const pathname = usePathname();
   return (
-    <PresentationCoordinator>
+    <PresentationCoordinator pathname={pathname}>
       <AppShellContent user={user}>{children}</AppShellContent>
     </PresentationCoordinator>
   );

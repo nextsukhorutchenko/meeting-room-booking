@@ -1,8 +1,14 @@
 'use client';
 
 import {Bell, X} from 'lucide-react';
-import {useCallback, useEffect, useState} from 'react';
+import {createPortal} from 'react-dom';
+import {useCallback, useEffect, useState, type MouseEvent} from 'react';
 import type {DueNotification} from '../../modules/notifications/notification.service';
+import type {ResponsiveMode} from '../schedule/schedule-types';
+import {
+  usePresentationCoordinator,
+  usePresentationSurface,
+} from './presentation-coordinator';
 
 const pollIntervalMilliseconds = 60_000;
 
@@ -38,9 +44,21 @@ function message(notification: DueNotification): string {
     `${notification.roomName}. ${notification.nextAuthorName} is next.`;
 }
 
-export function NotificationBell() {
+type NotificationBellProps = {
+  mode?: ResponsiveMode;
+};
+
+export function NotificationBell({mode = 'expanded'}: NotificationBellProps) {
   const [notifications, setNotifications] = useState<DueNotification[]>([]);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(mode !== 'mobile');
+  const [surface, setSurface] = useState<HTMLElement | null>(null);
+  const {modalOwner, request} = usePresentationCoordinator();
+  const mobilePresentation = mode === 'mobile';
+  const notificationOwnerActive = usePresentationSurface(
+    'notifications',
+    surface,
+  );
+  const modalActive = mobilePresentation && expanded && notificationOwnerActive;
 
   const poll = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -55,7 +73,7 @@ export function NotificationBell() {
         return;
       }
       if (data.length > 0) {
-        setExpanded(true);
+        if (!mobilePresentation) setExpanded(true);
         setNotifications((current) => {
           const knownIds = new Set(current.map(({id}) => id));
           return [
@@ -77,7 +95,7 @@ export function NotificationBell() {
         return;
       }
     }
-  }, []);
+  }, [mobilePresentation]);
 
   useEffect(() => {
     const controllers = new Set<AbortController>();
@@ -122,18 +140,73 @@ export function NotificationBell() {
     };
   }, [poll]);
 
+  useEffect(() => {
+    if (!mobilePresentation && modalOwner === 'notifications') {
+      request({type: 'CLOSE_NOTIFICATIONS'});
+    }
+  }, [mobilePresentation, modalOwner, request]);
+
   const unreadCount = notifications.length;
   const bellLabel = unreadCount > 0 ?
     `Notifications, ${unreadCount} unread` :
     'Notifications';
 
+  function toggleNotifications(event: MouseEvent<HTMLButtonElement>) {
+    if (!mobilePresentation) {
+      setExpanded((current) => !current);
+      return;
+    }
+    if (modalActive) {
+      if (request({type: 'CLOSE_NOTIFICATIONS'}) === 'ACCEPTED') {
+        setExpanded(false);
+      }
+      return;
+    }
+    if (request({bell: event.currentTarget, type: 'OPEN_NOTIFICATIONS'}) ===
+      'ACCEPTED') {
+      setExpanded(true);
+    }
+  }
+
+  const presentation = (
+    <div
+      aria-label="Booking notifications"
+      aria-modal={modalActive || undefined}
+      className="notification-toast-region"
+      ref={setSurface}
+      role={modalActive ? 'dialog' : 'region'}
+    >
+      {(!mobilePresentation || modalActive) && expanded ? notifications.map((notification) => (
+        <div
+          aria-live="polite"
+          className="notification-toast"
+          key={notification.id}
+          role="status"
+        >
+          <Bell aria-hidden="true" />
+          <span>{message(notification)}</span>
+          <button
+            aria-label="Dismiss notification"
+            className="notification-dismiss"
+            onClick={() => setNotifications((current) =>
+              current.filter(({id}) => id !== notification.id),
+            )}
+            type="button"
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
+      )) : null}
+    </div>
+  );
+
   return (
     <div className="notification-control">
       <button
-        aria-expanded={expanded}
+        aria-expanded={mobilePresentation ? modalActive : expanded}
         aria-label={bellLabel}
         className="notification-bell"
-        onClick={() => setExpanded((current) => !current)}
+        onClick={toggleNotifications}
         type="button"
       >
         <Bell aria-hidden="true" />
@@ -143,33 +216,9 @@ export function NotificationBell() {
           </span>
         ) : null}
       </button>
-      <div
-        aria-label="Booking notifications"
-        className="notification-toast-region"
-        role="region"
-      >
-        {expanded ? notifications.map((notification) => (
-          <div
-            aria-live="polite"
-            className="notification-toast"
-            key={notification.id}
-            role="status"
-          >
-            <Bell aria-hidden="true" />
-            <span>{message(notification)}</span>
-            <button
-              aria-label="Dismiss notification"
-              className="notification-dismiss"
-              onClick={() => setNotifications((current) =>
-                current.filter(({id}) => id !== notification.id),
-              )}
-              type="button"
-            >
-              <X aria-hidden="true" />
-            </button>
-          </div>
-        )) : null}
-      </div>
+      {modalActive && typeof document !== 'undefined' ?
+        createPortal(presentation, document.body) :
+        presentation}
     </div>
   );
 }

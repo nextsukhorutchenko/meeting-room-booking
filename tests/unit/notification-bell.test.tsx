@@ -3,6 +3,23 @@ import {act, cleanup, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {NotificationBell} from '../../src/components/app/notification-bell';
+import {
+  PresentationCoordinator,
+  usePresentationCoordinator,
+} from
+  '../../src/components/app/presentation-coordinator';
+
+function FilterOwnerProbe() {
+  const {request} = usePresentationCoordinator();
+  return (
+    <button onClick={(event) => request({
+      trigger: event.currentTarget,
+      type: 'OPEN_FILTER',
+    })} type="button">
+      Open filter
+    </button>
+  );
+}
 
 function response(data: unknown, status = 200): Response {
   return {
@@ -168,5 +185,75 @@ describe('NotificationBell', () => {
       'visibilitychange',
       expect.any(Function),
     );
+  });
+
+  it('uses modal ownership only for the mobile notification surface', async () => {
+    fetchMock.mockResolvedValue(response([{
+      id: 'notification-1',
+      roomName: 'Oak',
+      currentTitle: 'Planning',
+      endsAt: '2026-07-28T10:00:00.000Z',
+      nextAuthorName: 'Next User',
+    }]));
+    render(
+      <PresentationCoordinator>
+        <NotificationBell mode="mobile" />
+      </PresentationCoordinator>,
+    );
+
+    await screen.findByRole('button', {name: 'Notifications, 1 unread'});
+    await userEvent.setup().click(screen.getByRole('button', {
+      name: 'Notifications, 1 unread',
+    }));
+
+    expect(screen.getByRole('dialog', {name: 'Booking notifications'}))
+      .toHaveAttribute('aria-modal', 'true');
+  });
+
+  it('does not make desktop notification popovers modal', async () => {
+    fetchMock.mockResolvedValue(response([{
+      id: 'notification-1',
+      roomName: 'Oak',
+      currentTitle: 'Planning',
+      endsAt: '2026-07-28T10:00:00.000Z',
+      nextAuthorName: 'Next User',
+    }]));
+    render(
+      <PresentationCoordinator>
+        <NotificationBell mode="tablet" />
+      </PresentationCoordinator>,
+    );
+
+    await screen.findByRole('button', {name: 'Notifications, 1 unread'});
+    expect(screen.getByRole('region', {name: 'Booking notifications'}))
+      .not.toHaveAttribute('aria-modal');
+  });
+
+  it('denies a mobile notification modal while another modal owns presentation', async () => {
+    fetchMock.mockResolvedValue(response([{
+      id: 'notification-1',
+      roomName: 'Oak',
+      currentTitle: 'Planning',
+      endsAt: '2026-07-28T10:00:00.000Z',
+      nextAuthorName: 'Next User',
+    }]));
+    render(
+      <PresentationCoordinator>
+        <FilterOwnerProbe />
+        <NotificationBell mode="mobile" />
+      </PresentationCoordinator>,
+    );
+
+    const user = userEvent.setup();
+    await screen.findByRole('button', {name: 'Notifications, 1 unread'});
+    await user.click(screen.getByRole('button', {name: 'Open filter'}));
+    await user.click(screen.getByRole('button', {
+      name: 'Notifications, 1 unread',
+    }));
+
+    expect(screen.queryByRole('dialog', {name: 'Booking notifications'}))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Notifications, 1 unread'}))
+      .toHaveAttribute('aria-expanded', 'false');
   });
 });

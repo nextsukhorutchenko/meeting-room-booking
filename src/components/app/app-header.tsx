@@ -5,11 +5,13 @@ import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {LogoutButton} from '../auth/logout-button';
 import {NotificationBell} from './notification-bell';
+import {useResponsiveMode} from '../schedule/use-responsive-mode';
 
 type AppHeaderProps = {userName: string};
 
 export function AppHeader({userName}: AppHeaderProps) {
   const pathname = usePathname();
+  const mode = useResponsiveMode();
 
   return (
     <header className="app-header">
@@ -40,7 +42,7 @@ export function AppHeader({userName}: AppHeaderProps) {
         </nav>
         <div className="app-account">
           <span className="app-user-name">{userName}</span>
-          <NotificationBell />
+          <NotificationBell mode={mode} />
           <LogoutButton />
         </div>
       </div>

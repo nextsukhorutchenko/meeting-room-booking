@@ -87,6 +87,29 @@ function Harness(): ReactElement {
   );
 }
 
+function SurfaceUnmountHarness({showSurface}: {showSurface: boolean}): ReactElement {
+  const {modalOwner, request} = usePresentationCoordinator();
+  return (
+    <>
+      <output>{modalOwner}</output>
+      <button
+        onClick={(event) => request({
+          trigger: event.currentTarget,
+          type: 'OPEN_FILTER',
+        })}
+        type="button"
+      >
+        Open filter
+      </button>
+      {showSurface ? (
+        <Dialog label="Filter" onClose={() => undefined} open owner="filter">
+          <button type="button">Filter control</button>
+        </Dialog>
+      ) : null}
+    </>
+  );
+}
+
 describe('PresentationCoordinator', () => {
   it('never commits two aria-modal surfaces during booking to cancellation', async () => {
     render(<Harness />);
@@ -113,6 +136,28 @@ describe('PresentationCoordinator', () => {
 
     await waitFor(() => {
       expect(document.activeElement?.isSameNode(trigger)).toBe(true);
+    });
+  });
+
+  it('clears an active owner when its registered surface genuinely unmounts', async () => {
+    const view = render(
+      <PresentationCoordinator>
+        <SurfaceUnmountHarness showSurface />
+      </PresentationCoordinator>,
+    );
+    await userEvent.setup().click(screen.getByRole('button', {
+      name: 'Open filter',
+    }));
+    expect(screen.getByRole('dialog', {name: 'Filter'})).toBeVisible();
+
+    view.rerender(
+      <PresentationCoordinator>
+        <SurfaceUnmountHarness showSurface={false} />
+      </PresentationCoordinator>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('none', {selector: 'output'})).toBeVisible();
     });
   });
 });

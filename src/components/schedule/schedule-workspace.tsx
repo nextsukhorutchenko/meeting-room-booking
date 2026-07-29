@@ -209,6 +209,11 @@ export function ScheduleWorkspace({
   const cancellationRequestIdRef = useRef(0);
   const activeCancellationRequestIdRef = useRef<number | null>(null);
 
+  function invalidateCancellationRequest() {
+    cancellationRequestIdRef.current += 1;
+    activeCancellationRequestIdRef.current = null;
+  }
+
   const updateUrl = useCallback((
     roomId: string,
     nextWeekStart: string,
@@ -287,11 +292,16 @@ export function ScheduleWorkspace({
       setScheduleState(null);
     }
     if (roomChanged || weekChanged || dayChanged) {
+      invalidateCancellationRequest();
       setCancellation(null);
       request({type: 'ROUTE_NAVIGATION'});
       dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     }
   }, [officeTimeZone, request, searchParams]);
+
+  useEffect(() => () => {
+    invalidateCancellationRequest();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();

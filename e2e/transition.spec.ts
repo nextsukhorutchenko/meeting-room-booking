@@ -129,8 +129,33 @@ for (const transition of transitionCases) {
       ),
     });
 
-    await page.getByRole('link', {name: 'My Bookings'}).click();
-    await expect(page.locator(`[data-booking-id="${booking.id}"]`))
-      .toContainText(transition.bookingTime);
+    const scheduleCancelTrigger = page.getByRole('article', {
+      name: new RegExp(title),
+    }).getByRole('button', {name: `Cancel ${title}`});
+    await scheduleCancelTrigger.click();
+    await expect(page.getByRole('dialog', {name: 'Cancel booking'}))
+      .toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+    await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
+
+    await page.goto('/my-bookings');
+    await expect(page.getByRole('dialog', {name: 'Cancel booking'})).toHaveCount(0);
+    await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
+    await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
+
+    const historyRow = page.locator(`[data-booking-id="${booking.id}"]`);
+    const historyCancelTrigger = historyRow.getByRole('button', {
+      name: `Cancel ${title}`,
+    });
+    await expect(historyRow).toContainText(transition.bookingTime);
+    await historyCancelTrigger.click();
+    const historyDialog = page.getByRole('dialog', {name: 'Cancel booking'});
+    await expect(historyDialog).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+    await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
+    await historyDialog.getByRole('button', {name: 'Keep booking'}).click();
+    await expect(historyCancelTrigger).toBeFocused();
+    await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
+    await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
   });
 }

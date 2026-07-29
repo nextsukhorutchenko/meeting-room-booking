@@ -707,6 +707,73 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     });
   });
 
+  it.each(['success', 'error'] as const)(
+    'ignores a stale cancellation %s after schedule navigation opens another cancellation',
+    async (completion) => {
+      const deletes = [deferred<Response>(), deferred<Response>()];
+      let deleteRequestCount = 0;
+      fetchMock.mockImplementation((
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        const url = requestUrl(input);
+        if (url === '/api/rooms') {
+          return Promise.resolve(jsonResponse({data: rooms}));
+        }
+        if (url.includes('/api/rooms/oak/schedule')) {
+          return Promise.resolve(scheduleResponse('2026-08-03', 'Stale cancellation'));
+        }
+        if (url === '/api/bookings/stale-cancellation' && init?.method === 'DELETE') {
+          return deletes[deleteRequestCount++].promise;
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      const view = renderScheduleClient();
+      const user = userEvent.setup();
+      const block = await screen.findByRole('button', {
+        name: /Stale cancellation/,
+      });
+      await user.click(block);
+      await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+      await waitFor(() => expect(deleteRequestCount).toBe(1));
+
+      navigation.searchParams = new URLSearchParams(
+        'roomId=oak&weekStart=2026-08-03&day=2026-08-05',
+      );
+      view.rerender(
+        <PresentationCoordinator>
+          <ScheduleWorkspace
+            officeCloseHour={19}
+            officeOpenHour={9}
+            officeTimeZone="Europe/Kyiv"
+          />
+        </PresentationCoordinator>,
+      );
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', {name: 'Cancel booking'}))
+          .not.toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', {name: /Stale cancellation/}));
+      await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+      await waitFor(() => expect(deleteRequestCount).toBe(2));
+
+      await act(async () => {
+        if (completion === 'success') {
+          deletes[0].resolve(jsonResponse(undefined, 204));
+        } else {
+          deletes[0].reject(new Error('stale request failure'));
+        }
+      });
+
+      expect(screen.getByRole('dialog', {name: 'Cancel booking'})).toBeVisible();
+      expect(screen.getByRole('button', {name: 'Cancel booking'})).toBeDisabled();
+      expect(screen.queryByText('Не вдалося скасувати бронювання.'))
+        .not.toBeInTheDocument();
+    },
+  );
+
   it('keeps a cancelled block after closing a pending conflict refresh', async () => {
     const retiredConflictRefresh = deferred<Response>();
     const cancellationRefresh = deferred<Response>();
