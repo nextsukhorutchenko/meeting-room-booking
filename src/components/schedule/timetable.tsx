@@ -27,14 +27,6 @@ export const SCHEDULE_LAYOUT = {
   slotHeightPx: 52,
 } as const;
 
-export const COMPACT_BOOKING_LAYOUT = {
-  dayCellWidthPx: 96.85,
-  horizontalPaddingPx: 4,
-  inlineGapPx: 4,
-  statusMaximumWidthPx: 60,
-  titleMinimumWidthPx: 24,
-} as const;
-
 export type TimetableProps = {
   bookings: readonly ScheduleBooking[];
   highlightedBookingId: string | null;

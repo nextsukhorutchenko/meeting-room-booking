@@ -187,11 +187,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--timetable-status-gap);
-  max-width: var(--timetable-status-max-width);
   min-width: var(--space-0);
   font-weight: 700;
-  font-size: var(--type-meta);
-  line-height: var(--type-meta-line-height);
+  font-size: var(--timetable-status-font-size);
+  line-height: var(--timetable-status-line-height);
   white-space: nowrap;
 }
 
