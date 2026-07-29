@@ -765,13 +765,13 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     await user.click(screen.getByRole('button', {
       name: /Забронювати вівторок.*11:00/i,
     }));
-    await user.type(screen.getByLabelText('Title'), 'Planning');
-    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await user.type(screen.getByLabelText('Назва'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(2);
     });
 
-    await user.click(screen.getByRole('button', {name: 'Cancel'}));
+    await user.click(screen.getByRole('button', {name: 'Закрити'}));
     await user.click(block);
     await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
     await waitFor(() => {
@@ -816,8 +816,8 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       name: /Забронювати вівторок.*11:00/i,
     }));
 
-    expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
-    expect(screen.getByLabelText('End time').querySelectorAll('option').length)
+    expect(screen.getByLabelText('Назва')).toBeVisible();
+    expect(screen.getByLabelText('Час завершення').querySelectorAll('option').length)
       .toBeGreaterThan(1);
   });
 
@@ -856,17 +856,17 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       name: /Забронювати вівторок.*11:00/i,
     }));
     await user.selectOptions(
-      screen.getByLabelText('End time'),
+      screen.getByLabelText('Час завершення'),
       '2026-08-04T10:00:00.000Z',
     );
-    await user.type(screen.getByLabelText('Title'), 'Planning');
-    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await user.type(screen.getByLabelText('Назва'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(2);
     });
 
     expect(screen.getByText('Booked at ten')).toBeVisible();
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
 
     await act(async () => {
       refreshedSchedule.resolve(
@@ -875,13 +875,13 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     });
 
     expect(await screen.findByText('Booked at noon')).toBeVisible();
-    expect(screen.getByLabelText('End time')).toHaveValue(
+    expect(screen.getByLabelText('Час завершення')).toHaveValue(
       '2026-08-04T08:30:00.000Z',
     );
-    expect(screen.queryByRole('option', {name: '13:00 (2 hours)'}))
+    expect(screen.queryByRole('option', {name: '13:00 (2 год)'}))
       .not.toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
-    expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
+    expect(screen.getByLabelText('Назва')).toBeVisible();
   });
 
   it('preserves the schedule and retries a failed conflict refresh', async () => {
@@ -926,21 +926,21 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     await user.click(await screen.findByRole('button', {
       name: /Забронювати вівторок.*11:00/i,
     }));
-    await user.type(screen.getByLabelText('Title'), 'Planning');
-    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await user.type(screen.getByLabelText('Назва'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
 
     expect(await screen.findByText('Не вдалося оновити доступність.'))
       .toBeVisible();
     expect(screen.getByText('Prior schedule')).toBeVisible();
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
 
     await user.click(
-      screen.getByRole('button', {name: 'Retry availability'}),
+      screen.getByRole('button', {name: 'Оновити доступність'}),
     );
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(3);
     });
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
 
     await act(async () => {
       retriedSchedule.resolve(
@@ -951,7 +951,7 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     expect(await screen.findByText('Retry schedule')).toBeVisible();
     expect(screen.queryByText('Не вдалося оновити доступність.'))
       .not.toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
   });
 
   it.each([
@@ -1007,12 +1007,11 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       await user.click(await screen.findByRole('button', {
         name: /Забронювати вівторок.*11:00/i,
       }));
-      await user.type(screen.getByLabelText('Title'), 'Planning');
-      await user.click(screen.getByRole('button', {name: 'Create booking'}));
+      await user.type(screen.getByLabelText('Назва'), 'Planning');
+      await user.click(screen.getByRole('button', {name: 'Забронювати'}));
       expect(await screen.findByText('Не вдалося оновити доступність.'))
         .toBeVisible();
 
-      await user.click(screen.getByRole('button', {name: 'Cancel'}));
       if (nextDay) {
         await user.selectOptions(screen.getByLabelText('День'), nextDay);
       } else {
@@ -1029,7 +1028,7 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       await user.click(screen.getByRole('button', {
         name: /Забронювати четвер.*13:00/i,
       }));
-      expect(screen.getByRole('button', {name: 'Create booking'}))
+      expect(screen.getByRole('button', {name: 'Забронювати'}))
         .toBeEnabled();
     },
   );
@@ -1081,12 +1080,11 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       name: /Забронювати неділя.*11:00/i,
     });
     await user.click(sundaySlots[0]);
-    await user.type(screen.getByLabelText('Title'), 'Planning');
-    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await user.type(screen.getByLabelText('Назва'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
     expect(await screen.findByText('Не вдалося оновити доступність.'))
       .toBeVisible();
 
-    await user.click(screen.getByRole('button', {name: 'Cancel'}));
     await user.click(screen.getByRole('button', {name: 'Наступний тиждень'}));
     expect(await screen.findByText('Next week schedule')).toBeVisible();
     const mondaySlots = screen.getAllByRole('button', {
@@ -1096,9 +1094,9 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
 
     expect(screen.queryByText('Не вдалося оновити доступність.'))
       .not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Retry availability'}))
+    expect(screen.queryByRole('button', {name: 'Оновити доступність'}))
       .not.toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
   });
 
   it('clears a failed conflict refresh when the booking dialog closes', async () => {
@@ -1136,25 +1134,25 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     await user.click(await screen.findByRole('button', {
       name: /Забронювати вівторок.*11:00/i,
     }));
-    await user.type(screen.getByLabelText('Title'), 'Planning');
-    await user.click(screen.getByRole('button', {name: 'Create booking'}));
+    await user.type(screen.getByLabelText('Назва'), 'Planning');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
     expect(await screen.findByText('Не вдалося оновити доступність.'))
       .toBeVisible();
 
-    await user.click(screen.getByRole('button', {name: 'Cancel'}));
+    await user.click(screen.getByRole('button', {name: 'Закрити'}));
     await user.click(screen.getByRole('button', {
       name: /Забронювати вівторок.*13:00/i,
     }));
 
     expect(screen.queryByText('Не вдалося оновити доступність.'))
       .not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Retry availability'}))
+    expect(screen.queryByRole('button', {name: 'Оновити доступність'}))
       .not.toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
   });
 
   it.each(['success', 'rejection'] as const)(
-    'ignores late conflict refresh %s after the booking dialog closes',
+    'keeps the pending composer closed to duplicate actions during a %s refresh',
     async (completion) => {
       const lateRefresh = deferred<Response>();
       let scheduleRequestCount = 0;
@@ -1191,28 +1189,16 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       await user.click(await screen.findByRole('button', {
         name: /Забронювати вівторок.*11:00/i,
       }));
-      await user.type(screen.getByLabelText('Title'), 'Planning');
-      await user.click(screen.getByRole('button', {name: 'Create booking'}));
+      await user.type(screen.getByLabelText('Назва'), 'Planning');
+      await user.click(screen.getByRole('button', {name: 'Забронювати'}));
       await waitFor(() => {
         expect(scheduleRequestCount).toBe(2);
       });
-      expect(screen.getByRole('button', {name: 'Create booking'}))
+      expect(screen.getByRole('button', {name: 'Забронювати'}))
         .toBeDisabled();
 
-      await user.click(screen.getByRole('button', {name: 'Cancel'}));
-      expect(screen.queryByRole('dialog', {name: 'Book Oak'}))
-        .not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Закрити'})).toBeDisabled();
       expect(screen.getByText('Prior schedule')).toBeVisible();
-
-      await user.click(screen.getByRole('button', {
-        name: /Забронювати вівторок.*13:00/i,
-      }));
-      expect(screen.queryByText('Не вдалося оновити доступність.'))
-        .not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Retry availability'}))
-        .not.toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Create booking'}))
-        .toBeEnabled();
 
       await act(async () => {
         if (completion === 'success') {
@@ -1225,14 +1211,12 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       });
       if (completion === 'success') {
         expect(await screen.findByText('Refreshed schedule')).toBeVisible();
+        expect(screen.getByRole('button', {name: 'Забронювати'}))
+          .toBeEnabled();
+      } else {
+        expect(await screen.findByText('Не вдалося оновити доступність.'))
+          .toBeVisible();
       }
-
-      expect(screen.queryByText('Не вдалося оновити доступність.'))
-        .not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Retry availability'}))
-        .not.toBeInTheDocument();
-      expect(screen.getByRole('button', {name: 'Create booking'}))
-        .toBeEnabled();
     },
   );
 });

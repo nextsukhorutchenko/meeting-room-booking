@@ -132,42 +132,6 @@
   font-size: 1.125rem;
 }
 
-.booking-form {
-  display: grid;
-  gap: 1rem;
-  min-width: 0;
-}
-
-.booking-summary {
-  display: grid;
-  gap: 0.45rem;
-  border-top: 1px solid #e1e6e2;
-  border-bottom: 1px solid #e1e6e2;
-  padding: 0.8rem 0;
-}
-
-.booking-summary p {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0;
-  color: #58645b;
-  font-size: 0.8125rem;
-}
-
-.booking-summary svg {
-  width: 0.9rem;
-  height: 0.9rem;
-  color: #397354;
-}
-
-.dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.65rem;
-}
-
 .cancellation-dialog-copy {
   min-width: 0;
   margin: 0;

@@ -74,7 +74,7 @@ describe('buildBookingEndTimeOptions', () => {
     });
 
     expect(option).toMatchObject({
-      durationLabel: '30 min',
+      durationLabel: '30 хв',
       endTimeLabel: '03:30',
       rangeLabel: '03:00-03:30',
     });

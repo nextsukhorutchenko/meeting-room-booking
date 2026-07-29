@@ -22,11 +22,6 @@
   min-width: var(--control-select-min-width);
 }
 
-.booking-form .control-field select {
-  width: 100%;
-  min-width: 0;
-}
-
 .icon-button,
 .secondary-button {
   display: inline-flex;

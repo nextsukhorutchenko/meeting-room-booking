@@ -20,19 +20,19 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
 
   await page.getByRole('button', {
-    name: /Book Tuesday.*10:00/i,
+    name: /Забронювати вівторок.*10:00/i,
   }).click();
-  const dialog = page.getByRole('dialog', {name: 'Book Oak'});
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('Tuesday', {exact: false})).toBeVisible();
-  await expect(dialog.getByText('10:00-10:30', {exact: false})).toBeVisible();
-  await dialog.getByLabel('End time').selectOption({
-    label: '12:00 (2 hours)',
+  const composer = page.locator('.booking-surface-panel');
+  await expect(composer).toBeVisible();
+  await expect(composer.getByText('вівторок', {exact: false})).toBeVisible();
+  await expect(composer.getByText('10:00-10:30', {exact: false})).toBeVisible();
+  await composer.getByLabel('Час завершення').selectOption({
+    label: '12:00 (2 год)',
   });
-  await expect(dialog.getByText('10:00-12:00', {exact: false})).toBeVisible();
-  await expect(dialog.getByLabel('Title')).toBeFocused();
+  await expect(composer.getByText('10:00-12:00', {exact: false})).toBeVisible();
+  await expect(composer.getByLabel('Назва')).toBeFocused();
   const openDialogLayout = await page.evaluate(() => {
-    const dialog = document.querySelector('.dialog-panel');
+    const dialog = document.querySelector('.booking-surface-panel');
     const emptyState = document.querySelector('.empty-schedule-note');
     const dayHeaders = document.querySelector('.schedule-day-headers');
     const dialogRect = dialog?.getBoundingClientRect();
@@ -67,7 +67,7 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   });
 
   const title = 'task-9-e2e-created-booking';
-  await dialog.getByLabel('Title').fill(title);
+  await composer.getByLabel('Назва').fill(title);
   const createRequest = page.waitForRequest((request) =>
     request.url().endsWith('/api/bookings') &&
     request.method() === 'POST',
@@ -77,7 +77,7 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
     response.request().method() === 'POST' &&
     response.status() === 201,
   );
-  await dialog.getByRole('button', {name: 'Create booking'}).click();
+  await composer.getByRole('button', {name: 'Забронювати'}).click();
   const createPayload = (await createRequest).postDataJSON() as {
     endsAt: string;
     startsAt: string;
@@ -90,9 +90,9 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   );
   await createResponse;
 
-  await expect(dialog).toBeHidden();
+  await expect(composer.locator('[name="title"]')).toBeHidden();
   await expect(
-    page.getByRole('status').filter({hasText: 'Booking created'}),
+    page.getByRole('status').filter({hasText: 'Бронювання створено'}),
   ).toBeVisible();
   const bookingBlock = page.getByRole('article', {name: new RegExp(title)});
   await expect(bookingBlock).toBeVisible();
@@ -168,7 +168,7 @@ test('@booking occupied slot -> visible conflict, dialog remains open', async ({
   const weekStart = officeMonday(1);
   await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
   await page.getByRole('button', {
-    name: /Book Wednesday.*11:00/i,
+    name: /Забронювати середа.*11:00/i,
   }).click();
 
   const startsAt = officeSlot(weekStart, 2, 11);
@@ -182,9 +182,9 @@ test('@booking occupied slot -> visible conflict, dialog remains open', async ({
     },
   });
 
-  const dialog = page.getByRole('dialog', {name: 'Book Oak'});
-  await dialog.getByLabel('Title').fill('task-9-e2e-conflicting-attempt');
-  await dialog.getByRole('button', {name: 'Create booking'}).click();
+  const dialog = page.locator('.booking-surface-panel');
+  await dialog.getByLabel('Назва').fill('task-9-e2e-conflicting-attempt');
+  await dialog.getByRole('button', {name: 'Забронювати'}).click();
 
   await expect(dialog).toBeVisible();
   await expect(
@@ -202,12 +202,12 @@ test('@booking pending disabled, duplicate clicks create exactly one', async ({
   const weekStart = officeMonday(1);
   await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
   await page.getByRole('button', {
-    name: /Book Thursday.*14:00/i,
+    name: /Забронювати четвер.*14:00/i,
   }).click();
 
   const title = 'task-9-e2e-single-submit';
-  const submit = page.getByRole('button', {name: 'Create booking'});
-  await page.getByLabel('Title').fill(title);
+  const submit = page.getByRole('button', {name: 'Забронювати'});
+  await page.getByLabel('Назва').fill(title);
   let createRequests = 0;
   await page.route('**/api/bookings', async (route) => {
     createRequests += 1;
@@ -216,7 +216,7 @@ test('@booking pending disabled, duplicate clicks create exactly one', async ({
 
   await submit.dblclick();
   await expect(submit).toBeDisabled();
-  await expect(page.getByRole('dialog', {name: 'Book Oak'})).toBeHidden();
+  await expect(page.locator('.booking-surface-panel [name="title"]')).toBeHidden();
   expect(createRequests).toBe(1);
   await expect(database.booking.count({where: {title}})).resolves.toBe(1);
 });

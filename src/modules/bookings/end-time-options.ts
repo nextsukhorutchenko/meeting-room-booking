@@ -20,9 +20,9 @@ export type BookingAvailabilityInterval = {
 function durationLabel(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
-  if (hours === 0) return `${minutes} min`;
-  const hoursText = `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-  return remainder === 0 ? hoursText : `${hoursText} ${remainder} min`;
+  if (hours === 0) return `${minutes} хв`;
+  const hoursText = `${hours} год`;
+  return remainder === 0 ? hoursText : `${hoursText} ${remainder} хв`;
 }
 
 function timeLabel(instant: string, userTimeZone: string): string {
