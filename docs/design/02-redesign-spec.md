@@ -1,6 +1,6 @@
 # Roomwork: специфікація редизайну
 
-- **Статус:** Revised for critic cycle 2
+- **Статус:** Revised after critic cycle 2 - awaiting scoped gate
 - **Дата:** 2026-07-29
 - **Продукт:** Roomwork
 - **Пояснення бренду:** Бронювання переговорних
@@ -23,7 +23,7 @@
 
 Цей дозвіл пояснює відсутність проміжного approval gate. Він не робить
 специфікацію затвердженою: поточний статус документа -
-**Revised for critic cycle 2**, а не Approved.
+**Revised after critic cycle 2 - awaiting scoped gate**, а не Approved.
 
 ## 2. Джерела і пріоритет рішень
 
@@ -100,10 +100,14 @@ transient error banner. `schedule-scrollport` означає верх рамки
   `schedule-body-first-row.top <= 208px`.
 - `1024x768`: `schedule-scrollport.top <= 152px`;
   `schedule-body-first-row.top <= 208px`.
-- `768x1024`: `schedule-scrollport.top <= 216px`;
-  `schedule-body-first-row.top <= 272px`.
+- `768x1024` at 100% zoom: equivalent zones мають
+  `schedule-scrollport.top <= 216px`,
+  `schedule-body-first-row.top <= 272px`; different zones додають окремий
+  notice і мають відповідно `<=256px` та `<=312px`.
 - `390x844`, `360x800`, `320x800`:
-  `agenda-first-body-item.top <= 288px`, що виконує brief gate `<=300px`.
+  normal 100% zoom, different zones і fixture з long room/IANA:
+  `agenda-first-body-item.top <= 296px`, що виконує brief gate `<=300px`;
+  equivalent zones мають `<=252px`.
 - На `1440x900` між `schedule-body-first-row.top` і нижнім краєм scrollport
   повністю видно 12 body rows по `52px`, тобто 6 робочих годин. Sticky table
   header не входить у ці 12 rows.
@@ -444,6 +448,10 @@ anchor.
   `692px`, тому `12 x 52 = 624px` повністю видимі.
 - Contextual pane завжди займає 320px. Без selection він показує heading
   `Деталі бронювання`, room summary і status `Оберіть вільний час у розкладі`.
+  Це closed-state content усередині тієї самої `AdaptiveBookingSurface`, не
+  окремий placeholder: в expanded mode panel завжди visible і має
+  `role="region"`. `hidden` застосовується до closed surface лише в
+  medium/tablet/mobile.
 
 Full horizontal equation at `1440px`:
 
@@ -506,12 +514,14 @@ booking draft або `visibleTimeAnchor`.
   показуються Saturday + Sunday, а selected day лишається URL anchor.
 - Previous/next day та `Сьогодні` лишаються окремими кнопками; жодна дія не
   залежить від swipe.
-- Room summary - одна `56px` control row; `Фільтри` відкриває modal sheet із
-  room list і capacity.
+- Room summary - одна `48px` control row; `Фільтри` відкриває modal sheet із
+  room list і capacity. Для different zones під row є окремий auto-height
+  notice, nominal `40px`; full IANA values не входять у 48px row.
 - Vertical budget: app bar `56` + main top padding `8` + title/Today row `44`
-  + date navigation `52` + combined room/filter/timezone row `48` + bottom gap
-  `8` = `schedule-scrollport.top 216px`; sticky header `56` =
-  `schedule-body-first-row.top 272px`.
+  + date navigation `52` + room/filter row `48` + gaps `8` =
+  `schedule-scrollport.top 216px` for equivalent zones; different zones add
+  `40px`, giving `256px`. Sticky header `56` gives first body row `272px` або
+  `312px`.
 - Booking відкривається як right modal sheet шириною `384px`, full height,
   з `aria-modal="true"` і inert background.
 - Немає horizontal overflow document; table займає доступну ширину.
@@ -527,27 +537,47 @@ booking draft або `visibleTimeAnchor`.
 - Date navigation row має `52px`: previous `44px`, internal date strip,
   next `44px`. Date buttons `56x52px`; при content width `288px`
   (`320 - 16 * 2`) видно три dates.
-- Combined room/filter/timezone row має `48px`. Зліва room name + capacity;
-  справа `Фільтри` `44px`. Якщо zones різні, second compact line у межах тих
-  самих `48px` показує user zone та office zone.
+- Room/action row використовує
+  `grid-template-columns:minmax(0,1fr) 44px`, `min-height:48px`,
+  `block-size:auto`, `box-sizing:border-box`. Зліва room name та
+  floor/capacity, справа `Фільтри` `44x44px`. Room column має `min-width:0`;
+  block padding `6px 0`; name займає одну `14px/18px` line з ellipsis,
+  floor/capacity - другу `12px/16px` line з `2px` gap
+  (`6 + 18 + 2 + 16 + 6 = 48`). Повне room name лишається в
+  DOM/accessibility name і visible у selected item filter sheet; tooltip не є
+  єдиним джерелом.
+- Коли zones різні, після room/action row рендериться окремий
+  `ZoneNotice`, не вкладений у row: `min-height:40px`, `block-size:auto`,
+  type `12px/20px`, дві visible lines
+  `Ваш час: {full userTimeZone}` та
+  `Офіс: 09:00-19:00 {full officeTimeZone}`. IANA values не обрізаються, не
+  ellipsize-яться і мають `overflow-wrap:anywhere`; tooltip/disclosure не
+  використовується.
 - Agenda date heading має `24px`.
-- Exact settled vertical budget:
+- Exact settled 100% zoom budget at `320px` for different zones, long room
+  `Переговорна для міжнародних координаційних зустрічей` і
+  `America/Argentina/Buenos_Aires`:
 
 ```text
 app bar                                      56
 main top padding                              8
 title + Today                                44
-date navigation                              52
-room/filter/timezone                         48
-agenda date heading                          24
-gaps: 8px after title, date, filter, heading 32
+gap                                             8
+date navigation                               52
+gap                                             8
+room/action row                               48
+gap before zone notice                         4
+zone notice: 2 x 20                           40
+gap before agenda heading                       4
+agenda date heading                           24
                                              ---
-agenda-first-body-item.top                  264px
+agenda-first-body-item.top                   296px
 ```
 
-`264px <= 288px <= 300px`. Зарезервовані додаткові `24px` до acceptance limit
-покривають 1px borders і font rounding; реалізація не може використати цей
-reserve для нової control row.
+All borders входять у named row heights. Gate:
+`agenda-first-body-item.top <= 296px <= 300px`; запас `4px` не дозволяє нової
+row. Для equivalent zones sequence `4 + 40 + 4` замінюється одним `4px` gap
+між room row і heading, тому first item top `252px`.
 - Agenda - не fixed-height timeline. Це chronological list із 30-хвилинними
   start rows. Busy bookings, що охоплюють кілька слотів, рендеряться один раз
   із повним range.
@@ -564,7 +594,12 @@ reserve для нової control row.
 Actual 200% browser zoom має активувати той layout, який відповідає effective
 CSS viewport. На `1440x900` при 200% effective width становить `720px`, тому
 очікується tablet 2-day single-pane presentation, а не стиснута 7-day table.
-Жоден breakpoint не залежить від device pixel ratio.
+Жоден breakpoint не залежить від device pixel ratio. Top gates section 4.1 і
+11.4 є 100% zoom density metrics, не вимогою стискати content при 200%.
+При 200% room/action row і `ZoneNotice` мають auto block-size, повні IANA
+values wrap, document/owned scrollport росте вертикально без clipping,
+overlap або page-level horizontal scroll; reflow і доступність усіх controls
+мають пріоритет над first-item top.
 
 ## 12. App shell
 
@@ -626,6 +661,14 @@ Room row - button minimum `52px`, не card. Зміна room:
 - не показує stale booking controls для старої кімнати;
 - abort/sequence guards і далі відкидають delayed response.
 
+Expanded/medium показують pane non-modal. Tablet/mobile button `Фільтри`
+dispatches coordinator `OPEN_FILTER`; `RoomFilterSurface` не відкриває sheet
+локально. `ScheduleWorkspace` owns `appliedMinCapacity` і
+`filterDraftMinCapacity`: `OPEN_FILTER` copies applied -> draft,
+`APPLY_FILTER` commits draft, `CLOSE_FILTER` resets draft to applied. Обидва
+close paths повертають focus на exact filter trigger. Role/aria/inert/denial
+rules - section 18.2.
+
 ### 13.2 Schedule navigation
 
 - Expanded: previous week icon, `Сьогодні`, next week icon, date range.
@@ -653,9 +696,11 @@ Room row - button minimum `52px`, не card. Зміна room:
 `Час показано для {userTimeZone}. Робочі години офісу: 09:00-19:00
 {officeTimeZone}.`
 
-Текст не ховається у tooltip. На mobile він рендериться двома compact lines:
-`Ваш час: {userTimeZone}` і `Офіс: 09:00-19:00 {officeTimeZone}`. Disclosure
-для timezone notice не використовується.
+Текст не ховається у tooltip. На tablet/mobile це окремий auto-height
+`ZoneNotice` після room/action row з двома compact lines:
+`Ваш час: {userTimeZone}` і `Офіс: 09:00-19:00 {officeTimeZone}`. Обидва full
+IANA identifiers visible; `overflow-wrap:anywhere` дозволяє reflow без
+truncation. Disclosure для timezone notice не використовується.
 
 `weekStart` і `day` описують office dates, бо server перевіряє office hours.
 Усі actionable time labels, booking ranges і accessible names обчислюються з
@@ -744,27 +789,43 @@ output only where visible copy above explicitly shows an example.
 
 #### 13.4.2 Normative `rowSpan` projection
 
-Перед render pure projector виконує:
+API response є full office-week dataset. Перед будь-якою 7/3/2-day table або
+1-day agenda projection pure pipeline виконує дві окремі фази.
 
-1. Створює matrix `20 x visibleDayCount`; indices `0..19` відповідають office
-   starts `09:00..18:30`.
-2. Конвертує кожне booking у office zone і перевіряє: valid instants,
-   start/end в одному office day, 30-minute alignment, duration `1..8` slots,
-   range усередині `09:00-19:00`, day є у visible range.
-3. Сортує bookings за office day, start, ID.
-4. Для booking зі start index `i` і span `n` вимагає, щоб matrix cells
-   `i..i+n-1` цього day були empty. Cell `i` стає `booking-start`; наступні
-   `n-1` - `booking-continuation` з тим самим booking ID.
-5. Будь-який overlap, cross-day range, misalignment, out-of-bounds span або
-   invalid instant переводить весь timetable у `schedule-data-error`. Table з
-   потенційно зміщеними columns і booking actions не рендериться.
-6. Для кожної body row renderer завжди емітить один `th scope="row"`. Для
+**Phase A - validate full week:**
+
+1. Побудувати office-week range `[weekStart Monday 00:00,
+   next Monday 00:00)` у `officeTimeZone` і full occupancy matrix
+   `7 x 20`.
+2. Для **кожного** returned booking, включно з hidden days, validate required
+   field presence/types, nonempty opaque technical ID, valid UTC instants,
+   `startsAt < endsAt`, start/end в одному office day, day усередині цього
+   office week, 30-minute alignment, duration `1..8` slots і range всередині
+   `09:00-19:00`. Renderer не invent/parse ID format.
+3. Sort normalized bookings by office day, start, ID. Mark every covered
+   coordinate in full `7 x 20` matrix; any same-room overlap, duplicate
+   occupancy or duplicate booking ID is malformed.
+4. Будь-який malformed booking у visible **або hidden** day переводить всю
+   schedule surface у `schedule-data-error`. Partial timetable/agenda і
+   booking actions не рендеряться.
+
+**Phase B - filter, then project:**
+
+5. Лише після successful Phase A створити
+   `visibleBookings = normalizedWeek.filter(day in visibleDaySet)`.
+   Валідний booking до/після 3-day або 2-day window не є error, не рендериться
+   і не займає coordinate у visible matrix.
+6. Створити matrix `20 x visibleDayCount`; indices `0..19` відповідають office
+   starts `09:00..18:30`. Заповнити її тільки `visibleBookings`: start cell
+   стає `booking-start`, наступні covered cells -
+   `booking-continuation` із тим самим booking ID.
+7. Для кожної body row renderer завжди емітить один `th scope="row"`. Для
    кожного visible day:
    - `booking-start` -> один `td rowSpan={n}` із booking trigger;
    - `booking-continuation` -> не емітить `td` лише для цього самого day;
    - empty -> один ordinary `td` із free, past або unavailable content.
    Cells інших days продовжують емітуватися в цій row.
-7. Adjacent bookings мають окремі `booking-start` cells; жодна cell не
+8. Adjacent bookings мають окремі `booking-start` cells; жодна cell не
    пропускається між ними.
 
 Нормативні invariants:
@@ -783,12 +844,23 @@ output only where visible copy above explicitly shows an example.
   status `Поточний час {user-local time}`.
 
 Tests: mixed-column simultaneous spans, adjacency, 30/60/240 minutes, malformed
-overlap, misalignment, cross-day і out-of-hours data.
+overlap, misalignment, cross-day і out-of-hours data. Window fixtures:
+
+- 3-day Wednesday-Friday: valid Monday and Sunday bookings pass Phase A,
+  відсутні у DOM, visible cell count/coordinates unchanged;
+- 2-day Thursday-Friday: valid Tuesday and Saturday bookings так само
+  фільтруються;
+- malformed visible booking fails the whole surface;
+- malformed hidden booking and hidden-day overlap also fail the whole surface;
+- one dataset with valid hidden + valid visible adjacent bookings renders only
+  the visible booking and never treats the window boundary as overlap.
 
 ### 13.5 Mobile day agenda semantics
 
 `projectDayAgenda` є pure function над `officeDay`, office hours, `now`,
-validated non-overlapping bookings і load state.
+raw full-week bookings, `weekStart`, zones і load state. Вона викликає shared
+Phase A validator, потім selected-day filter; окремої weaker one-day
+validation немає.
 
 ```html
 <section aria-labelledby="agenda-date">
@@ -802,8 +874,10 @@ validated non-overlapping bookings і load state.
 Projection:
 
 1. Створює 20 atomic office slots `09:00..18:30`.
-2. Валідовує booking preconditions з section 13.4.2 для одного office day.
-   Malformed data -> один `schedule-data-error`, без partial list або actions.
+2. Спочатку виконує full-week Phase A section 13.4.2. Malformed booking у
+   будь-якому day -> один `schedule-data-error`, без partial list/actions.
+   Після success фільтрує normalized bookings exact selected office day;
+   valid hidden-day bookings не рендеряться.
 3. Ітерує slot indices `0..19`:
    - booking start -> один busy item із `spanSlots`, title, full user-local
      range, author, `Ваше|Зайнято`; continuation indices пропускаються;
@@ -912,8 +986,21 @@ Other booking:
 solid single border і `Зайнято`. Відмінність не залежить лише від кольору.
 
 Bounding-box gate на expanded lower bound `1360px`: day content width
-`96.85px`, trigger width дорівнює cell width, trigger height `48px`, title/range
-boxes не перетинаються, inline Cancel count дорівнює zero.
+`96.85px`, trigger width дорівнює cell width, trigger height `48px`,
+padding `4px`, inner width `88.85px`, inner height `40px`. Compact layout:
+
+- line 1 `16px`: grid `minmax(24px,1fr) auto`; ellipsized title + `4px` gap +
+  status group;
+- status group має icon `12x12px`, gap `2px`, visible text
+  `Ваше|Зайнято`, max width `60px`, line-height `14px`, no shrink;
+- line 2 `14px`: full `09:00-09:30` range; remaining `10px` є internal
+  block spacing/alignment reserve.
+
+Gate fixture використовує 100-character unbroken title і ширший status
+`Зайнято`: title, status icon/text і range bounding boxes повністю всередині
+inner box, не перетинаються, status text не ellipsize-иться, title має visible
+мінімум `24px`, inline Cancel count дорівнює zero. Full title лишається в
+accessible name/details.
 
 ## 14. Booking flow
 
@@ -938,8 +1025,15 @@ AppShell
 ```
 
 `AdaptiveBookingSurface` і `BookingPanel` монтуються один раз разом із
-`ScheduleWorkspace`. Closed state використовує `hidden`; open state не змінює
-component type або DOM ancestry.
+`ScheduleWorkspace`. Closed state має `data-open="false"` і не змінює
+component type або DOM ancestry:
+
+- expanded: panel не hidden, `role="region"`, показує noninteractive
+  empty-state content section 11.1;
+- medium/tablet/mobile: CSS `display:none`; hydrated behavior додає
+  `aria-hidden="true"` і не залишає focusable descendants.
+
+Open state replaces only panel content/state attributes, не subtree.
 
 CSS, а не JavaScript, визначає placement:
 
@@ -948,11 +1042,15 @@ CSS, а не JavaScript, визначає placement:
 - `600-899px`: `position:fixed` right sheet `min(384px,100vw)`;
 - `<600px`: fixed bottom/full-screen sheet за section 11.4.
 
-JS `responsiveMode` після hydration визначає тільки behavior:
+JS `responsiveMode` після hydration визначає тільки behavior for an open,
+non-suspended booking surface:
 
 - `expanded|medium`: `role="region"`, no `aria-modal`, no backdrop, no inert;
-- `tablet|mobile`: `role="dialog"`, `aria-modal="true"`, backdrop visible,
-  `PresentationCoordinator` робить registered background targets inert.
+- `tablet|mobile` while coordinator owner is `booking`: `role="dialog"`,
+  `aria-modal="true"`, backdrop visible, registered background targets inert.
+
+Closed medium/compact або cancellation-suspended booking surface не має
+dialog role/`aria-modal` і hidden/inert за sections 14.1/18.2.
 
 Changing `role`, `aria-modal`, classes і inert siblings не remount-ить form.
 
@@ -960,7 +1058,9 @@ Changing `role`, `aria-modal`, classes і inert siblings не remount-ить for
 
 - Server snapshot responsive mode - `unresolved`, не `mobile`.
 - SSR виводить CSS-sized `ScheduleViewportSkeleton` з `aria-busy="true"` і
-  hidden closed `AdaptiveBookingSurface`; жодних slot/details buttons немає.
+  closed `AdaptiveBookingSurface`: expanded CSS показує лише noninteractive
+  empty state, medium/compact CSS його ховає; жодних slot/details buttons
+  немає.
 - CSS media queries одразу резервують правильні pane tracks і vertical
   geometry до hydration.
 - `useResponsiveMode` у first client layout phase читає `matchMedia` й монтує
@@ -1184,11 +1284,12 @@ type CancellationState =
 
 | Event | Transition / side effect owner |
 | --- | --- |
-| `OPEN_CANCEL(booking)` | parent increments generation, stores booking, opens modal; focus Keep |
-| `CLOSE_CANCEL` | confirming/error -> closed; pending -> ignored |
+| `OPEN_CANCEL(booking, origin)` | parent increments generation and stores booking; coordinator dispatches `OPEN_CANCEL_FROM_BOOKING` або `OPEN_CANCEL_DIRECT`; reducer enters confirming only if coordinator accepts |
+| `CLOSE_CANCEL` | confirming/error -> closed and coordinator dispatches `KEEP_CANCEL`; pending -> ignored |
 | `SUBMIT_CANCEL` | confirming/error -> submitting, allocate request ID; parent DELETE |
-| `DELETE_OK(requestId)` | matching request: parent applies surface-specific success policy, closes, status/focus |
-| `DELETE_ERROR(requestId, code)` | matching request: localized stable error, dialog remains open |
+| `DELETE_OK(requestId)` | matching request: parent applies surface-specific data policy, closes domain state, coordinator dispatches `CANCEL_SUCCESS` for modal/focus handoff |
+| `DELETE_ERROR(requestId, code)` | matching request: localized stable error, dialog remains sole modal; coordinator gets no owner change |
+| `CLOSE_ERROR` | error -> closed; coordinator dispatches `CANCEL_ERROR_CLOSE` and restores booking-origin Cancel trigger або direct invoker |
 | `NAVIGATE_OR_UNMOUNT` | increment generation, abort request, invalidate responses |
 | stale response | no dialog/list/toast/focus mutation |
 
@@ -1207,9 +1308,14 @@ history on the current destination without showing a stale toast.
 - Destructive action: `Скасувати бронювання`.
 - Pending блокує Escape, X, duplicate request і обидві actions; label
   `Скасовуємо...`.
-- Error лишається у відкритому dialog.
+- Error лишається у відкритому dialog; visible `Закрити помилку` dispatches
+  `CLOSE_ERROR`/presentation `CANCEL_ERROR_CLOSE`.
 - Success прибирає history row одразу; schedule зберігає старий block до
   завершення active refetch, як у поточному контракті.
+- Schedule success focus fallback після modal close: next available slot у
+  тому самому day після cancelled range; якщо немає - попередній available
+  slot; далі day heading. Old cancelled block не отримує focus, а settled
+  refetch не пересуває його повторно.
 - Focus after history cancellation переходить до наступного row link, а якщо
   рядків немає - до section heading.
 
@@ -1345,18 +1451,19 @@ Transitions:
 
 | Event | State transition |
 | --- | --- |
-| `POLL_VALID(items)` | merge new IDs, `seen=false`, `ack=pending`, enqueue each new non-dismissed ID once; POST ack for every delivered ID |
+| `POLL_VALID(items)` when `centerOpen=false` | for each non-dismissed new ID retain latest data with `seen=false`, `ack=pending` and enqueue once; duplicate replaces validated `data`, preserves existing `seen`, sets `ack=pending` for the new attempt and does not duplicate queue; POST ack for every delivered ID |
+| `POLL_VALID(items)` when `centerOpen=true` | for each non-dismissed new ID retain latest data with `seen=true`, `ack=pending`, render it immediately in open list, do not increment badge and do not enqueue toast; duplicate replaces metadata, forces/preserves `seen=true`, sets `ack=pending`, removes no list item and never enters queue; POST ack independently for every delivered ID |
 | `ACK_OK(id)` | retained ack -> `acked`; no presentation change |
 | `ACK_ERROR(id)` | retained ack -> `failed`; no user alert; later redelivery retries ack |
-| duplicate redelivery | no duplicate retained/toast/badge; ack attempted again |
+| dismissed-ID redelivery | no retained resurrection/toast/badge; ack attempted again |
 | `TOAST_SHOW_NEXT` | when no modal/center and no active toast, dequeue first retained ID |
 | `TOAST_TIMEOUT(id)` | clear active only; retained/seen/badge unchanged |
 | `CENTER_OPEN` | `centerOpen=true`; all retained `seen=true`; clear active toast and queue |
-| `CENTER_CLOSE` | `centerOpen=false`; retained items stay |
+| `CENTER_CLOSE` | `centerOpen=false`; retained items stay; no toast is synthesized for any `seen=true` item received while open |
 | `DISMISS(id)` | remove retained, queue/active; remember dismissed ID; focus fallback |
 | `MODAL_OPEN` | active toast returns to front of queue, timer discarded; visual toast hidden |
 | `MODAL_CLOSE` | if all modals closed and center closed, show queue head with fresh 4s timer |
-| route navigation | state/queue/timer survive in persistent AppShell |
+| authenticated client route navigation | dispatch `CENTER_CLOSE` (`centerOpen=false`), close presentation and release notification modal owner; retained/seen/ack/queue/active toast and timer survive in persistent AppShell; seen items never requeue |
 | unmount/logout/full reload | abort polls/acks; client state cleared |
 
 Polling лишається immediate + every `60_000ms` only while visible. Visibility
@@ -1364,27 +1471,103 @@ hide pauses interval й active toast timer; visibility return polls immediately
 і resumes toast with fresh 4s timer. Malformed/failed GET і ack failure не
 створюють assertive UI.
 
+`NotificationController` і toast host належать authenticated persistent
+`AppShell` layout і не remount-яться між `/schedule` та `/my-bookings`.
+`NotificationCenter` presentation закривається на navigation, але controller
+state лишається. Logout, full reload або вихід з authenticated layout є єдиним
+component-lifetime reset. Server acknowledgement завжди виконується незалежно
+від `centerOpen`, `seen`, queue, route або dismiss state.
+
 ### 18.2 `PresentationCoordinator`
 
 Global context у `AppShell` володіє тільки presentation state:
 
 ```ts
-type ModalOwner = null | 'booking' | 'cancellation' | 'notifications';
+type ModalOwner =
+  | null
+  | 'room-filter'
+  | 'booking'
+  | 'cancellation'
+  | 'notifications';
+
+type CancellationPresentationOrigin =
+  | {kind: 'booking'; cancelTrigger: HTMLElement}
+  | {kind: 'schedule'; invoker: HTMLElement}
+  | {kind: 'history'; invoker: HTMLElement};
 ```
 
 Він:
 
-- реєструє inert background targets і stable modal surfaces;
-- серіалізує modal owner: одночасно active максимум один modal;
-- публікує `modalOwner` NotificationController для toast suppression;
-- закриває non-modal popovers перед відкриттям modal;
+- реєструє app-background inert targets і всі modal surfaces;
+- володіє єдиним `modalOwner`; одночасно рівно zero або one surface має
+  `role="dialog" aria-modal="true"`;
+- публікує `modalOwner !== null` NotificationController для toast suppression,
+  включно з room filter;
+- закриває non-modal popovers перед відкриттям modal; closing notification
+  popover dispatches `CENTER_CLOSE` before owner activation;
 - не володіє notification items, booking draft, cancellation request або page
   data.
 
-Booking surface при resize реєструє/звільняє owner без remount. Notification
-sheet не відкривається, доки cancellation/booking modal active; bell лишається
-недоступним через inert. Non-modal desktop notification popover не стає modal
-owner.
+Active modal contract:
+
+1. Спочатку previous active surface, якщо є allowed handoff, прибирає
+   `aria-modal`/dialog role, стає `hidden` + `inert`/`data-suspended=true`.
+2. Лише потім next surface unhide-иться, отримує dialog role/`aria-modal=true`
+   і initial focus.
+3. App background стає inert при `null -> owner` до focus transfer і лишається
+   inert без проміжного release при owner-to-owner handoff.
+4. При `owner -> null` active surface спочатку втрачає modal semantics і
+   ховається, потім background перестає бути inert, потім coordinator
+   відновлює documented focus.
+5. Будь-який modal request, не дозволений таблицею нижче, повертає `DENIED`
+   без state/role/focus/toast mutation.
+
+Steps 1-2 owner-to-owner виконуються в одному synchronous render/layout
+transaction без intermediate paint, microtask або focus move. MutationObserver
+після commit бачить уже one outgoing-without-aria + one incoming-with-aria,
+ніколи two або zero active dialogs.
+
+Transitions:
+
+| Event | Valid from | Modal/focus transition |
+| --- | --- | --- |
+| `OPEN_FILTER(filterTrigger)` | `null`, tablet/mobile | copy applied filter -> parent draft; close popovers; owner `room-filter`; filter sheet `role=dialog`, `aria-modal=true`; inert app background; initial focus first invalid capacity, else selected room, else sheet heading |
+| `APPLY_FILTER` | `room-filter` | commit parent-owned filter values; hide filter, owner `null`; release inert; focus filter trigger; changed selected room запускає schedule/agenda epoch rules |
+| `CLOSE_FILTER` | `room-filter` | discard uncommitted presentation draft only; hide filter, owner `null`; release inert; focus filter trigger |
+| `OPEN_BOOKING` | `null`, tablet/mobile | owner `booking`; stable booking surface modal; inert background; focus priority section 14.1 |
+| `OPEN_CANCEL_FROM_BOOKING(cancelTrigger)` | `booking` on tablet/mobile, або `null` with visible non-modal booking on expanded/medium | retain booking details/draft and trigger ref; booking surface first removes dialog role/`aria-modal`, then becomes hidden, inert and `data-suspended=true`; cancellation becomes sole modal owner and only then gets `aria-modal=true`; focus `Залишити бронювання` |
+| `OPEN_CANCEL_DIRECT(origin)` | `null` from schedule agenda/history | owner `cancellation`; store schedule/history invoker; cancellation is sole modal; focus `Залишити бронювання` |
+| `KEEP_CANCEL` | `cancellation` | hide/de-modalize cancellation; if origin `booking`, unsuspend booking, owner `booking` in tablet/mobile (or owner `null`, non-modal region expanded/medium), then focus exact stored Cancel trigger; direct origin -> owner `null`, release inert, focus invoker |
+| `DELETE_ERROR` | `cancellation` | owner/aria/inert unchanged; show alert and focus it; visible `Закрити помилку` available |
+| `CANCEL_ERROR_CLOSE` | `cancellation` error | same restoration as `KEEP_CANCEL`; booking-origin returns exact booking modal/non-modal surface and Cancel trigger |
+| `CANCEL_SUCCESS` | `cancellation` | cancellation and suspended booking details both lose modal semantics and close; booking controller enters closed state (expanded shows its empty region, medium/compact hides it); owner `null`; release inert; after data policy section 15 focus logical schedule fallback or next-row/heading history fallback; booking Cancel trigger is not restored |
+| `OPEN_NOTIFICATIONS(bell)` | `null`, mobile | dispatch `CENTER_OPEN`, owner `notifications`; center sheet sole modal, inert background, focus heading |
+| `CLOSE_NOTIFICATIONS` | `notifications` | dispatch `CENTER_CLOSE`, hide sheet, owner `null`, release inert, focus bell; seen items are not queued |
+| route navigation | any owner | close/de-modalize owner and suspended surfaces, owner `null`, release inert; route focus policy wins; domain state follows its own controller rules |
+
+`OPEN_FILTER`, `OPEN_BOOKING`, `OPEN_CANCEL_DIRECT` і
+`OPEN_NOTIFICATIONS` are denied when another owner is active. Єдиний
+owner-to-owner exception - `OPEN_CANCEL_FROM_BOOKING`. Inert background робить
+filter trigger, bell, schedule і nav недоступними, тому denial є guard against
+programmatic races, не user-facing dead end.
+
+Booking surface при resize реєструє/звільняє `booking` owner без remount.
+Якщо owner `cancellation` і booking suspended, resize лише оновлює mode, у
+якому `KEEP_CANCEL` відновить booking; cancellation лишається sole owner.
+Non-modal desktop notification popover і expanded/medium booking region не є
+modal owners. `RoomFilterSurface` не володіє open state: він controlled
+presentation над coordinator state; filter values належать
+`ScheduleWorkspace`.
+
+Gate у кожній transition frame:
+`document.querySelectorAll('[aria-modal="true"]').length <= 1`; коли
+`modalOwner !== null`, count дорівнює `1`, active owner не inert, усі
+registered background targets inert і focus contained in active surface.
+Toast host visual queue suppressed for every non-null owner and resumes only
+після owner `null` та `centerOpen=false`.
+Coordinator dispatches notification `MODAL_OPEN` only on `null -> non-null`,
+keeps suppression uninterrupted on owner-to-owner handoff, and dispatches
+`MODAL_CLOSE` only on `non-null -> null`.
 
 ### 18.3 Presentation і focus
 
@@ -1417,8 +1600,10 @@ Mobile sheet:
 - Tab/Shift+Tab trapped.
 
 Opening either popover or sheet dispatches `CENTER_OPEN`, тому badge стає zero,
-але list items лишаються до Dismiss. Toast timeout ніколи не mark seen і не
-dismiss item.
+але list items лишаються до Dismiss. New/duplicate poll while open follows
+section 18.1: metadata видно одразу, item seen, badge zero, queue unchanged.
+Closing/navigating never creates a toast for those seen items. Toast timeout
+ніколи не mark seen і не dismiss item.
 
 ## 19. State matrix
 
@@ -1454,12 +1639,12 @@ dismiss item.
 | --- | --- | --- | --- |
 | `RootLayout` | `lang`, metadata, global tokens | none | auth/session/request state |
 | `AppShell` | persistent header/nav/main/bottom-nav composition | account menu open | page domain state |
-| `PresentationCoordinator` | serialize modal owner, inert targets, toast suppression | `modalOwner`, surface/inert registrations | booking, cancellation, notification data |
+| `PresentationCoordinator` | serialize filter/booking/cancellation/notification modal presentation, inert targets, focus handoff, toast suppression | `modalOwner`, surface/inert registrations, cancellation presentation origin/invoker | booking, cancellation, notification domain data |
 | `NotificationController` | poll, validate, dedupe, ack and retained lifecycle | state from section 18.1, poll/ack controllers | notification markup, schedule state |
 | `NotificationCenter` | render bell/popover/sheet from controlled props | none | polling, retained items, modal arbitration |
-| `ScheduleWorkspace` | page controller and single source of truth | `minCapacity`, rooms, selected room, week/day, user zone, schedule requests/sequences, `bookingReducer`, cancellation controller, toast publication, conflict generations, visible-time anchor | field DOM, modal arbitration |
+| `ScheduleWorkspace` | page controller and single source of truth | `appliedMinCapacity`, `filterDraftMinCapacity`, rooms, selected room, week/day, user zone, schedule requests/sequences, `bookingReducer`, cancellation controller, toast publication, conflict generations, visible-time anchor | field DOM, modal arbitration |
 | `RoomPicker` | room list і capacity controls | none | room fetch, selected room |
-| `RoomFilterSurface` | place `RoomPicker` у pane або modal sheet | filter sheet open/closed | filter values, room data |
+| `RoomFilterSurface` | controlled placement of `RoomPicker` in pane або coordinator-owned modal sheet | none | open state, filter values, room data |
 | `ScheduleNavigation` | date controls/date strip | internal scroll position only | week/day source of truth |
 | `useResponsiveMode` | behavior mode after hydration only | external-store snapshot `unresolved/expanded/medium/tablet/mobile` | placement, domain state |
 | `ScheduleViewport` | render exactly one 7/3/2/day renderer | none; receives responsive mode | fetches, URL, domain selection |
@@ -1499,9 +1684,12 @@ dismiss item.
    AbortController/sequence guards.
 10. Cancellation state і DELETE request належать відповідному page controller;
     `CancellationDialog` не має локального request/error state.
-11. My Bookings future/past errors і cursors не зливаються в один state.
-12. Grouping не змінює API order і не дублює nearest booking.
-13. Localized UI message визначається frontend mapping; raw code зберігається
+11. `PresentationCoordinator` є єдиним owner open/close, role/aria, inert,
+    modal-to-modal suspension і presentation focus; page controllers лише
+    dispatch events та зберігають domain state.
+12. My Bookings future/past errors і cursors не зливаються в один state.
+13. Grouping не змінює API order і не дублює nearest booking.
+14. Localized UI message визначається frontend mapping; raw code зберігається
    для branch logic/tests.
 
 ### 20.3 Presentation state machine
@@ -1728,12 +1916,24 @@ Native table не отримує часткової APG grid behavior. Щоб ke
 1. Skip link `До пошуку часу` є першим focusable element у `<main>` і
    переміщує focus на select `День`.
 2. Далі в DOM рівно: `День`, `Час` із 20 office slots, button `Перейти`.
-3. `Перейти` фокусує free-slot або booking details trigger у точній
+   `День` option value - stable office ISO date `YYYY-MM-DD`. Кожний `Час`
+   option value - UTC ISO instant exact office-slot start, наприклад
+   `2026-07-29T06:00:00.000Z`, плюс `data-office-slot-index="0..19"`;
+   value не є localized label.
+3. Same-zone visible time label - `09:00`. Different-zone label -
+   `{user HH:mm}{, user short date when different} - офіс {office HH:mm}`,
+   наприклад `23:00, 28 лип. - офіс 09:00`. Full accessible option name:
+   `{user full date/time} {userTimeZone}; офісний слот {office full
+   date/time} {officeTimeZone}`.
+4. Після зміни `День` controller recompute всі 20 UTC values і user-local
+   labels per instant/DST, зберігаючи `office-slot-index`, а не старий UTC
+   instant. Date crossing завжди видимий у label.
+5. `Перейти` фокусує free-slot або booking details trigger у точній
    day/time cell. Якщо slot past/non-interactive - фокусує відповідний
    `th scope="row"` через programmatic `tabindex="-1"` і оголошує
    `Цей час недоступний`; якщо schedule error - фокус лишається на button і
    alert пояснює unavailable schedule.
-4. Skip link `Після розкладу` перед scrollport переміщує focus на перший
+6. Skip link `Після розкладу` перед scrollport переміщує focus на перший
    control після `AdaptiveBookingSurface`/schedule region.
 
 Exact paths: без активації skip link `Tab` проходить
@@ -1763,13 +1963,17 @@ keys, але timetable arrow keys не перехоплюються. Ці naviga
 
 ### 23.5 Modal sheet/dialog
 
-- Outside app root is `inert`.
-- `role="dialog"` + `aria-modal="true"` only when inert is active.
-- Initial focus: booking title; cancellation `Залишити бронювання`; long
-  notification sheet heading with `tabindex="-1"`.
+- Registered app background is `inert` for every non-null owner.
+- Exactly one owner surface has `role="dialog"` +
+  `aria-modal="true"`; suspended/closed surfaces have neither and are
+  hidden/inert.
+- Initial focus: room filter heading/first invalid filter; booking title;
+  cancellation `Залишити бронювання`; notification sheet heading with
+  `tabindex="-1"`.
 - Tab/Shift+Tab cycle through all dynamically added controls.
 - Escape and visible close.
-- Close restores invoker or documented fallback.
+- Close, modal-to-modal handoff and restore follow the event table section
+  18.2; cancellation never nests a second dialog over booking.
 
 ### 23.6 Live regions
 
@@ -1863,9 +2067,12 @@ boundary і жоден box shadow не є єдиною межею surface.
 - Винести controller state з current `ScheduleClient` без зміни ownership.
 - Замінити partial ARIA grid на native `Timetable`.
 - Додати `DayAgenda`.
+- Додати shared full-week validator; visible-day filtering виконується лише
+  після нього для table й agenda.
 - Зберегти timezone conversion, end-time options і URL restoration.
-- Gate: reducer transition table, normative `rowSpan`, pure 20-slot agenda,
-  timezone and race unit suites green before removing old renderer. Rollback:
+- Gate: reducer transition table, hidden-day/malformed-any-day projection,
+  normative `rowSpan`, pure 20-slot agenda, timezone and race unit suites green
+  before removing old renderer. Rollback:
   old renderer stays behind an implementation-only branch until this gate,
   never mounted simultaneously in release markup.
 
@@ -1874,6 +2081,8 @@ boundary і жоден box shadow не є єдиною межею surface.
 - Додати RoomPane, ScheduleNavigation/date strip і responsive viewport.
 - Додати одну stable `AdaptiveBookingSurface`; CSS placement і hydrated
   behavior mode не створюють alternate pane/sheet trees.
+- Підключити filter/booking/cancellation/notification surfaces до одного
+  coordinator owner protocol; mutation-frame gate забороняє two aria-modal.
 - Перевірити `isSameNode`, exact focus transitions і draft/pending preservation
   в обох resize directions.
 - Gate: six viewport geometry equations and adaptive E2E pass. Rollback:
@@ -1920,7 +2129,8 @@ boundary і жоден box shadow не є єдиною межею surface.
 ### Schedule
 
 - **AC-005:** `1440x900` має room pane, 7-day timetable, booking pane; seven
-  days без horizontal scroll.
+  days без horizontal scroll; closed booking pane visible з empty-state
+  guidance.
 - **AC-006:** `1024x768` має 3-day timetable; selection показує non-modal
   booking pane й лишає timetable видимим.
 - **AC-007:** `768x1024` має 2-day table/date strip, а не mobile one-day
@@ -1928,7 +2138,8 @@ boundary і жоден box shadow не є єдиною межею surface.
 - **AC-008:** `390x844`, `360x800`, `320x800` мають compact header, date strip,
   filter sheet і day agenda.
 - **AC-009:** Schedule scrollport/body top і six-hour visibility відповідають
-  exact inequalities та vertical budgets section 4.1/11.
+  exact inequalities та vertical budgets section 4.1/11; mobile `<=300px`
+  є normal-zoom gate, а 200% є reflow/no-clipping gate.
 - **AC-010:** Expanded schedule scrolls internally; document не scrolls через
   1040px timetable.
 - **AC-011:** Free-slot affordance visible before hover; mobile має text action.
@@ -1938,10 +2149,12 @@ boundary і жоден box shadow не є єдиною межею surface.
 - **AC-013:** Own/other/current/selected/conflict відмінні text/icon/shape, не
   лише кольором.
 - **AC-014:** Native table має truthful headers/rowSpan; mobile agenda -
-  chronological list; `role="grid"` відсутній.
+  chronological list; `role="grid"` відсутній. Full weekly dataset
+  валідовується до visible-day filtering.
 - **AC-036:** `ScheduleJumpControls` дає bounded path до exact day/time target:
   максимум три `Tab` від main-entry target до `Перейти`, без arrow-key capture
-  або partial grid behavior.
+  або partial grid behavior; option value є UTC ISO office-slot instant, а
+  different-zone label містить user-local time/date та office context.
 
 ### Booking і cancellation
 
@@ -1980,7 +2193,8 @@ boundary і жоден box shadow не є єдиною межею surface.
   focus.
 - **AC-040:** Server ack, retained item, unseen badge, transient toast і
   explicit dismiss змінюються незалежно за section 18; один
-  `PresentationCoordinator` серіалізує modal owner.
+  `PresentationCoordinator` серіалізує room-filter, booking, cancellation і
+  notification modal owner.
 
 ### Accessibility і quality
 
@@ -1997,7 +2211,8 @@ boundary і жоден box shadow не є єдиною межею surface.
   notification й auth tests лишаються green.
 - **AC-041:** `AdaptiveBookingSurface` зберігає DOM identity, controlled
   state, request/generation IDs і specified focus target при every breakpoint
-  resize; SSR не видає interactive wrong-mode UI.
+  resize; SSR не видає interactive wrong-mode UI; expanded closed state
+  лишається visible region.
 - **AC-042:** Agenda projection створює exact partition slot indices `0..19`
   або один schedule-data-error state; deterministic auto-position виконується
   не більше одного разу на defined epoch.
@@ -2005,6 +2220,22 @@ boundary і жоден box shadow не є єдиною межею surface.
   `AUTH_REQUIRED` зберігає лише validated same-origin return URL.
 - **AC-044:** Same-zone і different-zone headers/cells відповідають section
   13.4; equivalent, US-only DST, Kyiv-only DST і date-crossing fixtures green.
+- **AC-045:** Valid hidden-day bookings у 3/2/1-day modes не рендеряться і не
+  викликають error; malformed booking або overlap у будь-якому weekly day
+  атомарно дає `schedule-data-error`.
+- **AC-046:** У кожному filter/booking/cancellation/notification transition
+  active `aria-modal` count точно one, modal-to-modal frame ніколи не має two;
+  Keep/error-close restore booking Cancel trigger, success restores logical
+  schedule/history fallback.
+- **AC-047:** At `320x800` normal zoom long-room +
+  `America/Argentina/Buenos_Aires` fixture має full visible IANA notice,
+  `agenda-first-body-item.top <=296px`, zero clipping/horizontal overflow;
+  actual 200% дозволяє vertical growth без втрати content.
+- **AC-048:** First/duplicate notification received while center open is
+  immediately `seen`, updates visible metadata, does not grow badge/queue and
+  does not toast after close/navigation; ack still runs.
+- **AC-049:** At `96.85px` day width 100-character title, range, status icon
+  and visible `Ваше|Зайнято` pass exact non-overlap bounds section 13.7.
 
 ## 27. Complete test plan
 
@@ -2019,8 +2250,13 @@ boundary і жоден box shadow не є єдиною межею surface.
    - 20 time rows для `09:00-19:00`;
    - 7/3/2 day headers;
    - `scope` і caption;
+   - full `7x20` weekly validation before visible `20 x visibleDayCount`
+     projection;
+   - valid hidden bookings before/after 3-day and 2-day windows omitted without
+     error; malformed/overlapping visible or hidden booking fails whole
+     schedule;
    - normative `rowSpan` matrix invariants, adjacency, 30/60/240 minutes,
-     office edges, overlap/off-grid/cross-day whole-schedule failure;
+     office edges, duplicate ID, off-grid/cross-day failure;
    - no `role="grid"`/`gridcell`;
    - free action visible class/content;
    - own/other labels;
@@ -2032,6 +2268,8 @@ boundary і жоден box shadow не є єдиною межею surface.
    - explicit `20`, `1` and `0` free-start fixtures, zero bookings, fully
      booked day, all-past day, current-running booking and 4-hour booking;
    - malformed overlap/off-grid/cross-day -> one data error, zero slot actions;
+   - valid other-day booking filtered after full-week validation; malformed
+     other-day booking still fails;
    - initial skeleton exactly 20 rows; refresh retains old list;
    - every positioning epoch/fallback and no focus/user-scroll reset.
 6. Responsive mode:
@@ -2044,7 +2282,11 @@ boundary і жоден box shadow не є єдиною межею surface.
    - resize preserves booking draft, errors, pending/request IDs, conflict
      generation і visible time anchor;
    - exact outside/inside focus transitions in section 14.1;
-   - resize does not refetch rooms/schedule.
+   - resize does not refetch rooms/schedule;
+   - expanded closed surface visible with guidance; medium/compact closed
+     surface hidden and unfocusable;
+   - `320px` normal zoom long-room/long-IANA fixture: room row `48px`, notice
+     `40px`, first agenda body `<=296px`; 200% auto-height reflow no clipping.
 7. `ScheduleWorkspace` existing race tests:
    - superseded room/week response ignored;
    - popstate delayed response ignored;
@@ -2067,7 +2309,16 @@ boundary і жоден box shadow не є єдиною межею surface.
    - `BOOKING_CONFLICT`;
    - duplicate submit blocked.
 9. Dialog/sheet:
-   - inert toggled with modal;
+   - owner union includes `room-filter|booking|cancellation|notifications`;
+   - exact `OPEN_FILTER/APPLY_FILTER/CLOSE_FILTER/OPEN_BOOKING` allow/deny;
+   - booking -> `OPEN_CANCEL_FROM_BOOKING` removes booking aria/role and hides
+     it before cancellation receives aria-modal;
+   - `KEEP_CANCEL` and `CANCEL_ERROR_CLOSE` restore booking modal/non-modal
+     surface and exact Cancel trigger;
+   - `CANCEL_SUCCESS` closes both and uses schedule/history fallback;
+   - every transition mutation frame has exactly one `aria-modal` for non-null
+     owner, never two; all non-owner content inert/unfocusable;
+   - toast suppresses for filter and every modal owner;
    - Tab loop includes dynamic Retry;
    - Escape/X policy during pending;
    - invoker/fallback focus.
@@ -2089,6 +2340,10 @@ boundary і жоден box shadow не є єдиною межею surface.
     - malformed/failed ignored;
     - ack, retained, badge, toast and dismiss mutate independently;
     - duplicate redelivery after dismiss re-acks without resurrection;
+    - first delivery while center open: `seen=true`, badge unchanged, no queue;
+    - duplicate while open updates metadata, stays seen, no queue;
+    - center close and `/schedule` <-> `/my-bookings` navigation never create a
+      toast for those seen items; ack attempts remain independent;
     - route persistence and full-reload/logout clearing;
     - dismiss focus fallback;
     - one modal owner; queued toast suppression/resumption while modal open.
@@ -2107,6 +2362,10 @@ boundary і жоден box shadow не є єдиною межею surface.
       user/office date crossing.
 15. `ScheduleJumpControls`:
     - DOM order, three-Tab bound, exact free/busy target;
+    - day values office ISO dates; time values exact UTC ISO instants and
+      stable slot indices;
+    - same-zone labels, US-only DST recompute and date-crossing different-zone
+      labels/accessibility names with office context;
     - past and schedule-error fallbacks;
     - no arrow interception or grid role.
 
@@ -2133,22 +2392,22 @@ assertion.
 
 | Existing test/file | Required cycle-2 responsibility |
 | --- | --- |
-| `tests/unit/week-grid.test.tsx` | Migrate locators to native `Timetable`; normative `rowSpan`, whole-block details trigger, clock semantics, no grid role |
-| `tests/unit/schedule-toolbar.test.tsx` | Exact date-strip modes, Today and jump-controls order/bound |
-| `tests/unit/schedule-client.test.tsx` | `bookingReducer`, generations, stale create/conflict, stable surface DOM/focus, no resize refetch |
+| `tests/unit/week-grid.test.tsx` | Migrate locators to native `Timetable`; full-week validation then visible filtering, normative `rowSpan`, whole-block details trigger/fit, clock semantics, no grid role |
+| `tests/unit/schedule-toolbar.test.tsx` | Exact date-strip modes, Today, jump-control ISO values and zone/date-crossing labels |
+| `tests/unit/schedule-client.test.tsx` | `bookingReducer`, generations, stale create/conflict, stable surface DOM/focus/expanded empty state, no resize refetch |
 | `tests/unit/booking-dialog.test.tsx` | Become controlled `BookingComposer` assertions; default 30m, field mapping, no fetch/local draft |
 | `tests/unit/booking-block.test.tsx` | 48px whole trigger, compact/fit metadata thresholds, no nested Cancel |
 | `tests/unit/cancel-booking-dialog.test.tsx` | Presentational dialog + parent controller transitions/stale response |
 | `tests/unit/booking-list.test.tsx` | Priority/grouping/cursors, row link + sibling mobile/history Cancel |
-| `tests/unit/room-filter.test.tsx` | Parent filter values and modal/non-modal placement behavior |
-| `tests/unit/notification-bell.test.tsx` | Five independent lifecycle concepts + `PresentationCoordinator` |
+| `tests/unit/room-filter.test.tsx` | Parent applied/draft values, coordinator OPEN/APPLY/CLOSE, modal/non-modal placement and focus |
+| `tests/unit/notification-bell.test.tsx` | Five lifecycle concepts, poll/duplicate while open, persistent navigation + complete `PresentationCoordinator` owners |
 | `tests/unit/verify-page.test.tsx`, `verify-clean-start.test.ts` | Ukrainian states, token history cleanup, unchanged one-shot lifecycle |
 | `src/lib/time/browser-zone.test.ts`, `tests/unit/office-time.test.ts` | uk-UA formatters, plural rules, all four zone scenarios and crossing |
-| new `tests/unit/day-agenda.test.tsx` | Pure 20-slot projection, every fallback/epoch, error suppression |
+| new `tests/unit/day-agenda.test.tsx` | Full-week validation/filter then pure 20-slot projection, every fallback/epoch, error suppression |
 | new `tests/unit/ui-errors.test.ts` | Exhaustive code/field map, unknown transport, safe auth return URL |
 | `tests/integration/*-api.test.ts`, `booking-race.test.ts` | Keep codes, English machine payload messages and backend behavior unchanged |
-| `e2e/schedule.spec.ts`, `mobile.spec.ts` | Geometry, table/agenda, jump controls, reflow |
-| `e2e/booking.spec.ts`, `transition.spec.ts` | Three-action default flow, adaptive identity/focus, create/conflict races |
+| `e2e/schedule.spec.ts`, `mobile.spec.ts` | Hidden-day fixtures, geometry, table/agenda, long IANA/room, jump controls, reflow |
+| `e2e/booking.spec.ts`, `transition.spec.ts` | Three-action default flow, adaptive identity/focus, create/conflict races, exactly-one-modal handoffs |
 | `e2e/cancellation.spec.ts`, `my-bookings.spec.ts` | Parent-owned cancel outcomes, grouping/deep link |
 | `e2e/notifications.spec.ts` | ack/retained/badge/toast/dismiss and modal suppression |
 | `e2e/locale.spec.ts`, `timezone.spec.ts` | Ukrainian copy/formatters and deterministic zone fixtures |
@@ -2178,12 +2437,12 @@ executes them with Playwright `hasTouch: true`. Інші stateful flows не
 
 | Canonical project | Additional deterministic scenario |
 | --- | --- |
-| expanded | 2h `rowSpan`, conflict/retry/stale create, non-modal cancellation, My Bookings deep link, bounded keyboard jump |
-| medium | room-to-booking pane replacement and timetable visibility |
-| tablet | right modal transition, outside-focus resize to/from medium, filter sheet |
-| mobile-lg | notification queue/modal suppression and mobile sibling Cancel |
+| expanded | closed contextual empty state, 2h `rowSpan`, compact long-title/status fit, conflict/retry/stale create, non-modal cancellation, My Bookings deep link, bounded zone-aware keyboard jump |
+| medium | valid hidden Monday/Sunday booking around 3-day window, room-to-booking pane replacement and timetable visibility |
+| tablet | valid hidden-day + malformed hidden-day datasets, right modal transition, filter owner allow/deny, booking -> cancellation -> Keep/error/success exactly-one-modal paths, outside-focus resize to/from medium |
+| mobile-lg | notification first/duplicate poll while open, close/navigation no-toast, every-owner toast suppression and mobile sibling Cancel |
 | mobile | agenda epoch fallbacks, keyboard/safe-area overlap |
-| reflow | 200% equivalent compact flow, long title, full-screen sheet, forced colors |
+| reflow | `320px` normal long room + `America/Argentina/Buenos_Aires` `<=296px`; same fixture at actual 200% with auto-height reflow, long title, full-screen sheet, forced colors |
 
 Fixture contract:
 
@@ -2216,7 +2475,8 @@ Fixture contract:
    in inert background and no timetable arrow interception.
 3. Focus not obscured checks at each sticky/fixed surface.
 4. Actual Chrome 200% zoom at `1440x900`; screenshot + keyboard flow.
-5. `320px` CSS viewport at 100%.
+5. `320px` CSS viewport at 100% with long room/full differing IANA budget;
+   separate 200% assertion permits vertical growth but no clipped content.
 6. Playwright `forcedColors: active` plus manual Windows High Contrast
    screenshot for schedule, booking sheet, errors й focus.
 7. `prefers-reduced-motion: reduce`; zero essential animation, static loading.
@@ -2232,6 +2492,9 @@ Fixture contract:
     and contains no nested interactive descendant.
 11. Resize focus tests assert `isSameNode`, state/request-generation retention,
     inert order and exact inside/outside fallback targets.
+12. Mutation-observed modal tests assert every non-null owner frame has exactly
+    one `[aria-modal="true"]`, no frame has more than one, and focus never
+    enters inert booking/filter/background content during handoff.
 
 ### 27.5 Visual regression evidence
 
@@ -2245,9 +2508,10 @@ state. Compare:
 - timetable/agenda top;
 - stable headers/columns;
 - long title;
-- user vs office timezone;
+- long room plus full `America/Argentina/Buenos_Aires` vs office timezone;
 - own/other;
 - notification with open page;
+- booking-to-cancellation handoff with exactly one modal;
 - bottom nav/safe area.
 
 Every capture records project, state fixture ID, `scenarioNow`, office zone,
@@ -2277,20 +2541,24 @@ replacement assertions з цього plan. Behavioral tests не видаляю�
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | Table `rowSpan` помилково зміщує cells | Неправдиві day/time relations | Pure occupancy model + unit snapshots по adjacency, 30/60/240 min і day edges |
+| Visible renderer validates only subset | Valid hidden booking breaks 3/2/1-day UI | Full `7x20` validation first, visible-day filtering second |
 | Responsive renderer дублює fetch/state | Stale або подвійні requests | One `ScheduleWorkspace`; renderers presentational only |
 | Pane-to-sheet resize remounts form | Втрата title/end/request state | One stable `AdaptiveBookingSurface`; CSS placement; `isSameNode` E2E |
 | Conflict response перезаписує нову navigation | Неправильний schedule | Existing request sequence + conflict generation |
 | Stale create succeeded on server | Newer surface closes or schedule lies | Request ID no-op plus room/week background revalidation |
 | Cancellation dialog owns fetch | Schedule/history diverge | Parent reducer/request; controlled presentational dialog |
+| Booking cancellation creates nested modal | Two aria-modal/focus in inert surface | Coordinator owner handoff suspends booking before cancellation; mutation-frame tests |
 | Translation ламає tests або error branching | Regression auth/booking | Branch by unchanged code, assert localized copy окремо |
 | Internal timetable scroll ховає focus | WCAG 2.4.11 failure | `scroll-padding`, focus E2E, no overlay over scrollport |
 | Sticky header/bottom nav/toast overlap | Недоступні actions | Reserved layout space + modal toast suppression |
+| Long IANA overflows fixed mobile row | Clipped timezone/failed reflow | Separate auto-height ZoneNotice, 320 normal budget and 200% growth gate |
 | Forced colors стирає status backgrounds | Own/other/conflict indistinguishable | Text + icon + border-style contract |
 | 30-minute block перевантажений | Нечитабельність | 52px row, min type sizes, details surface, long-text tests |
 | Native table creates excessive Tab cost | Keyboard path impractical | Three-control jump path; no partial APG grid |
 | Date strip internal scroll стає swipe-only | Keyboard/touch failure | Prev/next/Today buttons remain visible |
 | My Bookings grouping порушує cursor order | Missing/duplicate rows | Group only after append/dedupe; nearest removed once by ID |
 | Notification presentation змінює delivery | Duplicate/lost item | Independent ack/retained/badge/toast/dismiss state and existing integration tests |
+| Poll while center open creates unseen toast | Badge/toast for visible item | Conditional POLL_VALID marks seen, no queue, metadata-only duplicate |
 | CSS migration має великий blast radius | Cross-screen regressions | Token-first phases, per-surface screenshots, remove old classes last |
 
 ## 29. Decision log and open implementation latitude
@@ -2305,16 +2573,21 @@ replacement assertions з цього plan. Behavioral tests не видаляю�
 | D4 | Compact booking block цілком є details trigger | Inline/nested Cancel у 7-day cell |
 | D5 | Native table + bounded jump controls | Partial `role="grid"` or captured arrows |
 | D6 | Same-zone shared user clock; different-zone office row + user-local day/cell | Unlabelled mixed-zone times |
-| D7 | Normative validated `rowSpan` projection; malformed input fails whole schedule view | Best-effort shifted cells |
-| D8 | Mobile agenda - pure exact 20-slot partition | DOM-derived merging or duplicate continuation rows |
+| D7 | Validate full weekly dataset and overlaps before filtering valid hidden days; malformed any-day input fails whole surface | Treating valid hidden booking as error, or filtering before validation |
+| D8 | Mobile agenda uses the same full-week validation, then pure selected-day exact 20-slot partition | Weaker one-day validation, DOM-derived merging or duplicate continuation rows |
 | D9 | Default end `+30 хв`, maximum 4h; three baseline product actions | Different implicit duration/action count |
 | D10 | Error/field localization exhaustive by unchanged code/key | Branching on or rendering raw English message |
-| D11 | Notification ack/retained/badge/toast/dismiss independent; one presentation coordinator | Badge driven by ack or multiple simultaneous modals |
-| D12 | Breakpoints `1360/900/600` and exact geometry budgets | Framework-default breakpoints or viewport-font scaling |
+| D11 | Notification ack/retained/badge/toast/dismiss independent; delivery while center open is seen and never queued | Badge/toast for open-center delivery або badge driven by ack |
+| D12 | Breakpoints `1360/900/600`; mobile normal-zoom long-IANA budget `<=296px`; 200% prioritizes auto-height reflow | Fixed combined timezone row, clipping, or forcing top density at 200% |
+| D13 | One coordinator owner union `room-filter|booking|cancellation|notifications|null` and exactly one active aria-modal | Local filter-open owner, nested modal, two aria-modal surfaces |
+| D14 | Booking -> cancellation suspends/de-modalizes booking before cancellation; Keep/error-close restore Cancel, success closes both | Simultaneous dialogs or undefined focus restoration |
+| D15 | Expanded closed stable booking pane remains visible with empty guidance; medium/compact closed is hidden | Empty 320px pane or alternate placeholder subtree |
+| D16 | Jump values are office-slot UTC ISO instants; labels are per-day user-local with visible office context | Localized values, stale DST labels or date-crossing ambiguity |
 
 ### 29.2 Open implementation latitude
 
-Відкритих product assumptions немає. Реалізатор може обрати лише:
+Після scoped coordinator decisions C2-M1-C2-M4 відкритих product assumptions
+немає. Реалізатор може обрати лише:
 
 - concrete file split і names усередині component boundaries section 20;
 - CSS Modules/Tailwind organization, якщо всі values походять із tokens і
@@ -2325,8 +2598,9 @@ replacement assertions з цього plan. Behavioral tests не видаляю�
 - test helper/module placement, якщо manifest responsibilities і deterministic
   fixture ownership збережені.
 
-Ця latitude не охоплює copy, breakpoints, state ownership, events,
-focus transitions, timezone labels, target dimensions, API identifiers,
-notification lifecycle або fallback order. Зміна business contract section 6,
-API/error identifier, delivery rule чи non-goal потребує окремого product
-decision і нової специфікації.
+Ця latitude не охоплює full-week validation/filter order, modal owner/events,
+copy, breakpoints, state ownership, focus transitions, timezone labels,
+normal-zoom geometry, 200% reflow, notification open-center lifecycle,
+target dimensions, API identifiers або fallback order. Зміна business
+contract section 6, API/error identifier, delivery rule чи non-goal потребує
+окремого product decision і нової специфікації.
