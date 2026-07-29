@@ -1,0 +1,153 @@
+.control-field {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--type-label);
+  font-weight: 600;
+}
+
+.control-field input,
+.control-field select {
+  min-height: var(--space-6);
+  border: var(--border-default) solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text);
+  font-size: var(--type-body);
+  font-weight: 400;
+}
+
+.control-field select {
+  min-width: var(--control-select-min-width);
+}
+
+.booking-form .control-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.icon-button,
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--space-6);
+  border: var(--border-default) solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.icon-button {
+  width: var(--space-6);
+  padding: 0;
+}
+
+.icon-button svg,
+.destructive-button svg {
+  width: var(--space-2);
+  height: var(--space-2);
+}
+
+.secondary-button {
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--type-label);
+  font-weight: 600;
+}
+
+.icon-button:hover,
+.secondary-button:hover {
+  background: var(--color-surface-subtle);
+}
+
+.destructive-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--space-6);
+  border: var(--border-default) solid var(--color-danger);
+  border-radius: var(--radius-control);
+  background: var(--color-danger);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-surface);
+  font-size: var(--type-label);
+  font-weight: 700;
+}
+
+.destructive-button:hover {
+  border-color: var(--color-conflict-text);
+  background: var(--color-conflict-text);
+}
+
+.destructive-button:disabled {
+  border-color: var(--color-disabled-bg);
+  background: var(--color-disabled-bg);
+  color: var(--color-disabled-text);
+}
+
+.field-error,
+.dialog-alert {
+  margin: calc(var(--space-1) * -1) 0 0;
+  color: var(--color-danger);
+  font-size: var(--type-meta);
+}
+
+.dialog-alert {
+  margin: 0;
+  border-left: var(--border-emphasis) solid var(--color-danger);
+  background: var(--color-danger-soft);
+  padding: var(--space-1) var(--space-2);
+}
+
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--type-label);
+  font-weight: 600;
+}
+
+.spinner svg {
+  width: var(--space-2);
+  height: var(--space-2);
+  animation: spin var(--motion-standard) linear infinite;
+}
+
+.cancellation-spinner {
+  animation: spin var(--motion-standard) linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.control-field input:focus-visible,
+.control-field select:focus-visible,
+.icon-button:focus-visible,
+.notification-bell:focus-visible,
+.notification-dismiss:focus-visible,
+.today-button:focus-visible,
+.secondary-button:focus-visible,
+.free-slot-button:focus-visible,
+.booking-cancel-button:focus-visible,
+.destructive-button:focus-visible {
+  outline: var(--border-emphasis) solid var(--color-focus);
+  outline-offset: var(--border-emphasis);
+}
+
+@media (max-width: 48rem) {
+  .control-field {
+    flex: 1;
+  }
+
+  .control-field select {
+    width: 100%;
+    min-width: 0;
+  }
+}

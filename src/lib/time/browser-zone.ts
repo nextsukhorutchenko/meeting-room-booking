@@ -1,4 +1,4 @@
-export const APP_LOCALE = 'en-US';
+export const APP_LOCALE = 'uk-UA';
 
 function canonicalTimeZone(timeZone: string): string | null {
   try {

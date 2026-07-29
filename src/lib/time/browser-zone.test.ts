@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {
+  APP_LOCALE,
   areTimeZonesEquivalent,
   formatInUserZone,
   getBrowserTimeZone,
@@ -26,6 +27,24 @@ describe('browser-zone', () => {
 
     expect(formatInUserZone(instant, 'Europe/Kyiv', options)).toBe('10:00');
     expect(formatInUserZone(instant, 'America/New_York', options)).toBe('03:00');
+  });
+
+  it('uses Ukrainian application locale independently from the browser locale', () => {
+    expect(APP_LOCALE).toBe('uk-UA');
+  });
+
+  it('keeps 24-hour display independent from the browser default locale', () => {
+    const options: Intl.DateTimeFormatOptions = {
+      hour: '2-digit',
+      hourCycle: 'h23',
+      minute: '2-digit',
+    };
+
+    expect(formatInUserZone(
+      '2026-07-28T07:00:00.000Z',
+      'Europe/Kyiv',
+      options,
+    )).toBe('10:00');
   });
 
   it('treats canonical IANA aliases as the same timezone', () => {

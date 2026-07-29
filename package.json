@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "check:design-tokens": "tsx scripts/check-design-tokens.ts",
     "check:source": "tsx scripts/check-source-hygiene.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",

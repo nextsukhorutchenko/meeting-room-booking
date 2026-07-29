@@ -1,37 +1,10 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-text);
+  --font-sans: var(--font-sans-base);
   --font-mono: "Courier New", monospace;
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-button,
-input,
-select {
-  font: inherit;
-}
-
-button,
-select {
-  cursor: pointer;
-}
-
-button:disabled,
-select:disabled {
-  cursor: not-allowed;
 }
 
 .auth-shell {
@@ -290,46 +263,8 @@ select:disabled {
   gap: 0.75rem;
 }
 
-.control-field {
-  display: grid;
-  gap: 0.35rem;
-  color: #38463c;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.control-field input,
-.control-field select {
-  min-height: 2.5rem;
-  border: 1px solid #bac4bd;
-  border-radius: 0.375rem;
-  background: #ffffff;
-  padding: 0.5rem 0.75rem;
-  color: #17211b;
-  font-size: 0.875rem;
-  font-weight: 400;
-}
-
-.control-field select {
-  min-width: 13rem;
-}
-
 .capacity-field input {
   width: 9rem;
-}
-
-.control-field input:focus-visible,
-.control-field select:focus-visible,
-.icon-button:focus-visible,
-.notification-bell:focus-visible,
-.notification-dismiss:focus-visible,
-.today-button:focus-visible,
-.secondary-button:focus-visible,
-.free-slot-button:focus-visible,
-.booking-cancel-button:focus-visible,
-.destructive-button:focus-visible {
-  outline: 2px solid #2f7652;
-  outline-offset: 2px;
 }
 
 .week-controls {
@@ -338,9 +273,7 @@ select:disabled {
   gap: 0.5rem;
 }
 
-.icon-button,
-.today-button,
-.secondary-button {
+.today-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -351,27 +284,14 @@ select:disabled {
   color: #26352b;
 }
 
-.icon-button {
-  width: 2.5rem;
-  padding: 0;
-}
-
-.icon-button svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.today-button,
-.secondary-button {
+.today-button {
   gap: 0.45rem;
   padding: 0.5rem 0.8rem;
   font-size: 0.8125rem;
   font-weight: 600;
 }
 
-.icon-button:hover,
-.today-button:hover,
-.secondary-button:hover {
+.today-button:hover {
   background: #f1f5f1;
 }
 
@@ -775,27 +695,6 @@ select:disabled {
   background: rgb(255 255 255 / 72%);
 }
 
-.spinner {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #3f5446;
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.spinner svg {
-  width: 1rem;
-  height: 1rem;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .empty-schedule-note {
   min-height: 2rem;
   margin: 0;
@@ -860,11 +759,6 @@ select:disabled {
   min-width: 0;
 }
 
-.booking-form .control-field select {
-  width: 100%;
-  min-width: 0;
-}
-
 .booking-summary {
   display: grid;
   gap: 0.45rem;
@@ -886,20 +780,6 @@ select:disabled {
   width: 0.9rem;
   height: 0.9rem;
   color: #397354;
-}
-
-.field-error,
-.dialog-alert {
-  margin: -0.5rem 0 0;
-  color: #a33f33;
-  font-size: 0.75rem;
-}
-
-.dialog-alert {
-  margin: 0;
-  border-left: 3px solid #d96a5b;
-  background: #fff2ef;
-  padding: 0.65rem 0.75rem;
 }
 
 .dialog-actions {
@@ -924,40 +804,6 @@ select:disabled {
   color: #17211b;
   overflow-wrap: anywhere;
   vertical-align: bottom;
-}
-
-.destructive-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  min-height: 2.5rem;
-  border: 1px solid #a7443a;
-  border-radius: 0.375rem;
-  background: #a7443a;
-  padding: 0.5rem 0.8rem;
-  color: #ffffff;
-  font-size: 0.8125rem;
-  font-weight: 700;
-}
-
-.destructive-button:hover {
-  border-color: #8e352d;
-  background: #8e352d;
-}
-
-.destructive-button:disabled {
-  border-color: #c7aaa6;
-  background: #c7aaa6;
-}
-
-.destructive-button svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.cancellation-spinner {
-  animation: spin 0.8s linear infinite;
 }
 
 .toast {
@@ -1294,11 +1140,6 @@ select:disabled {
     flex-direction: column;
   }
 
-  .control-field {
-    flex: 1;
-  }
-
-  .control-field select,
   .capacity-field input {
     width: 100%;
     min-width: 0;

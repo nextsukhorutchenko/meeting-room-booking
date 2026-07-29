@@ -22,6 +22,13 @@ describe('officeWeekBounds', () => {
     });
   });
 
+  it('uses Monday as the office-week boundary for a Ukrainian locale', () => {
+    expect(officeWeekBounds('2026-08-03', 'Europe/Kyiv')).toEqual({
+      startsAt: new Date('2026-08-02T21:00:00.000Z'),
+      endsAt: new Date('2026-08-09T21:00:00.000Z'),
+    });
+  });
+
   it('converts a week spanning the Kyiv DST change with IANA data', () => {
     expect(officeWeekBounds('2026-03-23', 'Europe/Kyiv')).toEqual({
       startsAt: new Date('2026-03-22T22:00:00.000Z'),
