@@ -26,6 +26,32 @@ describe('findDesignTokenViolations', () => {
   });
 
   it.each([
+    'min-width',
+    'max-width',
+    'min-height',
+    'max-height',
+    'min-inline-size',
+    'max-inline-size',
+    'min-block-size',
+    'max-block-size',
+  ])('rejects literal dimensions in %s', (property) => {
+    expect(findDesignTokenViolations({
+      css: `.surface { ${property}: 248px; }`,
+      file: 'min-max-size.css',
+    })).toContainEqual(expect.objectContaining({
+      category: 'dimension',
+      property,
+    }));
+  });
+
+  it('classifies escaped CSS named colors through the value AST', () => {
+    expect(findDesignTokenViolations({
+      css: '.control { color: r\\65 d; }',
+      file: 'escaped-color.css',
+    })).toContainEqual(expect.objectContaining({category: 'color'}));
+  });
+
+  it.each([
     ['.spinner { animation: spin 0.8s linear infinite; }', ['duration']],
     ['.delayed { animation-delay: 180ms; }', ['duration']],
     [

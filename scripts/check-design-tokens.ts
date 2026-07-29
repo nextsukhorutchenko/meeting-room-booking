@@ -1,6 +1,7 @@
 import {readdirSync, readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {relative, resolve} from 'node:path';
+import {ident, parse as parseCssValue, walk, type CssNode} from 'css-tree';
 import postcss, {type Declaration} from 'postcss';
 
 export type DesignTokenViolation = {
@@ -26,10 +27,12 @@ export type DesignTokenViolation = {
 
 type Category = DesignTokenViolation['category'];
 
-type ValueNode =
-  | {kind: 'function'; name: string; nodes: readonly ValueNode[]}
-  | {kind: 'string'; value: string}
-  | {kind: 'word'; value: string};
+type ValueTokens = {
+  functions: readonly string[];
+  hasHash: boolean;
+  identifiers: readonly string[];
+  words: readonly string[];
+};
 
 const allowedColorKeywords = new Set([
   'transparent',
@@ -81,96 +84,44 @@ const numberPattern = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
 const timePattern = /^-?(?:\d+(?:\.\d+)?|\.\d+)(ms|s)$/i;
 const colorFunctionNames = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'oklch', 'lab']);
 
-function parseValue(value: string, start = 0, end = value.length): readonly ValueNode[] {
-  const nodes: ValueNode[] = [];
-  let index = start;
+function valueTokens(value: string): ValueTokens {
+  const functions: string[] = [];
+  const identifiers: string[] = [];
+  const words: string[] = [];
+  let hasHash = false;
+  const ast = parseCssValue(value, {context: 'value'});
 
-  while (index < end) {
-    const character = value[index];
-    if (/\s|,|\//.test(character)) {
-      index++;
-      continue;
+  walk(ast, (node: CssNode) => {
+    switch (node.type) {
+      case 'Dimension':
+        words.push(`${node.value}${node.unit}`);
+        break;
+      case 'Percentage':
+        words.push(`${node.value}%`);
+        break;
+      case 'Number':
+        words.push(node.value);
+        break;
+      case 'Identifier':
+        identifiers.push(ident.decode(node.name).toLowerCase());
+        break;
+      case 'Function':
+        functions.push(ident.decode(node.name).toLowerCase());
+        break;
+      case 'Hash':
+        hasHash = true;
+        break;
     }
-    if (character === '"' || character === "'") {
-      const quote = character;
-      const valueStart = index++;
-      while (index < end && value[index] !== quote) {
-        if (value[index] === '\\') {
-          index++;
-        }
-        index++;
-      }
-      index++;
-      nodes.push({kind: 'string', value: value.slice(valueStart, index)});
-      continue;
-    }
-
-    const valueStart = index;
-    while (index < end && !/[\s,()/]/.test(value[index])) {
-      index++;
-    }
-    const word = value.slice(valueStart, index);
-    if (value[index] !== '(') {
-      if (word) {
-        nodes.push({kind: 'word', value: word});
-      }
-      if (value[index] === ')') {
-        index++;
-      }
-      continue;
-    }
-
-    let depth = 1;
-    const argumentStart = ++index;
-    while (index < end && depth > 0) {
-      if (value[index] === '"' || value[index] === "'") {
-        const quote = value[index++];
-        while (index < end && value[index] !== quote) {
-          if (value[index] === '\\') {
-            index++;
-          }
-          index++;
-        }
-      } else if (value[index] === '(') {
-        depth++;
-      } else if (value[index] === ')') {
-        depth--;
-      }
-      index++;
-    }
-    nodes.push({
-      kind: 'function',
-      name: word.toLowerCase(),
-      nodes: parseValue(value, argumentStart, index - 1),
-    });
-  }
-
-  return nodes;
-}
-
-function flattenWords(nodes: readonly ValueNode[]): readonly string[] {
-  return nodes.flatMap((node) => node.kind === 'word' ?
-    [node.value] :
-    node.kind === 'function' ? flattenWords(node.nodes) : []);
-}
-
-function allNodes(nodes: readonly ValueNode[]): readonly ValueNode[] {
-  return nodes.flatMap((node) => node.kind === 'function' ?
-    [node, ...allNodes(node.nodes)] : [node]);
-}
-
-function containsColorLiteral(nodes: readonly ValueNode[]): boolean {
-  return allNodes(nodes).some((node) => {
-    if (node.kind === 'function') {
-      return colorFunctionNames.has(node.name);
-    }
-    if (node.kind !== 'word') {
-      return false;
-    }
-    const value = node.value.toLowerCase();
-    return value.startsWith('#') ||
-      (namedColors.has(value) && !allowedColorKeywords.has(value));
   });
+
+  return {functions, hasHash, identifiers, words};
+}
+
+function containsColorLiteral(tokens: ValueTokens): boolean {
+  return tokens.hasHash ||
+    tokens.functions.some((name) => colorFunctionNames.has(name)) ||
+    tokens.identifiers.some((name) =>
+      namedColors.has(name) && !allowedColorKeywords.has(name));
 }
 
 function isZero(word: string): boolean {
@@ -264,7 +215,7 @@ function isSpacingProperty(property: string): boolean {
 }
 
 function isDimensionProperty(property: string): boolean {
-  return /^(?:inset(?:-(?:block|inline)(?:-(?:start|end))?|-(?:top|right|bottom|left))?|top|right|bottom|left|(?:min|max-)?(?:width|height|inline-size|block-size))$/.test(property);
+  return /^(?:inset(?:-(?:block|inline)(?:-(?:start|end))?|-(?:top|right|bottom|left))?|top|right|bottom|left|(?:(?:min|max)-)?(?:width|height|inline-size|block-size))$/.test(property);
 }
 
 function classifyDeclaration(declaration: Declaration): readonly Category[] {
@@ -274,8 +225,8 @@ function classifyDeclaration(declaration: Declaration): readonly Category[] {
 
   const property = declaration.prop.toLowerCase();
   const value = declaration.value.trim();
-  const nodes = parseValue(value);
-  const words = flattenWords(nodes);
+  const tokens = valueTokens(value);
+  const words = tokens.words;
   const selector = selectorFor(declaration);
   const categories: Category[] = [];
   const add = (category: Category, condition: boolean) => {
@@ -314,9 +265,9 @@ function classifyDeclaration(declaration: Declaration): readonly Category[] {
   if (property === 'font') {
     const slashOffset = value.indexOf('/');
     const fontSizeWords = slashOffset === -1 ? words :
-      flattenWords(parseValue(value.slice(0, slashOffset)));
+      valueTokens(value.slice(0, slashOffset)).words;
     const lineHeightWords = slashOffset === -1 ? [] :
-      flattenWords(parseValue(value.slice(slashOffset + 1))).slice(0, 1);
+      valueTokens(value.slice(slashOffset + 1)).words.slice(0, 1);
     add('font-size', hasDisallowedLength(
       fontSizeWords,
       'font-size',
@@ -346,7 +297,7 @@ function classifyDeclaration(declaration: Declaration): readonly Category[] {
     property === 'animation-duration' || property === 'animation-delay') {
     add('duration', hasDisallowedTime(words));
   }
-  add('color', containsColorLiteral(nodes));
+  add('color', containsColorLiteral(tokens));
 
   return categories;
 }

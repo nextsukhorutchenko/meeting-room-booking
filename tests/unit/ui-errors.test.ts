@@ -60,6 +60,11 @@ describe('Ukrainian API error localization', () => {
     expect(safeReturnTo('/schedule%5Cother')).toBe('/schedule');
     expect(safeReturnTo('/schedule%')).toBe('/schedule');
     expect(safeReturnTo('/schedule#details')).toBe('/schedule');
+    expect(safeReturnTo('/schedule/./my-bookings')).toBe('/schedule');
+    expect(safeReturnTo('/schedule/../my-bookings')).toBe('/schedule');
+    expect(safeReturnTo('/schedule/%2e/my-bookings')).toBe('/schedule');
+    expect(safeReturnTo('/schedule/%2e%2e/my-bookings')).toBe('/schedule');
+    expect(safeReturnTo('/my-bookings/%2E%2E/schedule')).toBe('/schedule');
   });
 });
 

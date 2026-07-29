@@ -104,6 +104,7 @@ export function localizeApiError(input: {
 
 const fallbackReturnTo = '/schedule';
 const unsafeCharacter = /[\u0000-\u001F\u007F\\#]/;
+const dotSegment = /(^|\/)\.{1,2}(?=\/|$)/;
 
 function currentOrigin(): string {
   return typeof window === 'undefined' ?
@@ -128,6 +129,9 @@ export function safeReturnTo(value: string | null): string {
     decoded.startsWith('//') ||
     !decoded.startsWith('/')
   ) {
+    return fallbackReturnTo;
+  }
+  if (dotSegment.test(decoded)) {
     return fallbackReturnTo;
   }
 
