@@ -1,36 +1,41 @@
+'use client';
+
 import {CalendarDays, ListChecks} from 'lucide-react';
 import Link from 'next/link';
+import {usePathname} from 'next/navigation';
 import {LogoutButton} from '../auth/logout-button';
 import {NotificationBell} from './notification-bell';
 
-type AppHeaderProps = {
-  currentPage: 'schedule' | 'my-bookings';
-  userName: string;
-};
+type AppHeaderProps = {userName: string};
 
-export function AppHeader({currentPage, userName}: AppHeaderProps) {
+export function AppHeader({userName}: AppHeaderProps) {
+  const pathname = usePathname();
+
   return (
     <header className="app-header">
       <div className="app-header-inner">
-        <Link className="app-brand" href="/schedule">
-          Roomwork
-        </Link>
-        <nav aria-label="Primary navigation" className="app-nav">
+        <div className="app-identity">
+          <Link className="app-brand" href="/schedule">
+            Roomwork
+          </Link>
+          <span className="app-descriptor">Бронювання переговорних</span>
+        </div>
+        <nav aria-label="Основна навігація" className="app-nav">
           <Link
-            aria-current={currentPage === 'schedule' ? 'page' : undefined}
+            aria-current={pathname === '/schedule' ? 'page' : undefined}
             className="app-nav-link"
             href="/schedule"
           >
             <CalendarDays aria-hidden="true" className="size-4" />
-            Schedule
+            Розклад
           </Link>
           <Link
-            aria-current={currentPage === 'my-bookings' ? 'page' : undefined}
+            aria-current={pathname === '/my-bookings' ? 'page' : undefined}
             className="app-nav-link"
             href="/my-bookings"
           >
             <ListChecks aria-hidden="true" className="size-4" />
-            My Bookings
+            Мої бронювання
           </Link>
         </nav>
         <div className="app-account">

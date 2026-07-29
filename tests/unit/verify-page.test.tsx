@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import {render, screen, waitFor} from '@testing-library/react';
+import {cleanup, render, screen, waitFor} from '@testing-library/react';
 import {StrictMode} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import VerifyPage from '../../src/app/verify/page';
@@ -8,6 +8,7 @@ const verificationUrl =
   '/verify?token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   window.history.replaceState({}, '', '/');
 });
@@ -29,7 +30,7 @@ describe('VerifyPage', () => {
     );
 
     expect(
-      screen.getByRole('heading', {name: 'Verifying your email'}),
+      screen.getByRole('heading', {name: 'Підтверджуємо email'}),
     ).toBeVisible();
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
     await waitFor(() => {
@@ -43,9 +44,9 @@ describe('VerifyPage', () => {
     ));
 
     await expect(
-      screen.findByRole('heading', {name: 'Email verified'}),
+      screen.findByRole('heading', {name: 'Email підтверджено'}),
     ).resolves.toBeVisible();
-    expect(screen.getByRole('link', {name: 'Go to schedule'})).toHaveAttribute(
+    expect(screen.getByRole('link', {name: 'До розкладу'})).toHaveAttribute(
       'href',
       '/schedule',
     );
@@ -71,9 +72,9 @@ describe('VerifyPage', () => {
     render(<VerifyPage />);
 
     await expect(
-      screen.findByRole('heading', {name: 'Verification link expired'}),
+      screen.findByRole('heading', {name: 'Посилання підтвердження прострочене'}),
     ).resolves.toBeVisible();
-    expect(screen.getByRole('link', {name: 'Back to schedule'})).toHaveAttribute(
+    expect(screen.getByRole('link', {name: 'До розкладу'})).toHaveAttribute(
       'href',
       '/schedule',
     );
@@ -88,10 +89,10 @@ describe('VerifyPage', () => {
     render(<VerifyPage />);
 
     await expect(
-      screen.findByRole('heading', {name: 'Verification unavailable'}),
+      screen.findByRole('heading', {name: 'Підтвердження недоступне'}),
     ).resolves.toBeVisible();
     expect(screen.getByText(
-      'We could not verify your email. Try the development link again.',
+      'Не вдалося підтвердити email. Спробуйте відкрити посилання ще раз.',
     )).toBeVisible();
     expect(screen.queryByText(/private network detail/i)).not.toBeInTheDocument();
   });
@@ -105,7 +106,7 @@ describe('VerifyPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', {name: 'Verification link invalid'}),
+        screen.getByRole('heading', {name: 'Посилання підтвердження недійсне'}),
       ).toBeVisible();
     });
     expect(fetch).not.toHaveBeenCalled();

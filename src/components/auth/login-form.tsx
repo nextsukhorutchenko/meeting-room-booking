@@ -4,19 +4,14 @@ import {useState, type FormEvent} from 'react';
 import {Alert} from '../ui/alert';
 import {Button} from '../ui/button';
 import {Field} from '../ui/field';
+import {localizeApiError} from '../../lib/i18n/ui-errors';
 
 type ErrorResponse = {
   error?: {
+    code?: string;
     message?: string;
   };
 };
-
-const inputClassName = [
-  'min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2',
-  'text-base text-slate-950 outline-none transition-shadow',
-  'placeholder:text-slate-400 focus:border-blue-700 focus:ring-2',
-  'focus:ring-blue-100',
-].join(' ');
 
 export function LoginForm() {
   const [formError, setFormError] = useState('');
@@ -39,13 +34,19 @@ export function LoginForm() {
       });
       const body = await response.json() as ErrorResponse;
       if (!response.ok) {
-        setFormError(body.error?.message ?? 'Sign in failed');
+        setFormError(localizeApiError({
+          code: body.error?.code,
+          fallback: 'auth',
+        }));
         return;
       }
 
       window.location.assign('/schedule');
     } catch {
-      setFormError('Unable to sign in right now. Please try again.');
+      setFormError(localizeApiError({
+        code: undefined,
+        fallback: 'auth',
+      }));
     } finally {
       setPending(false);
     }
@@ -54,16 +55,16 @@ export function LoginForm() {
   return (
     <form
       aria-busy={pending}
-      className="grid gap-5"
+      className="auth-form"
       noValidate
       onSubmit={handleSubmit}
     >
       {formError ? <Alert message={formError} /> : null}
-      <Field htmlFor="email" label="Email">
+      <Field htmlFor="email" label="Електронна пошта">
         <input
-          autoComplete="email"
+          autoComplete="username"
           autoFocus
-          className={inputClassName}
+          className="auth-input"
           id="email"
           inputMode="email"
           maxLength={254}
@@ -71,17 +72,17 @@ export function LoginForm() {
           type="email"
         />
       </Field>
-      <Field htmlFor="password" label="Password">
+      <Field htmlFor="password" label="Пароль">
         <input
           autoComplete="current-password"
-          className={inputClassName}
+          className="auth-input"
           id="password"
           name="password"
           type="password"
         />
       </Field>
       <Button pending={pending} type="submit">
-        Sign in
+        Увійти
       </Button>
     </form>
   );

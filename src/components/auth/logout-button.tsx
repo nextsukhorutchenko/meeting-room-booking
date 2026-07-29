@@ -14,32 +14,33 @@ export function LogoutButton() {
     try {
       const response = await fetch('/api/auth/logout', {method: 'POST'});
       if (!response.ok) {
-        setError('Unable to log out');
+        setError('Не вдалося вийти. Спробуйте ще раз.');
         return;
       }
       window.location.assign('/login');
     } catch {
-      setError('Unable to log out');
+      setError('Не вдалося вийти. Спробуйте ще раз.');
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="logout-control">
       {error ? (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="logout-error" role="alert">
           {error}
         </p>
       ) : null}
       <Button
-        className="bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
+        aria-label="Вийти"
+        className="logout-button"
         onClick={handleLogout}
         pending={pending}
         type="button"
       >
         <LogOut aria-hidden="true" className="size-4" />
-        Log out
+        <span className="logout-label">Вийти</span>
       </Button>
     </div>
   );

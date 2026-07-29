@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import {useEffect, useRef, useState} from 'react';
+import {AuthShell} from '../../components/auth/auth-shell';
 
 type VerificationState =
   | 'pending'
@@ -21,13 +22,6 @@ type ErrorResponse = {
     code?: string;
   };
 };
-
-const scheduleLinkClassName = [
-  'inline-flex min-h-11 items-center justify-center rounded-md',
-  'bg-emerald-700 px-4 py-2 text-sm font-semibold text-white',
-  'hover:bg-emerald-800 focus-visible:outline-2',
-  'focus-visible:outline-offset-2 focus-visible:outline-emerald-700',
-].join(' ');
 
 async function requestVerification(token: string): Promise<VerificationState> {
   try {
@@ -89,72 +83,57 @@ export default function VerifyPage() {
 
   const content = {
     pending: {
-      icon: <LoaderCircle aria-hidden="true" className="animate-spin" />,
-      heading: 'Verifying your email',
-      message: 'Checking your development verification link.',
+      icon: <LoaderCircle aria-hidden="true" className="verification-icon-pending" />,
+      heading: 'Підтверджуємо email',
+      message: 'Перевіряємо посилання підтвердження.',
     },
     success: {
-      icon: <CheckCircle2 aria-hidden="true" className="text-emerald-700" />,
-      heading: 'Email verified',
-      message: 'Your account can now create room bookings.',
+      icon: <CheckCircle2 aria-hidden="true" className="verification-icon-success" />,
+      heading: 'Email підтверджено',
+      message: 'Тепер ви можете бронювати переговорні.',
     },
     expired: {
-      icon: <Clock3 aria-hidden="true" className="text-amber-700" />,
-      heading: 'Verification link expired',
-      message: 'This link is invalid, expired, or has already been used.',
+      icon: <Clock3 aria-hidden="true" className="verification-icon-expired" />,
+      heading: 'Посилання підтвердження прострочене',
+      message: 'Посилання недійсне, прострочене або вже використане.',
     },
     error: {
-      icon: <AlertTriangle aria-hidden="true" className="text-red-700" />,
-      heading: 'Verification unavailable',
+      icon: <AlertTriangle aria-hidden="true" className="verification-icon-error" />,
+      heading: 'Підтвердження недоступне',
       message:
-        'We could not verify your email. Try the development link again.',
+        'Не вдалося підтвердити email. Спробуйте відкрити посилання ще раз.',
     },
     invalid: {
-      icon: <AlertTriangle aria-hidden="true" className="text-red-700" />,
-      heading: 'Verification link invalid',
-      message: 'Open the complete development link from the server console.',
+      icon: <AlertTriangle aria-hidden="true" className="verification-icon-error" />,
+      heading: 'Посилання підтвердження недійсне',
+      message: 'Відкрийте повне посилання підтвердження.',
     },
   }[state];
 
   return (
-    <main className="auth-shell">
-      <section
+    <AuthShell heading={content.heading}>
+      <div
         aria-atomic="true"
-        aria-labelledby="verification-heading"
+        aria-labelledby="auth-heading"
         aria-live="polite"
-        className="auth-panel text-center"
+        className="verification-content"
         role="status"
       >
-        <div className="grid justify-items-center gap-3">
-          <div className="size-8" aria-hidden="true">
-            {content.icon}
-          </div>
-          <div className="grid gap-2">
-            <p className="text-sm font-semibold text-emerald-700">
-              Meeting Room Booking
-            </p>
-            <h1
-              className="text-2xl font-semibold text-slate-950"
-              id="verification-heading"
-            >
-              {content.heading}
-            </h1>
-            <p className="text-sm leading-6 text-slate-600">
-              {content.message}
-            </p>
-          </div>
+        <div className="verification-icon" aria-hidden="true">
+          {content.icon}
         </div>
+        <p className="verification-message">{content.message}</p>
         {state === 'success' ? (
-          <Link className={scheduleLinkClassName} href="/schedule">
-            Go to schedule
+          <Link className="auth-primary-link" href="/schedule">
+            До розкладу
           </Link>
         ) : null}
         {state === 'expired' || state === 'error' || state === 'invalid' ? (
-          <Link className={scheduleLinkClassName} href="/schedule">
-            Back to schedule
+          <Link className="auth-primary-link" href="/schedule">
+            До розкладу
           </Link>
         ) : null}
-      </section>
-    </main>
+      </div>
+    </AuthShell>
   );
 }

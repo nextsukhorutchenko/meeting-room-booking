@@ -68,13 +68,13 @@ async function createVerificationUrl(
 test('@auth redirects signed-out users from the root to login', async ({page}) => {
   await page.goto('/');
 
-  await expect(page).toHaveTitle('Meeting Room Booking');
+  await expect(page).toHaveTitle('Roomwork — Бронювання переговорних');
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole('heading', {name: 'Sign in'})).toBeVisible();
-  await expect(page.getByLabel('Email')).toBeVisible();
-  await expect(page.getByLabel('Password')).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Увійдіть'})).toBeVisible();
+  await expect(page.getByLabel('Електронна пошта')).toBeVisible();
+  await expect(page.getByLabel('Пароль')).toBeVisible();
   await expect(
-    page.getByRole('link', {name: 'Create an account'}),
+    page.getByRole('link', {name: 'Створити обліковий запис'}),
   ).toBeVisible();
 });
 
@@ -85,20 +85,20 @@ test('@auth registers, persists the session, and logs out', async ({
 
   await page.goto('/');
   await expect(page).toHaveURL(/\/login$/);
-  await page.getByRole('link', {name: 'Create an account'}).click();
+  await page.getByRole('link', {name: 'Створити обліковий запис'}).click();
   await expect(
-    page.getByRole('heading', {name: 'Create your account'}),
+    page.getByRole('heading', {name: 'Створіть обліковий запис'}),
   ).toBeVisible();
 
-  await page.getByRole('button', {name: 'Create account'}).click();
-  await expect(page.getByText('Name is required')).toBeVisible();
+  await page.getByRole('button', {name: 'Створити обліковий запис'}).click();
+  await expect(page.getByText("Введіть ім'я до 100 символів.")).toBeVisible();
 
-  await page.getByLabel('Name').fill('Browser Ada');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('correct password');
-  await page.getByRole('button', {name: 'Create account'}).click();
+  await page.getByLabel("Ім'я").fill('Browser Ada');
+  await page.getByLabel('Електронна пошта').fill(email);
+  await page.getByLabel('Пароль').fill('correct password');
+  await page.getByRole('button', {name: 'Створити обліковий запис'}).click();
   await expect(page).toHaveURL(url => url.pathname === '/schedule');
-  await expect(page.getByRole('heading', {name: 'Schedule'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Розклад'})).toBeVisible();
 
   await page.reload();
   await expect(page.getByText('Browser Ada', {exact: true})).toBeVisible();
@@ -122,7 +122,7 @@ test('@auth registers, persists the session, and logs out', async ({
   });
 
   await dialog.getByRole('button', {name: 'Cancel'}).click();
-  await page.getByRole('button', {name: 'Log out'}).click();
+  await page.getByRole('button', {name: 'Вийти'}).click();
   await expect(page).toHaveURL(/\/login$/);
 });
 
@@ -153,7 +153,7 @@ test('@auth shows pending and success verification states', async ({
   await page.goto(verificationUrl);
   await requestStarted;
   await expect(
-    page.getByRole('heading', {name: 'Verifying your email'}),
+    page.getByRole('heading', {name: 'Підтверджуємо email'}),
   ).toBeVisible();
   await page.screenshot({
     path: resolve(
@@ -164,7 +164,7 @@ test('@auth shows pending and success verification states', async ({
 
   releaseRequest();
   await expect(
-    page.getByRole('heading', {name: 'Email verified'}),
+    page.getByRole('heading', {name: 'Email підтверджено'}),
   ).toBeVisible();
   await page.screenshot({
     path: resolve(
@@ -190,7 +190,7 @@ test('@auth shows the expired verification state', async ({page}, testInfo) => {
   await page.goto(verificationUrl);
 
   await expect(
-    page.getByRole('heading', {name: 'Verification link expired'}),
+    page.getByRole('heading', {name: 'Посилання підтвердження прострочене'}),
   ).toBeVisible();
   await page.screenshot({
     path: resolve(
@@ -226,10 +226,10 @@ test('@auth shows a sanitized verification error state', async ({
   await page.goto(verificationUrl);
 
   await expect(
-    page.getByRole('heading', {name: 'Verification unavailable'}),
+    page.getByRole('heading', {name: 'Підтвердження недоступне'}),
   ).toBeVisible();
   await expect(page.getByText(
-    'We could not verify your email. Try the development link again.',
+    'Не вдалося підтвердити email. Спробуйте відкрити посилання ще раз.',
   )).toBeVisible();
   await page.screenshot({
     path: resolve(

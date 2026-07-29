@@ -4,22 +4,25 @@ import {useState, type FormEvent} from 'react';
 import {Alert} from '../ui/alert';
 import {Button} from '../ui/button';
 import {Field} from '../ui/field';
+import {localizeApiError, uiFieldMessage} from '../../lib/i18n/ui-errors';
 
 type FormErrors = Record<string, string>;
 
 type ErrorResponse = {
   error?: {
+    code?: string;
     fields?: FormErrors;
     message?: string;
   };
 };
 
-const inputClassName = [
-  'min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2',
-  'text-base text-slate-950 outline-none transition-shadow',
-  'placeholder:text-slate-400 focus:border-blue-700 focus:ring-2',
-  'focus:ring-blue-100 aria-invalid:border-red-600 aria-invalid:ring-red-100',
-].join(' ');
+const authFieldNames = ['name', 'email', 'password'] as const;
+
+function localizeFieldErrors(errors: FormErrors | undefined): FormErrors {
+  return Object.fromEntries(authFieldNames.flatMap((field) =>
+    errors?.[field] ? [[field, uiFieldMessage[field]]] : [],
+  ));
+}
 
 export function RegisterForm() {
   const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
@@ -45,14 +48,20 @@ export function RegisterForm() {
       });
       const body = await response.json() as ErrorResponse;
       if (!response.ok) {
-        setFieldErrors(body.error?.fields ?? {});
-        setFormError(body.error?.message ?? 'Registration failed');
+        setFieldErrors(localizeFieldErrors(body.error?.fields));
+        setFormError(localizeApiError({
+          code: body.error?.code,
+          fallback: 'auth',
+        }));
         return;
       }
 
       window.location.assign('/schedule');
     } catch {
-      setFormError('Unable to register right now. Please try again.');
+      setFormError(localizeApiError({
+        code: undefined,
+        fallback: 'auth',
+      }));
     } finally {
       setPending(false);
     }
@@ -61,30 +70,34 @@ export function RegisterForm() {
   return (
     <form
       aria-busy={pending}
-      className="grid gap-5"
+      className="auth-form"
       noValidate
       onSubmit={handleSubmit}
     >
       {formError ? <Alert message={formError} /> : null}
-      <Field error={fieldErrors.name} htmlFor="name" label="Name">
+      <Field error={fieldErrors.name} htmlFor="name" label="Ім'я">
         <input
           aria-describedby={fieldErrors.name ? 'name-error' : undefined}
           aria-invalid={Boolean(fieldErrors.name)}
           autoComplete="name"
           autoFocus
-          className={inputClassName}
+          className="auth-input"
           id="name"
           maxLength={100}
           name="name"
           type="text"
         />
       </Field>
-      <Field error={fieldErrors.email} htmlFor="email" label="Email">
+      <Field
+        error={fieldErrors.email}
+        htmlFor="email"
+        label="Електронна пошта"
+      >
         <input
           aria-describedby={fieldErrors.email ? 'email-error' : undefined}
           aria-invalid={Boolean(fieldErrors.email)}
           autoComplete="email"
-          className={inputClassName}
+          className="auth-input"
           id="email"
           inputMode="email"
           maxLength={254}
@@ -92,21 +105,21 @@ export function RegisterForm() {
           type="email"
         />
       </Field>
-      <Field error={fieldErrors.password} htmlFor="password" label="Password">
+      <Field error={fieldErrors.password} htmlFor="password" label="Пароль">
         <input
           aria-describedby={
             fieldErrors.password ? 'password-error' : undefined
           }
           aria-invalid={Boolean(fieldErrors.password)}
           autoComplete="new-password"
-          className={inputClassName}
+          className="auth-input"
           id="password"
           name="password"
           type="password"
         />
       </Field>
       <Button pending={pending} type="submit">
-        Create account
+        Створити обліковий запис
       </Button>
     </form>
   );

@@ -7,110 +7,6 @@
   --font-mono: "Courier New", monospace;
 }
 
-.auth-shell {
-  display: grid;
-  min-height: 100vh;
-  place-items: center;
-  padding: 2rem 1rem;
-}
-
-.auth-panel {
-  display: grid;
-  width: min(100%, 28rem);
-  gap: 1.5rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  background: #ffffff;
-  padding: 2rem;
-  box-shadow: 0 12px 30px rgb(15 23 42 / 8%);
-}
-
-@media (max-width: 30rem) {
-  .auth-shell {
-    align-items: start;
-    padding-top: 1.5rem;
-  }
-
-  .auth-panel {
-    padding: 1.5rem;
-  }
-}
-
-.app-header {
-  border-bottom: 1px solid #d9ded9;
-  background: #ffffff;
-}
-
-.app-header-inner {
-  display: grid;
-  grid-template-columns: minmax(10rem, 1fr) auto minmax(10rem, 1fr);
-  align-items: center;
-  width: min(100%, 90rem);
-  min-height: 4rem;
-  margin: 0 auto;
-  padding: 0 2rem;
-}
-
-.app-brand {
-  color: #17211b;
-  font-size: 1rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.app-nav,
-.app-account {
-  display: flex;
-  align-items: center;
-}
-
-.app-nav {
-  align-self: stretch;
-  gap: 0.25rem;
-}
-
-.app-nav-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 4rem;
-  border-bottom: 2px solid transparent;
-  padding: 0 1rem;
-  color: #4d5c52;
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.app-nav-link[aria-current="page"] {
-  border-bottom-color: #2f7652;
-  color: #184f35;
-}
-
-.app-account {
-  justify-content: flex-end;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.app-account button {
-  border: 1px solid #bac4bd;
-  background: #ffffff;
-  color: #334139;
-}
-
-.app-account button:hover {
-  background: #f1f5f1;
-}
-
-.app-user-name {
-  overflow: hidden;
-  color: #5f675f;
-  font-size: 0.8125rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .notification-control {
   display: flex;
   align-items: center;
@@ -1049,43 +945,9 @@
 }
 
 @media (max-width: 48rem) {
-  .app-header-inner {
-    grid-template-columns: 1fr;
-    padding: 0 1rem;
-  }
-
-  .app-brand {
-    display: none;
-  }
-
-  .app-nav {
-    grid-column: 1;
-    grid-row: 1;
-    justify-self: start;
-    width: 100%;
-  }
-
-  .app-nav-link {
-    min-height: 3.5rem;
-    padding: 0 0.65rem;
-  }
-
-  .app-account {
-    grid-column: 1;
-    grid-row: 2;
-    justify-content: space-between;
-    min-height: 3rem;
-    border-top: 1px solid #e3e7e4;
-  }
-
   .notification-toast-region {
     top: 7.25rem;
     right: 1rem;
-  }
-
-  .app-user-name {
-    display: block;
-    max-width: 12rem;
   }
 
   .schedule-page {
