@@ -59,6 +59,13 @@ type ScheduleWorkspaceProps = {
   officeTimeZone: string;
 };
 
+type ConflictRefreshTarget = {
+  conflictGeneration: number;
+  requestId: number;
+  roomId: string;
+  weekStart: string;
+};
+
 function currentOfficeWeek(officeTimeZone: string): string {
   return DateTime.now()
     .setZone(officeTimeZone)
@@ -190,6 +197,7 @@ export function ScheduleWorkspace({
   const preserveScheduleOnRefreshRef = useRef(false);
   const conflictRefreshRequestRef = useRef(false);
   const conflictRefreshGenerationRef = useRef(0);
+  const conflictRefreshTargetRef = useRef<ConflictRefreshTarget | null>(null);
   const bookingStateRef = useRef(bookingState);
   const createRequestIdRef = useRef(0);
   const linkedBookingIdRef = useRef(linkedBookingId);
@@ -266,6 +274,7 @@ export function ScheduleWorkspace({
     if (roomChanged || weekChanged) {
       preserveScheduleOnRefreshRef.current = false;
       conflictRefreshRequestRef.current = false;
+      conflictRefreshTargetRef.current = null;
       setPreservedScheduleKey(null);
       scheduleRequestSequence.current += 1;
       setScheduleState(null);
@@ -311,6 +320,7 @@ export function ScheduleWorkspace({
           setPositionEpoch((epoch) => epoch + 1);
           preserveScheduleOnRefreshRef.current = false;
           conflictRefreshRequestRef.current = false;
+          conflictRefreshTargetRef.current = null;
           setPreservedScheduleKey(null);
           scheduleRequestSequence.current += 1;
           setScheduleState(null);
@@ -539,6 +549,7 @@ export function ScheduleWorkspace({
     linkedBookingIdRef.current = null;
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
+    conflictRefreshTargetRef.current = null;
     setPreservedScheduleKey(null);
     setCancellation(null);
     setAgendaJumpStartsAt(null);
@@ -557,6 +568,7 @@ export function ScheduleWorkspace({
       .toFormat('yyyy-LL-dd');
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
+    conflictRefreshTargetRef.current = null;
     setPreservedScheduleKey(null);
     setCancellation(null);
     setAgendaJumpStartsAt(null);
@@ -577,6 +589,7 @@ export function ScheduleWorkspace({
     const nextWeek = nextDayValue.startOf('week').toFormat('yyyy-LL-dd');
     if (nextWeek !== weekStart) {
       conflictRefreshRequestRef.current = false;
+      conflictRefreshTargetRef.current = null;
       setPreservedScheduleKey(null);
     }
     preserveScheduleOnRefreshRef.current = false;
@@ -603,6 +616,7 @@ export function ScheduleWorkspace({
     const currentWeek = currentOfficeWeek(officeTimeZone);
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
+    conflictRefreshTargetRef.current = null;
     if (currentWeek !== weekStart) {
       setPreservedScheduleKey(null);
     }
@@ -615,6 +629,9 @@ export function ScheduleWorkspace({
   }
 
   function handleCancelled() {
+    conflictRefreshGenerationRef.current += 1;
+    conflictRefreshRequestRef.current = false;
+    conflictRefreshTargetRef.current = null;
     preserveScheduleOnRefreshRef.current = true;
     if (scheduleState?.status === 'success') {
       setPreservedScheduleKey(scheduleState.key);
@@ -627,21 +644,75 @@ export function ScheduleWorkspace({
   function closeBookingSurface() {
     conflictRefreshGenerationRef.current += 1;
     conflictRefreshRequestRef.current = false;
-    preserveScheduleOnRefreshRef.current = false;
+    conflictRefreshTargetRef.current = null;
     dispatchBooking({type: 'CLOSE'});
   }
 
-  function refreshAfterConflict(conflictGeneration: number) {
-    if (scheduleState?.status === 'success') {
+  function refreshAfterConflict(target: ConflictRefreshTarget) {
+    if (
+      scheduleState?.status === 'success' &&
+      target.roomId === selectedRoomIdRef.current &&
+      target.weekStart === weekStartRef.current
+    ) {
       setPreservedScheduleKey(scheduleState.key);
     }
     preserveScheduleOnRefreshRef.current = true;
-    conflictRefreshGenerationRef.current = conflictGeneration;
+    conflictRefreshGenerationRef.current = target.conflictGeneration;
     conflictRefreshRequestRef.current = true;
-    setRefreshKey((key) => key + 1);
+    conflictRefreshTargetRef.current = target;
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/rooms/${target.roomId}/schedule?weekStart=${target.weekStart}`,
+        );
+        const body = await response.json() as ApiResponse<ScheduleData>;
+        if (conflictRefreshTargetRef.current !== target) return;
+        conflictRefreshRequestRef.current = false;
+        if (!response.ok || !body.data) {
+          dispatchBooking({
+            conflictGeneration: target.conflictGeneration,
+            type: 'REFRESH_ERROR',
+          });
+          return;
+        }
+        if (
+          target.roomId !== selectedRoomIdRef.current ||
+          target.weekStart !== weekStartRef.current
+        ) {
+          return;
+        }
+        applyConflictRefreshSuccess({
+          conflictGeneration: target.conflictGeneration,
+          schedule: body.data,
+        }, {
+          activeConflictGeneration: conflictRefreshGenerationRef.current,
+          buildOptions: buildOptionsForSchedule,
+          commitSchedule: (data) => setScheduleState({
+            data,
+            key: activeScheduleKey,
+            status: 'success',
+          }),
+          dispatch: dispatchBooking,
+        });
+      } catch {
+        if (conflictRefreshTargetRef.current !== target) return;
+        conflictRefreshRequestRef.current = false;
+        dispatchBooking({
+          conflictGeneration: target.conflictGeneration,
+          type: 'REFRESH_ERROR',
+        });
+      }
+    })();
   }
 
   function selectStartSlot(selection: StartSlotSelection) {
+    const state = bookingStateRef.current;
+    if (
+      'selection' in state &&
+      (state.status === 'submitting' || state.status === 'conflictRefreshing')
+    ) {
+      return;
+    }
     if (!schedule) return;
     dispatchBooking({
       options: buildBookingEndTimeOptions({
@@ -661,29 +732,26 @@ export function ScheduleWorkspace({
     if (!('selection' in state) || state.status !== 'editing') return;
     const title = state.title.trim();
     if (!title) {
-      const requestId = ++createRequestIdRef.current;
-      dispatchBooking({requestId, type: 'SUBMIT'});
       dispatchBooking({
-        code: 'VALIDATION_FAILED',
         fields: {title: uiFieldMessage.title},
-        requestId,
-        type: 'CREATE_DOMAIN_ERROR',
+        type: 'VALIDATION_ERROR',
       });
       return;
     }
     if (!state.endOptions.some((option) => option.endsAt === state.endsAt)) {
-      const requestId = ++createRequestIdRef.current;
-      dispatchBooking({requestId, type: 'SUBMIT'});
       dispatchBooking({
-        code: 'VALIDATION_FAILED',
         fields: {endsAt: uiFieldMessage.endsAt},
-        requestId,
-        type: 'CREATE_DOMAIN_ERROR',
+        type: 'VALIDATION_ERROR',
       });
       return;
     }
     const requestId = ++createRequestIdRef.current;
-    const conflictGeneration = state.conflictGeneration + 1;
+    const conflictTarget: ConflictRefreshTarget = {
+      conflictGeneration: state.conflictGeneration + 1,
+      requestId,
+      roomId: state.selection.roomId,
+      weekStart,
+    };
     const capturedRoomId = state.selection.roomId;
     const capturedWeekStart = weekStart;
     dispatchBooking({requestId, type: 'SUBMIT'});
@@ -703,13 +771,23 @@ export function ScheduleWorkspace({
         if (!response.ok) {
           const code = body.error?.code;
           if (code === 'BOOKING_CONFLICT') {
+            const activeRequest =
+              bookingStateRef.current.status === 'submitting' &&
+              bookingStateRef.current.createRequestId === requestId;
             dispatchBooking({
               code,
               fields: {},
               requestId,
               type: 'CREATE_DOMAIN_ERROR',
             });
-            refreshAfterConflict(conflictGeneration);
+            if (activeRequest) {
+              refreshAfterConflict(conflictTarget);
+            } else {
+              void revalidateCapturedSchedule(
+                conflictTarget.roomId,
+                conflictTarget.weekStart,
+              );
+            }
             return;
           }
           dispatchBooking({
@@ -774,9 +852,14 @@ export function ScheduleWorkspace({
   function retryConflictRefresh() {
     const state = bookingStateRef.current;
     if (!('selection' in state) || state.status !== 'conflictError') return;
-    const conflictGeneration = state.conflictGeneration + 1;
+    const conflictTarget: ConflictRefreshTarget = {
+      conflictGeneration: state.conflictGeneration + 1,
+      requestId: state.createRequestId ?? 0,
+      roomId: state.selection.roomId,
+      weekStart,
+    };
     dispatchBooking({type: 'RETRY_REFRESH'});
-    refreshAfterConflict(conflictGeneration);
+    refreshAfterConflict(conflictTarget);
   }
 
   function selectBooking(booking: ScheduleBooking) {

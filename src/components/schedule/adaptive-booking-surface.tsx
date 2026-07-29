@@ -59,6 +59,7 @@ export function AdaptiveBookingSurface({
       className="booking-surface"
       data-mode={mode}
       data-open={isOpen}
+      hidden={hidden}
       inert={hidden || undefined}
     >
       <div className="booking-surface-backdrop" />

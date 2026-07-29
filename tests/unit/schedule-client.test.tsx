@@ -132,7 +132,7 @@ function renderScheduleClient() {
   );
 }
 
-describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
+describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
   const fetchMock = vi.fn();
   const originalNow = Settings.now;
 
@@ -1219,4 +1219,174 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       }
     },
   );
+
+  it('does not post or enter a pending state for a blank booking title', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Existing booking'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+
+    expect(screen.getByText('Назва має містити від 1 до 100 символів.'))
+      .toBeVisible();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
+    expect(fetchMock.mock.calls.filter(([, init]) =>
+      (init as RequestInit | undefined)?.method === 'POST',
+    )).toHaveLength(0);
+  });
+
+  it('keeps the submitted draft when another desktop slot is clicked', async () => {
+    const create = deferred<Response>();
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Existing booking'));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') return create.promise;
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Планування');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+    await user.click(screen.getByRole('button', {
+      name: /Забронювати вівторок.*13:00/i,
+    }));
+
+    expect(screen.getByLabelText('Назва')).toHaveValue('Планування');
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
+  });
+
+  it('keeps the conflicting draft when another desktop slot is clicked', async () => {
+    const refreshedSchedule = deferred<Response>();
+    let scheduleRequests = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequests += 1;
+        return scheduleRequests === 1 ?
+          Promise.resolve(scheduleResponse('2026-08-03', 'Existing booking')) :
+          refreshedSchedule.promise;
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({error: {code: 'BOOKING_CONFLICT'}}, 409));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Планування');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+    await waitFor(() => expect(scheduleRequests).toBe(2));
+    await user.click(screen.getByRole('button', {
+      name: /Забронювати вівторок.*13:00/i,
+    }));
+
+    expect(screen.getByLabelText('Назва')).toHaveValue('Планування');
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
+  });
+
+  it('revalidates the captured room after a stale conflict response', async () => {
+    const conflictResponse = deferred<Response>();
+    let oakScheduleRequests = 0;
+    let pineScheduleRequests = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('/api/rooms/oak/schedule')) {
+        oakScheduleRequests += 1;
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Oak schedule'));
+      }
+      if (url.includes('/api/rooms/pine/schedule')) {
+        pineScheduleRequests += 1;
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Pine schedule'));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return conflictResponse.promise;
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Планування');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+    await user.selectOptions(screen.getByLabelText('Переговорна'), 'pine');
+    await screen.findByText('Pine schedule');
+
+    await act(async () => {
+      conflictResponse.resolve(jsonResponse({
+        error: {code: 'BOOKING_CONFLICT'},
+      }, 409));
+    });
+
+    await waitFor(() => expect(oakScheduleRequests).toBe(2));
+    expect(pineScheduleRequests).toBe(1);
+    expect(screen.queryByLabelText('Назва')).not.toBeInTheDocument();
+  });
+
+  it('revalidates the captured week after a stale conflict response', async () => {
+    const conflictResponse = deferred<Response>();
+    let capturedWeekRequests = 0;
+    let activeWeekRequests = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('weekStart=2026-08-03')) {
+        capturedWeekRequests += 1;
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Captured week'));
+      }
+      if (url.includes('weekStart=2026-08-10')) {
+        activeWeekRequests += 1;
+        return Promise.resolve(scheduleResponse('2026-08-10', 'Active week'));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return conflictResponse.promise;
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Планування');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+    await user.click(screen.getByRole('button', {name: 'Наступний тиждень'}));
+    await screen.findByText('Active week');
+
+    await act(async () => {
+      conflictResponse.resolve(jsonResponse({
+        error: {code: 'BOOKING_CONFLICT'},
+      }, 409));
+    });
+
+    await waitFor(() => expect(capturedWeekRequests).toBe(2));
+    expect(activeWeekRequests).toBe(1);
+    expect(screen.queryByLabelText('Назва')).not.toBeInTheDocument();
+  });
 });

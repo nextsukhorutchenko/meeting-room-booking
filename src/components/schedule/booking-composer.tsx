@@ -36,6 +36,7 @@ export function BookingComposer({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
+        if (!selectedEndTime) return;
         onSubmit();
       }}
     >

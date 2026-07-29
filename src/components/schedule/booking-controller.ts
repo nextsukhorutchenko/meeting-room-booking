@@ -45,6 +45,7 @@ export type BookingControllerEvent =
   | {type: 'OPEN_DETAILS'; booking: ScheduleBooking}
   | {type: 'TITLE_CHANGED'; value: string}
   | {type: 'END_CHANGED'; endsAt: string}
+  | {type: 'VALIDATION_ERROR'; fields: Partial<Record<BookingFieldKey, string>>}
   | {type: 'SUBMIT'; requestId: number}
   | {type: 'CREATE_OK'; requestId: number; booking: ScheduleBooking}
   | {type: 'CREATE_DOMAIN_ERROR'; requestId: number;
@@ -89,6 +90,12 @@ export function bookingReducer(
 ): BookingControllerState {
   switch (event.type) {
     case 'SELECT_SLOT': {
+      if (
+        'selection' in state &&
+        (state.status === 'submitting' || state.status === 'conflictRefreshing')
+      ) {
+        return state;
+      }
       const selectionGeneration = state.selectionGeneration + 1;
       const next: BookingDraftState = {
         conflictGeneration: 0,
@@ -134,6 +141,15 @@ export function bookingReducer(
         formError: '',
         liveMessage: '',
         status: 'submitting',
+      } : state;
+    case 'VALIDATION_ERROR':
+      return 'selection' in state && state.status === 'editing' ? {
+        ...state,
+        fieldErrors: localizeFields(event.fields),
+        formError: localizeApiError({
+          code: 'VALIDATION_FAILED',
+          fallback: 'booking',
+        }),
       } : state;
     case 'CREATE_OK':
       return 'selection' in state && state.status === 'submitting' &&

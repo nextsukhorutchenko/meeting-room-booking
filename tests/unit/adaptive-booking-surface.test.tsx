@@ -36,6 +36,84 @@ const state: Extract<BookingControllerState, {selection: unknown}> = {
 afterEach(cleanup);
 
 describe('AdaptiveBookingSurface', () => {
+  it.each(['medium', 'tablet', 'mobile'] as const)(
+    'hides and inerts the closed %s surface',
+    (mode) => {
+      const {container} = render(
+        <AdaptiveBookingSurface
+          mode={mode}
+          onClose={vi.fn()}
+          onEndChange={vi.fn()}
+          onRetryRefresh={vi.fn()}
+          onSubmit={vi.fn()}
+          onTitleChange={vi.fn()}
+          state={{selectionGeneration: 0, status: 'closed'}}
+        />,
+      );
+      const surface = container.querySelector('.booking-surface');
+
+      expect(surface).toHaveAttribute('hidden');
+      expect(surface).toHaveAttribute('aria-hidden', 'true');
+      expect(surface).toHaveAttribute('inert');
+      expect(surface?.querySelectorAll(
+        'a, button, input, select, textarea, [tabindex]',
+      )).toHaveLength(0);
+    },
+  );
+
+  it('keeps expanded closed guidance visible and interactive descendants absent', () => {
+    const {container} = render(
+      <AdaptiveBookingSurface
+        mode="expanded"
+        onClose={vi.fn()}
+        onEndChange={vi.fn()}
+        onRetryRefresh={vi.fn()}
+        onSubmit={vi.fn()}
+        onTitleChange={vi.fn()}
+        state={{selectionGeneration: 0, status: 'closed'}}
+      />,
+    );
+    const surface = container.querySelector('.booking-surface');
+
+    expect(screen.getByText(
+      'Виберіть вільний час у розкладі, щоб створити бронювання.',
+    )).toBeVisible();
+    expect(surface).not.toHaveAttribute('hidden');
+    expect(surface).not.toHaveAttribute('aria-hidden');
+    expect(surface).not.toHaveAttribute('inert');
+    expect(surface?.querySelectorAll(
+      'a, button, input, select, textarea, [tabindex]',
+    )).toHaveLength(0);
+  });
+
+  it('keeps the surface and panel nodes while opening and resizing', () => {
+    const props = {
+      mode: 'tablet' as const,
+      onClose: vi.fn(),
+      onEndChange: vi.fn(),
+      onRetryRefresh: vi.fn(),
+      onSubmit: vi.fn(),
+      onTitleChange: vi.fn(),
+    };
+    const {container, rerender} = render(
+      <AdaptiveBookingSurface
+        {...props}
+        state={{selectionGeneration: 0, status: 'closed'}}
+      />,
+    );
+    const surface = container.querySelector('.booking-surface');
+    const panel = container.querySelector('.booking-surface-panel');
+    if (!surface || !panel) throw new Error('Booking surface is missing');
+
+    rerender(<AdaptiveBookingSurface {...props} state={state} />);
+    rerender(<AdaptiveBookingSurface {...props} mode="expanded" state={state} />);
+
+    expect(container.querySelector('.booking-surface')?.isSameNode(surface))
+      .toBe(true);
+    expect(container.querySelector('.booking-surface-panel')?.isSameNode(panel))
+      .toBe(true);
+  });
+
   it('keeps the same composer node and draft while resizing', () => {
     const props = {
       onClose: vi.fn(),

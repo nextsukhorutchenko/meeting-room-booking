@@ -92,6 +92,39 @@ describe('bookingReducer', () => {
       title: 'Планування',
     });
   });
+
+  it.each(['submitting', 'conflictRefreshing'] as const)(
+    'does not replace a %s draft when another slot is selected',
+    (status) => {
+      const pendingState: BookingControllerState = {
+        ...conflictRefreshingState,
+        status,
+      };
+
+      expect(bookingReducer(pendingState, {
+        options: refreshedOptions,
+        selection: {...selection, startsAt: '2026-08-04T09:00:00.000Z'},
+        type: 'SELECT_SLOT',
+      })).toBe(pendingState);
+    },
+  );
+
+  it('sets validation errors without entering the submitting state', () => {
+    const editingState = bookingReducer(closedState, {
+      options,
+      selection,
+      type: 'SELECT_SLOT',
+    });
+    const state = bookingReducer(editingState, {
+      fields: {title: 'ignored server detail'},
+      type: 'VALIDATION_ERROR',
+    });
+
+    expect(state).toMatchObject({
+      fieldErrors: {title: 'Назва має містити від 1 до 100 символів.'},
+      status: 'editing',
+    });
+  });
 });
 
 describe('applyConflictRefreshSuccess', () => {

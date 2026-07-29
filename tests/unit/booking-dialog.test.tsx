@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import {cleanup, render, screen} from '@testing-library/react';
+import {cleanup, fireEvent, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {BookingComposer} from '../../src/components/schedule/booking-composer';
@@ -93,6 +93,28 @@ describe('BookingComposer', () => {
     expect(screen.getByLabelText('Назва')).toBeDisabled();
     expect(screen.getByLabelText('Час завершення')).toBeDisabled();
     expect(screen.getByRole('button', {name: 'Закрити'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
+  });
+
+  it('does not forward submit for a stale end option', async () => {
+    const onSubmit = vi.fn();
+    renderComposer({
+      ...state,
+      endsAt: '2026-07-28T09:00:00.000Z',
+    }, {
+      onClose: vi.fn(),
+      onEndChange: vi.fn(),
+      onRetryRefresh: vi.fn(),
+      onSubmit,
+      onTitleChange: vi.fn(),
+    });
+
+    fireEvent.submit(
+      (screen.getByRole('button', {name: 'Забронювати'}) as HTMLButtonElement)
+        .form!,
+    );
+
+    expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
   });
 });
