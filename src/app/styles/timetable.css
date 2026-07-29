@@ -1,0 +1,193 @@
+.timetable {
+  width: 100%;
+  min-width: var(--timetable-min-width);
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: var(--color-surface);
+}
+
+.timetable th,
+.timetable td {
+  border: var(--border-default) solid var(--color-border);
+  padding: var(--space-0);
+}
+
+.timetable thead th {
+  position: sticky;
+  z-index: 2;
+  top: var(--space-0);
+  background: var(--color-surface);
+  padding: var(--space-1);
+  color: var(--color-text);
+  font-size: var(--type-compact);
+  line-height: var(--type-compact-line-height);
+  text-align: center;
+}
+
+.timetable thead th:first-child {
+  z-index: 3;
+  left: var(--space-0);
+  width: var(--timetable-clock-width);
+}
+
+.timetable tbody > tr {
+  height: var(--timetable-row-height);
+}
+
+.timetable tbody > tr > th {
+  position: sticky;
+  z-index: 1;
+  left: var(--space-0);
+  width: var(--timetable-clock-width);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--type-meta);
+  line-height: var(--type-meta-line-height);
+  font-weight: 600;
+  text-align: center;
+}
+
+.timetable-day-office,
+.timetable-day-user {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.timetable-day-user {
+  color: var(--color-text-muted);
+  font-size: var(--type-meta);
+  line-height: var(--type-meta-line-height);
+}
+
+.timetable-cell {
+  min-width: var(--space-0);
+  background: var(--color-surface);
+}
+
+.timetable-cell-current-day {
+  background: var(--color-current-soft);
+}
+
+.free-slot-button,
+.booking-block {
+  display: grid;
+  width: 100%;
+  min-height: var(--timetable-booking-min-height);
+  align-content: center;
+  border: var(--border-default) solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: var(--timetable-cell-padding);
+  color: var(--color-text-muted);
+  font: inherit;
+  text-align: left;
+}
+
+.free-slot-button {
+  grid-template-columns: auto minmax(var(--space-0), 1fr);
+  align-items: center;
+  justify-items: start;
+  gap: var(--timetable-inline-gap);
+}
+
+.free-slot-button svg {
+  width: var(--timetable-icon-size);
+  height: var(--timetable-icon-size);
+  color: var(--color-brand);
+}
+
+.free-slot-button:hover:not(:disabled),
+.free-slot-button:focus-visible {
+  border-color: var(--color-brand);
+  background: var(--color-brand-soft);
+  color: var(--color-brand-hover);
+}
+
+.free-slot-button:disabled {
+  color: var(--color-disabled-text);
+}
+
+.booking-block {
+  grid-template-rows: minmax(var(--space-3), auto) minmax(var(--space-2), auto);
+  gap: var(--timetable-booking-gap);
+  overflow: hidden;
+  border-left: var(--border-emphasis) solid var(--color-other-border);
+  background: var(--color-info-soft);
+  color: var(--color-other-text);
+}
+
+.booking-block:hover,
+.booking-block:focus-visible {
+  border-color: var(--color-info);
+  outline: var(--border-emphasis) solid var(--color-focus);
+  outline-offset: var(--space-0);
+}
+
+.booking-block.booking-own {
+  border-left-style: double;
+  border-left-color: var(--color-own-border);
+  background: var(--color-own-surface);
+  color: var(--color-own-text);
+}
+
+.booking-block.booking-highlighted {
+  outline: var(--border-emphasis) solid var(--color-current);
+  outline-offset: var(--space-0);
+}
+
+.booking-block [data-booking-title] {
+  min-width: var(--timetable-title-min-width);
+  overflow: hidden;
+  font-size: var(--type-meta);
+  font-weight: 700;
+  line-height: var(--type-meta-line-height);
+  overflow-wrap: anywhere;
+}
+
+.booking-block-meta {
+  display: grid;
+  grid-template-columns: minmax(var(--timetable-title-min-width), 1fr) auto;
+  align-items: center;
+  gap: var(--timetable-inline-gap);
+  min-width: var(--space-0);
+}
+
+.booking-time-label,
+.booking-owner-label,
+.booking-other-label {
+  overflow: hidden;
+  font-size: var(--type-meta);
+  line-height: var(--type-meta-line-height);
+  white-space: nowrap;
+}
+
+.booking-owner-label,
+.booking-other-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--timetable-status-gap);
+  font-weight: 700;
+}
+
+.booking-owner-label svg,
+.booking-other-label svg {
+  width: var(--timetable-status-icon-size);
+  height: var(--timetable-status-icon-size);
+  flex: none;
+}
+
+.timetable-error {
+  margin: var(--space-0);
+  padding: var(--space-2);
+  color: var(--color-danger);
+}
+
+@media (forced-colors: active) {
+  .booking-block,
+  .free-slot-button {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

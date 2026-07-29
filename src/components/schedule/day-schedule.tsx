@@ -9,8 +9,8 @@ import {BookingBlock} from './booking-block';
 import type {StartSlotSelection} from './booking-selection';
 import {
   SCHEDULE_LAYOUT,
-  type ScheduleBooking,
-} from './week-grid';
+} from './timetable';
+import type {ScheduleBooking} from './schedule-types';
 
 type DayScheduleProps = {
   bookingEnabled: boolean;
@@ -232,22 +232,17 @@ export function DaySchedule({
               .setZone(officeTimeZone);
             const endsAt = DateTime.fromISO(booking.endsAt)
               .setZone(officeTimeZone);
-            const startMinutes =
-              startsAt.hour * 60 + startsAt.minute -
-              officeOpenHour * 60;
-            const durationMinutes = endsAt.diff(startsAt, 'minutes').minutes;
             return (
               <BookingBlock
                 authorName={booking.author.name}
                 bookingId={booking.id}
-                height={
-                  durationMinutes / SCHEDULE_LAYOUT.slotMinutes *
-                  SCHEDULE_LAYOUT.slotHeightPx
-                }
                 isHighlighted={booking.id === highlightedBookingId}
                 isOwn={booking.isOwn}
                 key={booking.id}
-                onCancel={onCancelBooking}
+                onOpenDetails={() => onCancelBooking({
+                  id: booking.id,
+                  title: booking.title,
+                })}
                 timeLabel={
                   `${timeLabel(
                     startsAt,
@@ -257,10 +252,6 @@ export function DaySchedule({
                   timeLabel(endsAt, userTimeZone, officeTimeZone)
                 }
                 title={booking.title}
-                top={
-                  startMinutes / SCHEDULE_LAYOUT.slotMinutes *
-                  SCHEDULE_LAYOUT.slotHeightPx
-                }
               />
             );
           })}

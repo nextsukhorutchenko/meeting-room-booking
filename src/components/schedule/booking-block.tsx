@@ -1,34 +1,30 @@
-import {CalendarX2, UserRoundCheck} from 'lucide-react';
+import {CalendarClock, UserRoundCheck} from 'lucide-react';
 
 type BookingBlockProps = {
   authorName: string;
   bookingId: string;
-  height: number;
   isHighlighted: boolean;
   isOwn: boolean;
-  onCancel(booking: {id: string; title: string}): void;
+  onOpenDetails?(invoker: HTMLElement): void;
   timeLabel: string;
   title: string;
-  top: number;
 };
 
 export function BookingBlock({
   authorName,
   bookingId,
-  height,
   isHighlighted,
   isOwn,
-  onCancel,
+  onOpenDetails,
   timeLabel,
   title,
-  top,
 }: BookingBlockProps) {
   return (
-    <article
+    <button
       aria-current={isHighlighted ? 'true' : undefined}
       aria-label={
-        `${title}, ${timeLabel}, booked by ${authorName}` +
-        `${isOwn ? ', yours' : ''}`
+        `${title}; ${timeLabel}; ${isOwn ? 'Ваше' : 'Зайнято'}; ` +
+        `організатор ${authorName}`
       }
       className={[
         'booking-block',
@@ -36,30 +32,25 @@ export function BookingBlock({
         isHighlighted ? 'booking-highlighted' : '',
       ].filter(Boolean).join(' ')}
       data-highlighted={isHighlighted ? 'true' : undefined}
-      style={{height: Math.max(height - 4, 32), top: top + 2}}
+      data-booking-id={bookingId}
+      onClick={(event) => onOpenDetails?.(event.currentTarget)}
+      type="button"
     >
-      <strong>{title}</strong>
+      <span data-booking-title>{title}</span>
       <div className="booking-block-meta">
         <span className="booking-time-label">{timeLabel}</span>
-        <span>{authorName}</span>
         {isOwn ? (
           <span className="booking-owner-label">
             <UserRoundCheck aria-hidden="true" />
-            Yours
+            Ваше
           </span>
-        ) : null}
+        ) : (
+          <span className="booking-other-label">
+            <CalendarClock aria-hidden="true" />
+            Зайнято
+          </span>
+        )}
       </div>
-      {isOwn ? (
-        <button
-          aria-label={`Cancel ${title}`}
-          className="booking-cancel-button"
-          onClick={() => onCancel({id: bookingId, title})}
-          title="Cancel booking"
-          type="button"
-        >
-          <CalendarX2 aria-hidden="true" />
-        </button>
-      ) : null}
-    </article>
+    </button>
   );
 }

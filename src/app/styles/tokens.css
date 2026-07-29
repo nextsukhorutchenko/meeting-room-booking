@@ -80,4 +80,15 @@
   --motion-emphasized: 250ms;
   --ease-standard: cubic-bezier(.2, 0, 0, 1);
   --control-select-min-width: 208px;
+  --timetable-clock-width: 64px;
+  --timetable-row-height: 52px;
+  --timetable-booking-min-height: 48px;
+  --timetable-min-width: 742px;
+  --timetable-cell-padding: 4px;
+  --timetable-inline-gap: 4px;
+  --timetable-booking-gap: 2px;
+  --timetable-icon-size: 16px;
+  --timetable-status-icon-size: 12px;
+  --timetable-status-gap: 2px;
+  --timetable-title-min-width: 24px;
 }

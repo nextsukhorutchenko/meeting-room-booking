@@ -9,17 +9,17 @@ describe('BookingBlock', () => {
       <BookingBlock
         authorName="Demo Organizer"
         bookingId="booking-1"
-        height={36}
         isHighlighted
         isOwn={false}
-        onCancel={vi.fn()}
+        onOpenDetails={vi.fn()}
         timeLabel="10:00-10:30"
         title="Planning"
-        top={0}
       />,
     );
 
-    expect(screen.getByRole('article', {name: /Planning/}))
+    expect(screen.getByRole('button', {name: /Planning/}))
       .toHaveAttribute('aria-current', 'true');
+    expect(screen.queryByRole('button', {name: /Cancel/}))
+      .not.toBeInTheDocument();
   });
 });

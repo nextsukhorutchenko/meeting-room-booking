@@ -58,7 +58,7 @@ export function ScheduleViewport({
         onVisibleTimeAnchorChange(String(event.currentTarget.scrollTop));
       }}
     >
-      {mode === 'expanded' || mode === 'medium' ?
+      {mode === 'expanded' || mode === 'medium' || mode === 'tablet' ?
         renderTimetable(visibleDayCount as VisibleDayCount) :
         renderAgenda()}
     </div>

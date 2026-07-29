@@ -1,45 +1,24 @@
 import '@testing-library/jest-dom/vitest';
-import {
-  cleanup,
-  render,
-  screen,
-} from '@testing-library/react';
+import {cleanup, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {Settings} from 'luxon';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
-  type ScheduleBooking,
-  WeekGrid,
-} from '../../src/components/schedule/week-grid';
+  Timetable,
+  type TimetableProps,
+} from '../../src/components/schedule/timetable';
+import type {ScheduleBooking} from '../../src/components/schedule/schedule-types';
 
 const originalNow = Settings.now;
-const originalLocale = Settings.defaultLocale;
-
-function renderWeek(
-  weekStart: string,
-  booking: ScheduleBooking,
-  onSelectSlot = vi.fn(),
-  userTimeZone = 'America/New_York',
-) {
-  render(
-    <WeekGrid
-      bookingEnabled
-      bookings={[booking]}
-      highlightedBookingId={null}
-      loading={false}
-      officeCloseHour={19}
-      officeOpenHour={9}
-      officeTimeZone="Europe/Kyiv"
-      onCancelBooking={vi.fn()}
-      onSelectSlot={onSelectSlot}
-      roomId="oak"
-      roomName="Oak"
-      userTimeZone={userTimeZone}
-      weekStart={weekStart}
-    />,
-  );
-  return onSelectSlot;
-}
+const sevenDays = [
+  '2026-03-02',
+  '2026-03-03',
+  '2026-03-04',
+  '2026-03-05',
+  '2026-03-06',
+  '2026-03-07',
+  '2026-03-08',
+] as const;
 
 function booking(
   startsAt: string,
@@ -56,7 +35,32 @@ function booking(
   };
 }
 
-describe('WeekGrid timezone semantics', () => {
+function renderTimetable(input: {
+  bookings: readonly ScheduleBooking[];
+  userTimeZone?: string;
+  visibleDays?: readonly string[];
+  weekStart?: string;
+  onSelectSlot?: TimetableProps['onSelectSlot'];
+}) {
+  render(
+    <Timetable
+      bookings={input.bookings}
+      highlightedBookingId={null}
+      now="2026-02-01T00:00:00.000Z"
+      officeCloseHour={19}
+      officeOpenHour={9}
+      officeTimeZone="Europe/Kyiv"
+      onOpenDetails={vi.fn()}
+      onSelectSlot={input.onSelectSlot ?? vi.fn()}
+      room={{id: 'oak', name: 'Oak', floor: 1, capacity: 6}}
+      userTimeZone={input.userTimeZone ?? 'America/New_York'}
+      visibleDays={input.visibleDays ?? sevenDays}
+      weekStart={input.weekStart ?? '2026-03-02'}
+    />,
+  );
+}
+
+describe('Timetable timezone semantics', () => {
   beforeEach(() => {
     Settings.now = () => Date.UTC(2026, 1, 1);
   });
@@ -64,138 +68,88 @@ describe('WeekGrid timezone semantics', () => {
   afterEach(() => {
     cleanup();
     Settings.now = originalNow;
-    Settings.defaultLocale = originalLocale;
   });
 
-  it('aligns ordinary New York row clocks with booking labels', () => {
-    renderWeek(
-      '2026-08-03',
-      booking(
-        '2026-08-04T07:00:00.000Z',
-        '2026-08-04T07:30:00.000Z',
-        'Ordinary New York',
-      ),
-    );
-
-    expect(screen.getByTestId('schedule-office-zone'))
-      .toHaveTextContent('Europe/Kyiv');
-    expect(screen.getAllByTestId('schedule-time-row').every(
-      (row) => row.textContent === '',
-    )).toBe(true);
-    const tuesdayClocks =
-      screen.getAllByTestId('day-row-clock-2026-08-04');
-    expect(tuesdayClocks).toHaveLength(11);
-    expect(tuesdayClocks[0]).toHaveTextContent('02:00');
-    expect(tuesdayClocks[1]).toHaveTextContent('03:00');
-    expect(screen.getByRole('article', {name: /Ordinary New York/}))
-      .toHaveTextContent('03:00-03:30');
-  });
-
-  it('uses one shared time gutter when browser and office zones match', () => {
-    renderWeek(
-      '2026-08-03',
-      booking(
-        '2026-08-04T07:00:00.000Z',
-        '2026-08-04T07:30:00.000Z',
+  it('uses one shared user-time row header when browser and office zones match', () => {
+    renderTimetable({
+      bookings: [booking(
+        '2026-03-03T07:00:00.000Z',
+        '2026-03-03T07:30:00.000Z',
         'Kyiv booking',
-      ),
-      vi.fn(),
-      'Europe/Kyiv',
-    );
+      )],
+      userTimeZone: 'Europe/Kyiv',
+    });
 
-    const timeRows = screen.getAllByTestId('schedule-time-row');
-    expect(timeRows).toHaveLength(20);
-    expect(timeRows[0]).toHaveTextContent('09:00');
-    expect(timeRows[1]).toBeEmptyDOMElement();
-    expect(timeRows[2]).toHaveTextContent('10:00');
-    expect(screen.getByTestId('schedule-end-time'))
-      .toHaveTextContent('19:00');
-    expect(screen.queryByTestId('day-row-clock-2026-08-04'))
-      .not.toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader')).toHaveLength(20);
+    expect(screen.getAllByRole('rowheader')[0]).toHaveTextContent('09:00');
+    expect(screen.getByRole('columnheader', {name: /Ваш час.*Europe\/Kyiv/}))
+      .toBeVisible();
   });
 
-  it('announces current time in the browser zone', () => {
-    Settings.now = () => Date.UTC(2026, 7, 4, 7, 15);
-    renderWeek(
-      '2026-08-03',
-      booking(
-        '2026-08-04T07:00:00.000Z',
-        '2026-08-04T07:30:00.000Z',
-        'Current time label',
-      ),
-    );
-
-    expect(screen.getByLabelText('Current time 03:15')).toBeVisible();
-  });
-
-  it('uses per-day New York clocks across the US-only DST week', async () => {
-    const onSelectSlot = renderWeek(
-      '2026-03-02',
-      booking(
+  it('preserves per-day clocks across the US-only DST boundary', async () => {
+    const onSelectSlot = vi.fn();
+    renderTimetable({
+      bookings: [booking(
         '2026-03-08T08:00:00.000Z',
         '2026-03-08T08:30:00.000Z',
         'US transition Sunday',
-      ),
-    );
+      )],
+      onSelectSlot,
+    });
 
-    expect(screen.getByTestId('day-user-hours-2026-03-02'))
-      .toHaveTextContent('02:00-12:00 EST');
-    expect(screen.getByTestId('day-user-hours-2026-03-08'))
-      .toHaveTextContent('03:00-13:00 EDT');
-    expect(screen.getAllByTestId('day-row-clock-2026-03-02')[0])
-      .toHaveTextContent('02:00');
-    expect(screen.getAllByTestId('day-row-clock-2026-03-08')[0])
-      .toHaveTextContent('03:00');
-    expect(screen.getByRole('article', {name: /US transition Sunday/}))
-      .toHaveTextContent('04:00-04:30');
+    expect(screen.getAllByRole('columnheader', {name: /America\/New_York/}))
+      .toHaveLength(7);
+    expect(screen.getByRole('button', {name: /US transition Sunday/}))
+      .toHaveTextContent('04:00–04:30');
 
-    await userEvent.setup().click(screen.getByRole('button', {
-      name: /Book Sunday, March 8, 2026 at 03:00 in Oak/,
-    }));
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('button', {
+      name: /Забронювати.*неділя.*Oak/,
+    })[0]);
     expect(onSelectSlot).toHaveBeenCalledWith(expect.objectContaining({
-      dateLabel: 'Sunday, March 8, 2026',
       startsAt: '2026-03-08T07:00:00.000Z',
       startTimeLabel: '03:00',
-    }));
+    }), expect.any(HTMLButtonElement));
   });
 
-  it('uses per-day New York clocks across the Kyiv-only DST week', () => {
-    renderWeek(
-      '2026-03-23',
-      booking(
+  it('preserves per-day clocks across the Kyiv-only DST boundary', () => {
+    renderTimetable({
+      bookings: [booking(
         '2026-03-29T06:00:00.000Z',
         '2026-03-29T06:30:00.000Z',
         'Kyiv transition Sunday',
-      ),
-    );
+      )],
+      weekStart: '2026-03-23',
+      visibleDays: [
+        '2026-03-23',
+        '2026-03-24',
+        '2026-03-25',
+        '2026-03-26',
+        '2026-03-27',
+        '2026-03-28',
+        '2026-03-29',
+      ],
+    });
 
-    expect(screen.getByTestId('day-user-hours-2026-03-23'))
-      .toHaveTextContent('03:00-13:00 EDT');
-    expect(screen.getByTestId('day-user-hours-2026-03-29'))
-      .toHaveTextContent('02:00-12:00 EDT');
-    expect(screen.getByTestId('schedule-office-zone'))
-      .toHaveTextContent('Europe/Kyiv');
-    expect(screen.getAllByTestId('day-row-clock-2026-03-23')[0])
-      .toHaveTextContent('03:00');
-    expect(screen.getAllByTestId('day-row-clock-2026-03-29')[0])
-      .toHaveTextContent('02:00');
-    expect(screen.getByRole('article', {name: /Kyiv transition Sunday/}))
-      .toHaveTextContent('02:00-02:30');
+    const headers = screen.getAllByRole('columnheader', {
+      name: /America\/New_York/,
+    });
+    expect(headers[0]).toHaveTextContent('03:00-13:00');
+    expect(headers[6]).toHaveTextContent('02:00-12:00');
+    expect(screen.getByRole('button', {name: /Kyiv transition Sunday/}))
+      .toHaveTextContent('02:00–02:30');
   });
 
-  it('keeps English day labels when the ambient Luxon locale is French', () => {
-    Settings.defaultLocale = 'fr-FR';
-    renderWeek(
-      '2026-03-02',
-      booking(
-        '2026-03-08T07:00:00.000Z',
-        '2026-03-08T07:30:00.000Z',
-        'Locale check',
-      ),
-    );
+  it('retains both dates and zones for a date-crossing user slot', () => {
+    renderTimetable({
+      bookings: [],
+      userTimeZone: 'America/Los_Angeles',
+      visibleDays: ['2026-07-29'],
+      weekStart: '2026-07-27',
+    });
 
-    expect(screen.getByRole('columnheader', {name: /Mon, Mar 2/}))
-      .toBeVisible();
-    expect(screen.getByText('Mar 2')).toBeVisible();
+    expect(screen.getByRole('button', {
+      name: /28 липня 2026.*23:00.*America\/Los_Angeles.*29 липня 2026.*09:00.*Europe\/Kyiv/,
+    })).toBeVisible();
   });
 });

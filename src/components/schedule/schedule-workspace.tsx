@@ -36,7 +36,7 @@ import {ScheduleViewport} from './schedule-viewport';
 import type {RoomSummary, ScheduleData} from './schedule-types';
 import {TimezoneLabel} from './timezone-label';
 import {getResponsiveMode, useResponsiveMode} from './use-responsive-mode';
-import {WeekGrid} from './week-grid';
+import {Timetable} from './timetable';
 
 type ApiResponse<T> = {
   data?: T;
@@ -98,6 +98,24 @@ function normalizeDay(
   return parsed.isValid && parsed >= week && parsed < week.plus({days: 7}) ?
     parsed.toFormat('yyyy-LL-dd') :
     defaultDay(weekStart, officeTimeZone);
+}
+
+function visibleTimetableDays(
+  selectedDay: string,
+  visibleDayCount: 2 | 3 | 7,
+  weekStart: string,
+  officeTimeZone: string,
+): readonly string[] {
+  const week = DateTime.fromISO(weekStart, {zone: officeTimeZone});
+  if (visibleDayCount === 7) {
+    return Array.from({length: 7}, (_, index) =>
+      week.plus({days: index}).toFormat('yyyy-LL-dd'));
+  }
+  const day = DateTime.fromISO(selectedDay, {zone: officeTimeZone});
+  const selectedIndex = Math.max(0, Math.floor(day.diff(week, 'days').days));
+  const startIndex = Math.min(selectedIndex, 7 - visibleDayCount);
+  return Array.from({length: visibleDayCount}, (_, index) =>
+    week.plus({days: startIndex + index}).toFormat('yyyy-LL-dd'));
 }
 
 function subscribeToBrowserTimeZone(): () => void {
@@ -714,23 +732,31 @@ export function ScheduleWorkspace({
                 userTimeZone={userTimeZone}
               />
             )}
-            renderTimetable={() => (
-              <WeekGrid
-              bookingEnabled={schedule !== null}
-              bookings={[...(schedule?.bookings ?? [])]}
-              highlightedBookingId={linkedBookingId}
-              loading={scheduleLoading || roomsLoading}
-              officeCloseHour={officeCloseHour}
-              officeOpenHour={officeOpenHour}
-              officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
-              onCancelBooking={setCancellation}
-              onSelectSlot={setStartSelection}
-              roomId={selectedRoom.id}
-              roomName={selectedRoom.name}
-              userTimeZone={userTimeZone}
-              weekStart={weekStart}
+            renderTimetable={(visibleDayCount) => schedule ? (
+              <Timetable
+                bookings={schedule.bookings}
+                highlightedBookingId={linkedBookingId}
+                now={DateTime.now().toUTC().toISO() ?? ''}
+                officeCloseHour={officeCloseHour}
+                officeOpenHour={officeOpenHour}
+                officeTimeZone={schedule.officeTimeZone}
+                onOpenDetails={(booking) => {
+                  if (booking.isOwn) {
+                    setCancellation({id: booking.id, title: booking.title});
+                  }
+                }}
+                onSelectSlot={(selection) => setStartSelection(selection)}
+                room={selectedRoom}
+                userTimeZone={userTimeZone}
+                visibleDays={visibleTimetableDays(
+                  selectedDay,
+                  visibleDayCount,
+                  weekStart,
+                  schedule.officeTimeZone,
+                )}
+                weekStart={weekStart}
               />
-            )}
+            ) : null}
             selectedDay={selectedDay}
             visibleTimeAnchor={visibleTimeAnchor}
           />
