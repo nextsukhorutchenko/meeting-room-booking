@@ -134,7 +134,9 @@ export function WeekGrid({
     <div
       aria-label="Weekly room schedule"
       aria-busy={loading}
-      className="week-grid"
+      className={
+        showUserHours ? 'week-grid week-grid-per-day-clocks' : 'week-grid'
+      }
       role="grid"
       style={{gridTemplateRows: `3.5rem ${gridHeight}px`}}
     >
@@ -193,17 +195,36 @@ export function WeekGrid({
         className="schedule-time-gutter"
         style={{height: gridHeight}}
       >
-        {Array.from(
-          {length: officeSlots},
-          (_, slot) => (
+        {Array.from({length: officeSlots}, (_, slot) => {
+          const startsAt = week.set({
+            hour: officeOpenHour,
+            minute: slot * SCHEDULE_LAYOUT.slotMinutes,
+          });
+          return (
             <div
               className="schedule-time-row"
               data-testid="schedule-time-row"
               key={slot}
               style={{height: SCHEDULE_LAYOUT.slotHeightPx}}
-            />
-          ),
-        )}
+            >
+              {!showUserHours && slot % 2 === 0 ?
+                timeLabel(startsAt, userTimeZone, officeTimeZone) :
+                null}
+            </div>
+          );
+        })}
+        {!showUserHours ? (
+          <span
+            className="schedule-end-time"
+            data-testid="schedule-end-time"
+          >
+            {timeLabel(
+              week.set({hour: officeCloseHour, minute: 0}),
+              userTimeZone,
+              officeTimeZone,
+            )}
+          </span>
+        ) : null}
       </div>
       <div className="schedule-days" style={{height: gridHeight}} role="row">
         {days.map((day, dayIndex) => {
@@ -250,7 +271,7 @@ export function WeekGrid({
                       key={startsAt.toISO()}
                       style={{height: SCHEDULE_LAYOUT.slotHeightPx}}
                     >
-                      {slot % 2 === 0 ? (
+                      {showUserHours && slot % 2 === 0 ? (
                         <span
                           aria-hidden="true"
                           className="day-row-time"
@@ -292,17 +313,19 @@ export function WeekGrid({
                   );
                 },
               )}
-              <span
-                aria-hidden="true"
-                className="day-row-end-time"
-                data-testid={`day-row-clock-${day.toISODate()}`}
-              >
-                {timeLabel(
-                  day.set({hour: officeCloseHour, minute: 0}),
-                  userTimeZone,
-                  officeTimeZone,
-                )}
-              </span>
+              {showUserHours ? (
+                <span
+                  aria-hidden="true"
+                  className="day-row-end-time"
+                  data-testid={`day-row-clock-${day.toISODate()}`}
+                >
+                  {timeLabel(
+                    day.set({hour: officeCloseHour, minute: 0}),
+                    userTimeZone,
+                    officeTimeZone,
+                  )}
+                </span>
+              ) : null}
               {dayBookings.map((booking) => {
                 const startsAt = DateTime.fromISO(booking.startsAt)
                   .setZone(officeTimeZone);

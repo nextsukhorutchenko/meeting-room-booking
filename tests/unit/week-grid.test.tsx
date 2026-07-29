@@ -19,6 +19,7 @@ function renderWeek(
   weekStart: string,
   booking: ScheduleBooking,
   onSelectSlot = vi.fn(),
+  userTimeZone = 'America/New_York',
 ) {
   render(
     <WeekGrid
@@ -33,7 +34,7 @@ function renderWeek(
       onSelectSlot={onSelectSlot}
       roomId="oak"
       roomName="Oak"
-      userTimeZone="America/New_York"
+      userTimeZone={userTimeZone}
       weekStart={weekStart}
     />,
   );
@@ -88,6 +89,29 @@ describe('WeekGrid timezone semantics', () => {
     expect(tuesdayClocks[1]).toHaveTextContent('03:00');
     expect(screen.getByRole('article', {name: /Ordinary New York/}))
       .toHaveTextContent('03:00-03:30');
+  });
+
+  it('uses one shared time gutter when browser and office zones match', () => {
+    renderWeek(
+      '2026-08-03',
+      booking(
+        '2026-08-04T07:00:00.000Z',
+        '2026-08-04T07:30:00.000Z',
+        'Kyiv booking',
+      ),
+      vi.fn(),
+      'Europe/Kyiv',
+    );
+
+    const timeRows = screen.getAllByTestId('schedule-time-row');
+    expect(timeRows).toHaveLength(20);
+    expect(timeRows[0]).toHaveTextContent('09:00');
+    expect(timeRows[1]).toBeEmptyDOMElement();
+    expect(timeRows[2]).toHaveTextContent('10:00');
+    expect(screen.getByTestId('schedule-end-time'))
+      .toHaveTextContent('19:00');
+    expect(screen.queryByTestId('day-row-clock-2026-08-04'))
+      .not.toBeInTheDocument();
   });
 
   it('announces current time in the browser zone', () => {

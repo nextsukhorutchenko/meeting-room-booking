@@ -560,7 +560,7 @@ select:disabled {
   background-color: #ffffff;
 }
 
-.week-grid .schedule-day-column::before {
+.week-grid-per-day-clocks .schedule-day-column::before {
   position: absolute;
   z-index: 2;
   top: 0;
@@ -620,7 +620,7 @@ select:disabled {
   background: transparent;
 }
 
-.week-grid .free-slot-button {
+.week-grid-per-day-clocks .free-slot-button {
   left: calc(var(--weekly-day-clock-width) + 2px);
   width: auto;
 }
@@ -652,7 +652,7 @@ select:disabled {
   box-shadow: 0 1px 2px rgb(23 33 27 / 8%);
 }
 
-.week-grid .booking-block {
+.week-grid-per-day-clocks .booking-block {
   left: calc(var(--weekly-day-clock-width) + 0.25rem);
 }
 

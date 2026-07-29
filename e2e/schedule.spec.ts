@@ -24,6 +24,7 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
   database,
   page,
 }) => {
+  await page.setViewportSize({width: 1296, height: 900});
   const room = await roomByName(database, 'Oak');
   const organizer = await database.user.findUniqueOrThrow({
     where: {normalizedEmail: DEMO_USER.email},
@@ -52,12 +53,13 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
   const weeklyGrid = page.getByRole('grid', {name: 'Weekly room schedule'});
   await expect(page.getByTestId('schedule-day-column')).toHaveCount(7);
   await expect(page.getByTestId('schedule-time-row')).toHaveCount(20);
-  const firstDayClocks =
-    weeklyGrid.getByTestId(`day-row-clock-${weekStart}`);
-  await expect(firstDayClocks).toHaveCount(11);
-  await expect(firstDayClocks.first()).toHaveText('09:00');
-  await expect(firstDayClocks.nth(1)).toHaveText('10:00');
-  await expect(firstDayClocks.last()).toHaveText('19:00');
+  await expect(page.getByTestId('schedule-time-row').first())
+    .toHaveText('09:00');
+  await expect(page.getByTestId('schedule-time-row').nth(2))
+    .toHaveText('10:00');
+  await expect(page.getByTestId('schedule-end-time')).toHaveText('19:00');
+  await expect(weeklyGrid.getByTestId(`day-row-clock-${weekStart}`))
+    .toHaveCount(0);
   await expect(page.getByText('Invalid DateTime')).toHaveCount(0);
   await expect(page.getByText('Oak', {exact: true})).toBeVisible();
   await expect(page.getByText('Floor 1', {exact: true})).toBeVisible();
@@ -78,10 +80,24 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
     const navRect = navigation?.getBoundingClientRect();
     const accountRect = account?.getBoundingClientRect();
     const bookingRect = bookingElement.getBoundingClientRect();
+    const bookingColumnRect =
+      bookingElement.parentElement?.getBoundingClientRect();
     const titleRect = bookingTitle?.getBoundingClientRect();
     const metaRect = bookingMeta?.getBoundingClientRect();
+    const timeGutter = document.querySelector<HTMLElement>(
+      '.week-grid .schedule-time-gutter',
+    );
+    const timeGutterRect = timeGutter?.getBoundingClientRect();
+    const timeLabels = Array.from(document.querySelectorAll<HTMLElement>(
+      '.week-grid .schedule-time-row:not(:empty), ' +
+      '.week-grid .schedule-end-time',
+    ));
 
     return {
+      bookingStartsAtColumnEdge: Boolean(
+        bookingColumnRect &&
+        bookingRect.left - bookingColumnRect.left <= 8,
+      ),
       bookingContentContained: Boolean(
         bookingRect &&
         titleRect &&
@@ -101,12 +117,23 @@ test('@schedule user sees seven columns, 09:00-19:00 slots, current day and room
       horizontalOverflow:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth,
+      timeLabelsContained: Boolean(
+        timeGutterRect &&
+        timeLabels.length === 11 &&
+        timeLabels.every((label) => {
+          const labelRect = label.getBoundingClientRect();
+          return labelRect.left >= timeGutterRect.left - 0.5 &&
+            labelRect.right <= timeGutterRect.right + 0.5;
+        }),
+      ),
     };
   });
   expect(layout).toEqual({
+    bookingStartsAtColumnEdge: true,
     bookingContentContained: true,
     headerControlsOverlap: false,
     horizontalOverflow: 0,
+    timeLabelsContained: true,
   });
 
   await page.screenshot({
