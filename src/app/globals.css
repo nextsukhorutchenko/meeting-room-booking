@@ -470,3 +470,122 @@
   }
 
 }
+/* Task 6 owns the temporary one-day agenda surface. */
+.day-schedule {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  width: 100%;
+  min-height: 48.375rem;
+}
+
+.day-schedule .schedule-day-headers,
+.day-schedule .schedule-days {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.day-schedule .schedule-corner {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  border-right: var(--border-default) solid var(--color-border-subtle);
+  border-bottom: var(--border-default) solid var(--color-border);
+  padding-bottom: var(--space-1);
+  color: var(--color-text-subtle);
+  font-size: var(--type-meta);
+}
+
+.day-schedule .schedule-day-headers {
+  border-bottom: var(--border-default) solid var(--color-border);
+}
+
+.day-schedule .day-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--timetable-booking-gap);
+  min-width: var(--space-0);
+  border-right: var(--border-default) solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+  font-size: var(--type-meta);
+}
+
+.day-schedule .day-header strong {
+  color: var(--color-text);
+  font-size: var(--type-compact);
+}
+
+.day-schedule .day-header.current-day,
+.day-schedule .schedule-day-column.current-day {
+  background: var(--color-current-soft);
+}
+
+.day-schedule .schedule-time-gutter {
+  position: relative;
+  border-right: var(--border-default) solid var(--color-border);
+}
+
+.day-schedule .schedule-time-row,
+.day-schedule .schedule-end-time {
+  color: var(--color-text-muted);
+  font-size: var(--type-meta);
+  text-align: center;
+}
+
+.day-schedule .schedule-time-row {
+  position: relative;
+  border-bottom: var(--border-default) solid transparent;
+  transform: translateY(calc(var(--space-1) / -2));
+}
+
+.day-schedule .schedule-end-time {
+  position: absolute;
+  right: var(--space-0);
+  bottom: var(--space-0);
+  left: var(--space-0);
+  transform: translateY(calc(var(--space-1) / 2));
+}
+
+.day-schedule .schedule-day-column {
+  position: relative;
+  min-width: var(--space-0);
+  border-right: var(--border-default) solid var(--color-border-subtle);
+  background: var(--color-surface);
+}
+
+.day-schedule .schedule-slot {
+  position: relative;
+  z-index: 1;
+  border-bottom: var(--border-default) solid var(--color-surface-subtle);
+}
+
+.day-schedule .schedule-slot:nth-child(2n) {
+  border-bottom-color: var(--color-border-subtle);
+}
+
+.day-schedule .free-slot-button {
+  position: absolute;
+  inset: 1px 2px;
+  width: calc(100% - 4px);
+  min-height: var(--space-0);
+  border: var(--space-0);
+  padding: var(--space-0);
+}
+
+.day-schedule .free-slot-button:hover,
+.day-schedule .free-slot-button:focus-visible {
+  background: var(--color-brand-soft);
+}
+
+.day-schedule .booking-block {
+  position: absolute;
+  z-index: 2;
+  top: var(--day-schedule-booking-top);
+  right: var(--timetable-cell-padding);
+  left: var(--timetable-cell-padding);
+  width: auto;
+  height: var(--day-schedule-booking-height);
+  min-height: var(--space-0);
+  overflow: hidden;
+}

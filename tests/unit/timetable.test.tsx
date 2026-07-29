@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest';
+import {readFileSync} from 'node:fs';
 import {render, screen} from '@testing-library/react';
 import {Settings} from 'luxon';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {Timetable} from '../../src/components/schedule/timetable';
+import {
+  COMPACT_BOOKING_LAYOUT,
+  Timetable,
+} from '../../src/components/schedule/timetable';
 import type {ScheduleBooking} from '../../src/components/schedule/schedule-types';
 
 const weekStart = '2026-07-27';
@@ -94,6 +98,111 @@ describe('Timetable', () => {
     expect(trigger).toHaveTextContent('Зайнято');
     expect(trigger.querySelector('[aria-label^="Скасувати"]')).toBeNull();
   });
+
+  it('reserves one compact row for the title and status without clipping the time range', () => {
+    const css = readFileSync('src/app/styles/timetable.css', 'utf8');
+    const contentWidth = COMPACT_BOOKING_LAYOUT.dayCellWidthPx -
+      COMPACT_BOOKING_LAYOUT.horizontalPaddingPx * 2;
+
+    expect(
+      COMPACT_BOOKING_LAYOUT.titleMinimumWidthPx +
+      COMPACT_BOOKING_LAYOUT.inlineGapPx +
+      COMPACT_BOOKING_LAYOUT.statusMaximumWidthPx,
+    ).toBeLessThanOrEqual(contentWidth);
+    expect(css).toMatch(/\.booking-block-heading[\s\S]*grid-template-columns:/);
+    expect(css).toMatch(/\.booking-time-label[\s\S]*overflow: visible;/);
+    expect(css).toMatch(/--timetable-status-max-width/);
+    expect(css).not.toMatch(/\.booking-block \{[^}]*overflow: hidden;/);
+  });
+
+  it('labels the current-day header with visible non-color text', () => {
+    render(
+      <Timetable
+        bookings={[]}
+        highlightedBookingId={null}
+        now="2026-07-29T06:00:00.000Z"
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+        onOpenDetails={vi.fn()}
+        onSelectSlot={vi.fn()}
+        room={{id: 'maple', name: 'Maple', floor: 3, capacity: 8}}
+        userTimeZone="Europe/Kyiv"
+        visibleDays={sevenDays}
+        weekStart={weekStart}
+      />,
+    );
+
+    const currentHeader = screen.getByRole('columnheader', {
+      name: /Сьогодні/,
+    });
+    expect(currentHeader).toHaveAttribute('aria-current', 'date');
+    expect(currentHeader).toHaveTextContent('Сьогодні');
+  });
+
+  it.each([
+    {
+      booking: {
+        ...fourHourBooking,
+        id: 'same-zone',
+        startsAt: '2026-03-02T07:00:00.000Z',
+        endsAt: '2026-03-02T07:30:00.000Z',
+        title: 'Одна зона',
+      },
+      label: /2 березня 2026.*09:00.*2 березня 2026.*09:30.*Europe\/Kyiv/,
+      userTimeZone: 'Europe/Kyiv',
+      visibleDays: ['2026-03-02'],
+      weekStart: '2026-03-02',
+    },
+    {
+      booking: {
+        ...fourHourBooking,
+        id: 'different-zone',
+        startsAt: '2026-03-02T07:00:00.000Z',
+        endsAt: '2026-03-02T07:30:00.000Z',
+        title: 'Різні зони',
+      },
+      label: /2 березня 2026.*02:00.*America\/New_York.*09:00.*Europe\/Kyiv/,
+      userTimeZone: 'America/New_York',
+      visibleDays: ['2026-03-02'],
+      weekStart: '2026-03-02',
+    },
+    {
+      booking: {
+        ...fourHourBooking,
+        id: 'date-crossing',
+        startsAt: '2026-07-29T06:00:00.000Z',
+        endsAt: '2026-07-29T07:30:00.000Z',
+        title: 'Перехід дати',
+      },
+      label: /28 липня 2026.*29 липня 2026.*America\/Los_Angeles.*29 липня 2026.*Europe\/Kyiv/,
+      userTimeZone: 'America/Los_Angeles',
+      visibleDays: ['2026-07-29'],
+      weekStart,
+    },
+  ])(
+    'gives $booking.title an unambiguous accessible range',
+    ({booking, label, userTimeZone, visibleDays, weekStart: fixtureWeek}) => {
+      render(
+        <Timetable
+          bookings={[booking]}
+          highlightedBookingId={null}
+          now="2026-02-01T00:00:00.000Z"
+          officeCloseHour={19}
+          officeOpenHour={9}
+          officeTimeZone="Europe/Kyiv"
+          onOpenDetails={vi.fn()}
+          onSelectSlot={vi.fn()}
+          room={{id: 'maple', name: 'Maple', floor: 3, capacity: 8}}
+          userTimeZone={userTimeZone}
+          visibleDays={visibleDays}
+          weekStart={fixtureWeek}
+        />,
+      );
+
+      expect(screen.getByRole('button', {name: label})).toBeVisible();
+    },
+  );
 
   it('keeps an empty slot as one accessible native action', () => {
     renderTimetable([], ['2026-07-27']);

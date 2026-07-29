@@ -71,6 +71,52 @@ export function formatAccessibleSlot(input: {
   ].join(' ');
 }
 
+function formatAccessibleTimeRange(
+  startsAt: string,
+  endsAt: string,
+  timeZone: string,
+): string {
+  return [
+    `${formatDateLong(startsAt, timeZone)}, ${formatTime(startsAt, timeZone)}`,
+    `${formatDateLong(endsAt, timeZone)}, ${formatTime(endsAt, timeZone)}`,
+    timeZone,
+  ].join(' - ');
+}
+
+export function formatAccessibleBooking(input: {
+  authorName: string;
+  endsAt: string;
+  isOwn: boolean;
+  officeTimeZone: string;
+  startsAt: string;
+  title: string;
+  userTimeZone: string;
+}): string {
+  const userRange = formatAccessibleTimeRange(
+    input.startsAt,
+    input.endsAt,
+    input.userTimeZone,
+  );
+  const status = input.isOwn ? 'ваше бронювання' : 'зайнято';
+  const parts = [
+    `Вибрати бронювання ${input.title}; ${status};`,
+    `ваш час: ${userRange};`,
+  ];
+
+  if (input.officeTimeZone !== input.userTimeZone) {
+    parts.push(
+      `офіс: ${formatAccessibleTimeRange(
+        input.startsAt,
+        input.endsAt,
+        input.officeTimeZone,
+      )};`,
+    );
+  }
+  parts.push(`організатор ${input.authorName}.`);
+
+  return parts.join(' ');
+}
+
 export function formatDuration(minutes: number): string {
   const totalMinutes = Math.max(0, Math.trunc(minutes));
   const hours = Math.floor(totalMinutes / 60);

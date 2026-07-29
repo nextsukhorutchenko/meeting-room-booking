@@ -90,5 +90,6 @@
   --timetable-icon-size: 16px;
   --timetable-status-icon-size: 12px;
   --timetable-status-gap: 2px;
+  --timetable-status-max-width: 60px;
   --timetable-title-min-width: 24px;
 }

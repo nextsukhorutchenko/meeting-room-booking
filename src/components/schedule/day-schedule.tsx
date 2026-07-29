@@ -1,6 +1,8 @@
 'use client';
 
 import {DateTime} from 'luxon';
+import type {CSSProperties} from 'react';
+import {formatAccessibleBooking} from '../../lib/i18n/formatters';
 import {
   APP_LOCALE,
   formatInUserZone,
@@ -21,7 +23,7 @@ type DayScheduleProps = {
   officeCloseHour: number;
   officeOpenHour: number;
   officeTimeZone: string;
-  onCancelBooking(booking: {id: string; title: string}): void;
+  onOpenDetails(booking: ScheduleBooking): void;
   onSelectSlot(selection: StartSlotSelection): void;
   roomId: string;
   roomName: string;
@@ -79,7 +81,7 @@ export function DaySchedule({
   officeCloseHour,
   officeOpenHour,
   officeTimeZone,
-  onCancelBooking,
+  onOpenDetails,
   onSelectSlot,
   roomId,
   roomName,
@@ -232,23 +234,37 @@ export function DaySchedule({
               .setZone(officeTimeZone);
             const endsAt = DateTime.fromISO(booking.endsAt)
               .setZone(officeTimeZone);
+            const top = (startsAt.hour * 60 + startsAt.minute -
+              officeOpenHour * 60) /
+              SCHEDULE_LAYOUT.slotMinutes * SCHEDULE_LAYOUT.slotHeightPx;
+            const height = endsAt.diff(startsAt, 'minutes').minutes /
+              SCHEDULE_LAYOUT.slotMinutes * SCHEDULE_LAYOUT.slotHeightPx;
             return (
               <BookingBlock
-                authorName={booking.author.name}
+                accessibleName={formatAccessibleBooking({
+                  authorName: booking.author.name,
+                  endsAt: booking.endsAt,
+                  isOwn: booking.isOwn,
+                  officeTimeZone,
+                  startsAt: booking.startsAt,
+                  title: booking.title,
+                  userTimeZone,
+                })}
                 bookingId={booking.id}
                 isHighlighted={booking.id === highlightedBookingId}
                 isOwn={booking.isOwn}
                 key={booking.id}
-                onOpenDetails={() => onCancelBooking({
-                  id: booking.id,
-                  title: booking.title,
-                })}
+                onOpenDetails={() => onOpenDetails(booking)}
+                style={{
+                  '--day-schedule-booking-height': `${height}px`,
+                  '--day-schedule-booking-top': `${top}px`,
+                } as CSSProperties}
                 timeLabel={
                   `${timeLabel(
                     startsAt,
                     userTimeZone,
                     officeTimeZone,
-                  )}-` +
+                  )}\u2013` +
                   timeLabel(endsAt, userTimeZone, officeTimeZone)
                 }
                 title={booking.title}

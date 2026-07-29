@@ -33,7 +33,11 @@ import {RoomFilterSurface} from './room-filter-surface';
 import {RoomPicker} from './room-picker';
 import {ScheduleNavigation} from './schedule-navigation';
 import {ScheduleViewport} from './schedule-viewport';
-import type {RoomSummary, ScheduleData} from './schedule-types';
+import type {
+  RoomSummary,
+  ScheduleBooking,
+  ScheduleData,
+} from './schedule-types';
 import {TimezoneLabel} from './timezone-label';
 import {getResponsiveMode, useResponsiveMode} from './use-responsive-mode';
 import {Timetable} from './timetable';
@@ -129,6 +133,7 @@ export function ScheduleWorkspace({
 }: ScheduleWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const linkedBookingId = searchParams.get('bookingId');
   const initialWeekStart = normalizeWeekStart(
     searchParams.get('weekStart'),
     officeTimeZone,
@@ -178,7 +183,6 @@ export function ScheduleWorkspace({
   const preserveScheduleOnRefreshRef = useRef(false);
   const conflictRefreshRequestRef = useRef(false);
   const conflictRefreshGenerationRef = useRef(0);
-  const linkedBookingId = searchParams.get('bookingId');
   const linkedBookingIdRef = useRef(linkedBookingId);
 
   const updateUrl = useCallback((
@@ -608,6 +612,14 @@ export function ScheduleWorkspace({
     setRefreshKey((key) => key + 1);
   }
 
+  function selectBooking(booking: ScheduleBooking) {
+    linkedBookingIdRef.current = booking.id;
+    updateUrl(selectedRoomId, weekStart, selectedDay, 'replace');
+    if (booking.isOwn) {
+      setCancellation({id: booking.id, title: booking.title});
+    }
+  }
+
   return (
     <section aria-label={uiCopy.roomSchedule} className="schedule-workspace">
       <div
@@ -725,7 +737,7 @@ export function ScheduleWorkspace({
                 officeCloseHour={officeCloseHour}
                 officeOpenHour={officeOpenHour}
                 officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
-                onCancelBooking={setCancellation}
+                onOpenDetails={selectBooking}
                 onSelectSlot={setStartSelection}
                 roomId={selectedRoom.id}
                 roomName={selectedRoom.name}
@@ -740,11 +752,7 @@ export function ScheduleWorkspace({
                 officeCloseHour={officeCloseHour}
                 officeOpenHour={officeOpenHour}
                 officeTimeZone={schedule.officeTimeZone}
-                onOpenDetails={(booking) => {
-                  if (booking.isOwn) {
-                    setCancellation({id: booking.id, title: booking.title});
-                  }
-                }}
+                onOpenDetails={selectBooking}
                 onSelectSlot={(selection) => setStartSelection(selection)}
                 room={selectedRoom}
                 userTimeZone={userTimeZone}

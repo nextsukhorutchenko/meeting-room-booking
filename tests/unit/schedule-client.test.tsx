@@ -324,6 +324,79 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       .not.toBeInTheDocument();
   });
 
+  it('selects both own and other timetable bookings through the booking URL', async () => {
+    const response = scheduleBody('2026-08-03', 'Власне бронювання');
+    response.data.bookings[0] = {
+      ...response.data.bookings[0],
+      id: 'own-booking',
+    };
+    response.data.bookings.push({
+      ...response.data.bookings[0],
+      endsAt: DateTime.fromISO(response.data.bookings[0].endsAt ?? '')
+        .plus({minutes: 30})
+        .toUTC()
+        .toISO() ?? '',
+      id: 'other-booking',
+      isOwn: false,
+      startsAt: response.data.bookings[0].endsAt,
+      title: 'Чуже бронювання',
+    });
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(jsonResponse(response));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const view = renderScheduleClient();
+    const user = userEvent.setup();
+    const other = await screen.findByRole('button', {name: /Чуже бронювання/});
+
+    await user.click(other);
+    expect(navigation.router.replace).toHaveBeenLastCalledWith(
+      '/schedule?roomId=oak&weekStart=2026-08-03&day=2026-08-03&bookingId=other-booking',
+      {scroll: false},
+    );
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-03&bookingId=other-booking',
+    );
+    view.rerender(
+      <ScheduleWorkspace
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+      />,
+    );
+    expect(screen.getByRole('button', {name: /Чуже бронювання/}))
+      .toHaveAttribute('data-highlighted', 'true');
+    expect(screen.queryByRole('dialog', {name: 'Cancel booking'}))
+      .not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', {name: /Власне бронювання/}));
+    expect(navigation.router.replace).toHaveBeenLastCalledWith(
+      '/schedule?roomId=oak&weekStart=2026-08-03&day=2026-08-03&bookingId=own-booking',
+      {scroll: false},
+    );
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-03&bookingId=own-booking',
+    );
+    view.rerender(
+      <ScheduleWorkspace
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+      />,
+    );
+    expect(screen.getByRole('button', {name: /Власне бронювання/}))
+      .toHaveAttribute('data-highlighted', 'true');
+    expect(await screen.findByRole('dialog', {name: 'Cancel booking'}))
+      .toBeVisible();
+  });
+
   it('closes compact room filters when resizing to the desktop rail', async () => {
     setViewportWidth(768);
     fetchMock.mockImplementation((input: RequestInfo | URL) => {

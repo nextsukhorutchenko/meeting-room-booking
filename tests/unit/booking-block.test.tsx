@@ -7,7 +7,11 @@ describe('BookingBlock', () => {
   it('exposes the linked highlighted booking as the current item', () => {
     render(
       <BookingBlock
-        authorName="Demo Organizer"
+        accessibleName={
+          'Вибрати бронювання Planning; зайнято; ваш час: ' +
+          'понеділок, 2 березня 2026 р., 10:00 - ' +
+          'понеділок, 2 березня 2026 р., 10:30, Europe/Kyiv.'
+        }
         bookingId="booking-1"
         isHighlighted
         isOwn={false}
@@ -17,7 +21,9 @@ describe('BookingBlock', () => {
       />,
     );
 
-    expect(screen.getByRole('button', {name: /Planning/}))
+    expect(screen.getByRole('button', {
+      name: /2 березня 2026.*10:00.*10:30.*Europe\/Kyiv/,
+    }))
       .toHaveAttribute('aria-current', 'true');
     expect(screen.queryByRole('button', {name: /Cancel/}))
       .not.toBeInTheDocument();

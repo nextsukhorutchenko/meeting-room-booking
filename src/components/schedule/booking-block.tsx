@@ -1,31 +1,31 @@
 import {CalendarClock, UserRoundCheck} from 'lucide-react';
+import type {CSSProperties} from 'react';
 
 type BookingBlockProps = {
-  authorName: string;
+  accessibleName: string;
   bookingId: string;
   isHighlighted: boolean;
   isOwn: boolean;
   onOpenDetails?(invoker: HTMLElement): void;
+  style?: CSSProperties;
   timeLabel: string;
   title: string;
 };
 
 export function BookingBlock({
-  authorName,
+  accessibleName,
   bookingId,
   isHighlighted,
   isOwn,
   onOpenDetails,
+  style,
   timeLabel,
   title,
 }: BookingBlockProps) {
   return (
     <button
       aria-current={isHighlighted ? 'true' : undefined}
-      aria-label={
-        `${title}; ${timeLabel}; ${isOwn ? 'Ваше' : 'Зайнято'}; ` +
-        `організатор ${authorName}`
-      }
+      aria-label={accessibleName}
       className={[
         'booking-block',
         isOwn ? 'booking-own' : '',
@@ -34,11 +34,11 @@ export function BookingBlock({
       data-highlighted={isHighlighted ? 'true' : undefined}
       data-booking-id={bookingId}
       onClick={(event) => onOpenDetails?.(event.currentTarget)}
+      style={style}
       type="button"
     >
-      <span data-booking-title>{title}</span>
-      <div className="booking-block-meta">
-        <span className="booking-time-label">{timeLabel}</span>
+      <span className="booking-block-heading">
+        <span data-booking-title>{title}</span>
         {isOwn ? (
           <span className="booking-owner-label">
             <UserRoundCheck aria-hidden="true" />
@@ -50,7 +50,10 @@ export function BookingBlock({
             Зайнято
           </span>
         )}
-      </div>
+      </span>
+      <span className="booking-block-meta">
+        <span className="booking-time-label">{timeLabel}</span>
+      </span>
     </button>
   );
 }

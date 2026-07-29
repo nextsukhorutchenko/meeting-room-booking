@@ -1,10 +1,11 @@
 'use client';
 
-import {CirclePlus} from 'lucide-react';
+import {CalendarCheck2, CirclePlus} from 'lucide-react';
 import {DateTime} from 'luxon';
 import type {ReactElement} from 'react';
 import {
   formatAccessibleSlot,
+  formatAccessibleBooking,
   formatDateLong,
   formatDateShort,
   formatTime,
@@ -24,6 +25,14 @@ import type {
 export const SCHEDULE_LAYOUT = {
   slotMinutes: 30,
   slotHeightPx: 52,
+} as const;
+
+export const COMPACT_BOOKING_LAYOUT = {
+  dayCellWidthPx: 96.85,
+  horizontalPaddingPx: 4,
+  inlineGapPx: 4,
+  statusMaximumWidthPx: 60,
+  titleMinimumWidthPx: 24,
 } as const;
 
 export type TimetableProps = {
@@ -165,6 +174,12 @@ export function Timetable({
                 )}
                 {!sameZone ? ' (офіс)' : ''}
               </span>
+              {day === nowOfficeDay ? (
+                <span className="timetable-current-day-marker">
+                  <CalendarCheck2 aria-hidden="true" />
+                  Сьогодні
+                </span>
+              ) : null}
               {!sameZone ? (
                 <span className="timetable-day-user">
                   {formatDateShort(officeSlotInstant({
@@ -243,7 +258,15 @@ export function Timetable({
                     rowSpan={booking.spanSlots}
                   >
                     <BookingBlock
-                      authorName={booking.author.name}
+                      accessibleName={formatAccessibleBooking({
+                        authorName: booking.author.name,
+                        endsAt: booking.endsAt,
+                        isOwn: booking.isOwn,
+                        officeTimeZone,
+                        startsAt: booking.startsAt,
+                        title: booking.title,
+                        userTimeZone,
+                      })}
                       bookingId={booking.id}
                       isHighlighted={booking.id === highlightedBookingId}
                       isOwn={booking.isOwn}

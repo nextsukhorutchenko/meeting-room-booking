@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import {readFileSync} from 'node:fs';
 import {cleanup, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {Settings} from 'luxon';
@@ -151,5 +152,15 @@ describe('Timetable timezone semantics', () => {
     expect(screen.getByRole('button', {
       name: /28 липня 2026.*23:00.*America\/Los_Angeles.*29 липня 2026.*09:00.*Europe\/Kyiv/,
     })).toBeVisible();
+  });
+
+  it('keeps the legacy one-day agenda layout scoped to DaySchedule', () => {
+    const css = readFileSync('src/app/globals.css', 'utf8');
+
+    expect(css).toMatch(/\.day-schedule \.schedule-time-gutter/);
+    expect(css).toMatch(/\.day-schedule \.free-slot-button/);
+    expect(css).toMatch(/\.day-schedule \.booking-block/);
+    expect(css).toMatch(/--day-schedule-booking-top/);
+    expect(css).not.toMatch(/\.week-grid/);
   });
 });

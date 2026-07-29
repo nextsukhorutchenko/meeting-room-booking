@@ -53,6 +53,23 @@
   overflow-wrap: anywhere;
 }
 
+.timetable-current-day-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--timetable-status-gap);
+  margin-top: var(--timetable-booking-gap);
+  border: var(--border-default) solid currentColor;
+  padding: var(--space-0) var(--timetable-inline-gap);
+  font-size: var(--type-meta);
+  font-weight: 700;
+  line-height: var(--type-meta-line-height);
+}
+
+.timetable-current-day-marker svg {
+  width: var(--timetable-status-icon-size);
+  height: var(--timetable-status-icon-size);
+}
+
 .timetable-day-user {
   color: var(--color-text-muted);
   font-size: var(--type-meta);
@@ -108,9 +125,8 @@
 }
 
 .booking-block {
-  grid-template-rows: minmax(var(--space-3), auto) minmax(var(--space-2), auto);
+  grid-template-rows: var(--type-meta-line-height) var(--type-meta-line-height);
   gap: var(--timetable-booking-gap);
-  overflow: hidden;
   border-left: var(--border-emphasis) solid var(--color-other-border);
   background: var(--color-info-soft);
   color: var(--color-other-text);
@@ -135,16 +151,7 @@
   outline-offset: var(--space-0);
 }
 
-.booking-block [data-booking-title] {
-  min-width: var(--timetable-title-min-width);
-  overflow: hidden;
-  font-size: var(--type-meta);
-  font-weight: 700;
-  line-height: var(--type-meta-line-height);
-  overflow-wrap: anywhere;
-}
-
-.booking-block-meta {
+.booking-block-heading {
   display: grid;
   grid-template-columns: minmax(var(--timetable-title-min-width), 1fr) auto;
   align-items: center;
@@ -152,10 +159,24 @@
   min-width: var(--space-0);
 }
 
-.booking-time-label,
-.booking-owner-label,
-.booking-other-label {
+.booking-block [data-booking-title] {
+  min-width: var(--timetable-title-min-width);
   overflow: hidden;
+  font-size: var(--type-meta);
+  font-weight: 700;
+  line-height: var(--type-meta-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booking-block-meta {
+  display: block;
+  min-width: var(--space-0);
+}
+
+.booking-time-label {
+  display: block;
+  overflow: visible;
   font-size: var(--type-meta);
   line-height: var(--type-meta-line-height);
   white-space: nowrap;
@@ -166,7 +187,12 @@
   display: inline-flex;
   align-items: center;
   gap: var(--timetable-status-gap);
+  max-width: var(--timetable-status-max-width);
+  min-width: var(--space-0);
   font-weight: 700;
+  font-size: var(--type-meta);
+  line-height: var(--type-meta-line-height);
+  white-space: nowrap;
 }
 
 .booking-owner-label svg,
