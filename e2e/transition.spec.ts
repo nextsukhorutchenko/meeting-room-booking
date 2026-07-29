@@ -39,7 +39,7 @@ for (const transition of transitionCases) {
   test(`@timezone ${transition.name} DST week has per-day clocks`, async ({
     database,
     page,
-  }) => {
+  }, testInfo) => {
     const room = await roomByName(database, 'Oak');
     const organizer = await database.user.findUniqueOrThrow({
       where: {normalizedEmail: DEMO_USER.email},
@@ -129,6 +129,14 @@ for (const transition of transitionCases) {
       ),
     });
 
+    const navigationLabel = testInfo.project.name === 'mobile-lg' ?
+      'Нижня навігація' :
+      'Основна навігація';
+    const bookingsLink = page.locator(
+      `nav[aria-label="${navigationLabel}"] a[href="/my-bookings"]`,
+    );
+    await expect(bookingsLink).toBeVisible();
+
     const scheduleCancelTrigger = page.getByRole('article', {
       name: new RegExp(title),
     }).getByRole('button', {name: `Cancel ${title}`});
@@ -138,7 +146,8 @@ for (const transition of transitionCases) {
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
     await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
 
-    await page.goto('/my-bookings');
+    await bookingsLink.evaluate((link: HTMLAnchorElement) => link.click());
+    await expect(page).toHaveURL('/my-bookings');
     await expect(page.getByRole('dialog', {name: 'Cancel booking'})).toHaveCount(0);
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
     await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
