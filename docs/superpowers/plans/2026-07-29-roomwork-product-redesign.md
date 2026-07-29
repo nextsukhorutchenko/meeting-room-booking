@@ -20,7 +20,10 @@
 - All visible system copy is Ukrainian; user-entered names, room names and booking titles are not translated.
 - Use `uk-UA`, Monday week start, 24-hour time, `<html lang="uk">`, `Roomwork` and `Бронювання переговорних`.
 - Use the system font stack; no external font request is introduced.
-- Components consume semantic CSS variables; hardcoded color, spacing, radius, shadow and duration values live only in token definitions.
+- Components consume semantic CSS variables; hardcoded color, spacing,
+  dimension, grid-track length, flex-basis, border, font-size, line-height,
+  letter-spacing, radius, shadow, transform-length and duration values live
+  only in token definitions.
 - Responsive modes are exact: expanded `>=1360px`, medium `900-1359px`, tablet `600-899px`, mobile `<600px`; server snapshot is `unresolved`.
 - Render exactly one schedule semantic surface: native 7/3/2-day `<table>` or one-day `<ol>` agenda. Do not add `role="grid"` or custom arrow-key grid behavior.
 - Product targets are at least `44x44 CSS px`; free-slot rows are `52px`; 30-minute booking triggers are at least `48px` high.
@@ -156,7 +159,7 @@ encodes ownership:
 | Stylesheet | Exclusive selector responsibility | First owning task |
 | --- | --- | ---: |
 | `globals.css` | Tailwind entry and selectors not yet migrated; never receives new product selectors | 1 |
-| `tokens.css` | all literal colors, spacing, type metrics, radii, borders, shadows, dimensions and durations | 1 |
+| `tokens.css` | all literal colors, spacing, dimensions (including grid-track, flex-basis and transform lengths), type metrics, radii, borders, shadows and durations | 1 |
 | `base.css` | document reset, system font, typography defaults, reduced-motion and forced-colors global behavior | 1, hardened in 11 |
 | `ui.css` | Button, Field, Alert, Dialog primitives, focus geometry, spinner and generic state surfaces | 1, dialog handoff in 8 |
 | `shell.css` | authenticated header, navigation, account area, skip link and bottom navigation | 2 |
@@ -358,7 +361,20 @@ export type DesignTokenViolation = {
   line: number;
   property: string;
   value: string;
-  category: 'color' | 'spacing' | 'radius' | 'shadow' | 'duration';
+  category:
+    | 'border'
+    | 'color'
+    | 'dimension'
+    | 'duration'
+    | 'flex-basis'
+    | 'font-size'
+    | 'grid-track'
+    | 'letter-spacing'
+    | 'line-height'
+    | 'radius'
+    | 'shadow'
+    | 'spacing'
+    | 'transform-length';
 };
 
 export function findDesignTokenViolations(input: {
@@ -372,7 +388,7 @@ export function findDesignTokenViolations(input: {
   `--color-text-muted`, `--color-border`, `--color-accent`,
   `--color-accent-strong`, `--color-today`, `--color-danger`,
   `--space-1` through `--space-8`, `--radius-control`,
-  `--radius-surface`, `--shadow-overlay`, `--motion-fast` and
+  `--radius-surface`, `--shadow-overlay`, `--motion-none`, `--motion-fast` and
   `--font-sans`.
 
 - [ ] **Step 1: Write failing locale and layout tests**
@@ -409,7 +425,7 @@ it('renders the Ukrainian document contract', () => {
   expect(metadata.title).toBe('Roomwork — Бронювання переговорних');
 });
 
-it('keeps the style manifest ordered and rejects governed literals', () => {
+it('keeps the style manifest ordered', () => {
   const importOrder = [
     '../globals.css',
     './tokens.css',
@@ -429,14 +445,52 @@ it('keeps the style manifest ordered and rejects governed literals', () => {
     existsSync(resolve('src/app/styles', path.slice(2))),
   );
   expect(readManifestImports()).toEqual(expectedExistingImports);
-  expect(findDesignTokenViolations({
-    css: '.control { padding: 10px; border-radius: 6px; transition: 180ms; }',
-    file: 'control.css',
-  }).map(({category}) => category)).toEqual([
-    'spacing',
-    'radius',
-    'duration',
-  ]);
+});
+
+it.each([
+  ['grid-track', '.rail { grid-template-columns: 248px minmax(0, 1fr); }'],
+  ['grid-track', '.shell { grid-template-rows: 56px minmax(0, 1fr); }'],
+  ['flex-basis', '.rail { flex-basis: 248px; }'],
+  ['border', '.control { border: 1px solid currentColor; }'],
+  ['border', '.control { border-width: 1px; }'],
+  ['font-size', '.meta { font-size: 13px; }'],
+  ['line-height', '.meta { line-height: 18px; }'],
+  ['letter-spacing', '.label { letter-spacing: 0.02em; }'],
+  ['transform-length', '.popover { transform: translateX(12px); }'],
+  ['transform-length', '.scene { transform: perspective(600px); }'],
+  ['color', '.control { color: #123456; }'],
+  ['spacing', '.control { padding: 10px; }'],
+  ['dimension', '.control { width: 52px; }'],
+  ['radius', '.control { border-radius: 6px; }'],
+  ['shadow', '.popover { box-shadow: 0 8px 24px rgb(0 0 0 / 14%); }'],
+  ['duration', '.control { transition-duration: 180ms; }'],
+] as const)('rejects the %s literal fixture', (category, css) => {
+  expect(findDesignTokenViolations({css, file: 'fixture.css'})).toContainEqual(
+    expect.objectContaining({category}),
+  );
+});
+
+it('allows only the documented structural and focus literals', () => {
+  const css = `
+    .structure {
+      margin: 0;
+      padding: 0px;
+      width: 100%;
+      min-height: 100dvh;
+      max-inline-size: 100cqw;
+      flex-basis: 50%;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-template-rows: auto minmax(0, 1fr);
+      line-height: 1;
+      transform: translate(-50%, -50%);
+    }
+    .structure:focus-visible {
+      outline-width: 2px;
+      outline-offset: 2px;
+    }
+  `;
+
+  expect(findDesignTokenViolations({css, file: 'allowed.css'})).toEqual([]);
 });
 ```
 
@@ -532,19 +586,51 @@ Task 11 zero-legacy gate. It reports:
   colors other than forced-color system values `Canvas`, `CanvasText`,
   `ButtonText`, `GrayText`, `LinkText` and `Highlight`; CSS semantic keywords
   `transparent`, `currentColor` and `inherit` are also allowed;
-- spacing/dimension literals in `margin*`, `padding*`, `gap`,
-  `inset`/`top`/`right`/`bottom`/`left`, `width`/`height` and
-  `min-*`/`max-*`;
+- spacing literals in `margin*`, `padding*`, `gap`, `row-gap` and
+  `column-gap`;
+- dimension literals in `inset*`, `top`, `right`, `bottom`, `left`,
+  `width`, `height`, `inline-size`, `block-size` and every physical/logical
+  `min-*`/`max-*` size;
+- track lengths in `grid-template-columns` and `grid-template-rows`;
+- `flex-basis` lengths;
+- lengths in physical/logical `border*` shorthands and
+  `border-*-width`/`border-width`, plus `outline` shorthands, except the exact
+  focus allowlist below;
+- `font-size`, `line-height` and `letter-spacing` literals;
 - `border-radius` literals;
 - `box-shadow`/`text-shadow` literals;
+- every length value in `transform` or the individual `translate` property,
+  including nested `translate*()` and `perspective()` functions;
 - `transition*`/`animation-duration` time literals.
 
-Percentages, unitless grid counts and zero are structural allowlist values.
-The only raw `2px` allowlist entries are `outline-width: 2px` and
-`outline-offset: 2px` in the focus/forced-colors rules; borders and every other
-dimension use a token. Media-query breakpoints are the approved responsive
-contract and are not declaration values. The parser returns file, line,
-property, value and category, and exits nonzero on a violation. Add:
+Parse each declaration with a CSS value AST so literals nested inside
+`calc()`, `min()`, `max()`, `clamp()`, `minmax()` or transform functions cannot
+bypass classification. The allowlist is closed and property-aware:
+
+- exact `0` and `0px` are accepted in every governed declaration;
+- percentages, viewport units (`vw`, `vh`, `vi`, `vb`, `vmin`, `vmax`,
+  `svw`, `svh`, `svi`, `svb`, `svmin`, `svmax`, `lvw`, `lvh`, `lvi`, `lvb`,
+  `lvmin`, `lvmax`, `dvw`, `dvh`, `dvi`, `dvb`, `dvmin`, `dvmax`) and
+  container units (`cqw`, `cqh`, `cqi`, `cqb`, `cqmin`, `cqmax`) are accepted
+  only in physical/logical size, min/max-size, inset, grid-track and
+  `flex-basis` declarations;
+- grid keywords, `fr` tracks and positive integer counts used only as the
+  first argument of `repeat()` are accepted; pixel/rem/em track sizes,
+  including a `248px` rail, require tokens;
+- only exact unitless `line-height: 1` is accepted; `13px` font size and every
+  other numeric type metric require tokens;
+- transform percentages are accepted only for centering forms
+  `translate(-50%, -50%)`, `translateX(-50%)` and `translateY(-50%)`; other
+  translate lengths require tokens;
+- raw `2px` is accepted only by `outline-width` and `outline-offset` when the
+  selector contains `:focus-visible`; `1px` borders and every other nonzero
+  border/outline length require tokens.
+
+Media-query breakpoints are the approved responsive contract and are not
+declaration values. CSS-wide and layout keywords without literal numeric/color
+values remain valid. The parser returns file, line, property, value and
+category, and exits nonzero on a violation. The RED fixtures above prove that
+`248px` rails, `1px` borders and `13px` type cannot bypass tokens. Add:
 
 ```json
 "check:design-tokens": "tsx scripts/check-design-tokens.ts"
@@ -574,12 +660,16 @@ Run:
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/design-token-contract.test.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx src/lib/time/browser-zone.test.ts tests/unit/office-time.test.ts
 npm run check:design-tokens
+npm run build
+git diff --check
 npm run typecheck
 npm run lint
 npm run check:source
 ```
 
-Expected: all commands PASS; no API route or service file appears in the diff.
+Expected: all commands PASS, `npm run build` completes successfully and
+`git diff --check` exits `0` with no whitespace-error output; no API route or
+service file appears in the diff.
 
 - [ ] **Step 6: Run the frozen backend contract suite**
 
@@ -2531,9 +2621,13 @@ Add:
 "check:contrast": "tsx scripts/check-design-contrast.ts"
 ```
 
-Extend `design-token-contract.test.ts` to require the complete manifest order,
-all five literal categories, the documented percentage/grid-count/zero
-allowlist, only the two raw `2px` focus declarations, and zero violations from
+Extend `design-token-contract.test.ts` to require the complete manifest order;
+all thirteen literal categories (`color`, `spacing`, `dimension`,
+`grid-track`, `flex-basis`, `border`, `font-size`, `line-height`,
+`letter-spacing`, `radius`, `shadow`, `transform-length`, `duration`); the
+closed zero, structural percentage/viewport/container-unit, grid count/track,
+unitless `line-height: 1`, centering-transform and focus-geometry allowlist;
+only the two raw `2px` focus declarations; and zero violations from
 `npm run check:design-tokens -- --include-legacy`.
 
 Run:
@@ -2578,14 +2672,16 @@ an earlier task owned. Add:
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
+    transition-duration: var(--motion-none) !important;
+    animation-duration: var(--motion-none) !important;
   }
 }
 
 @media (forced-colors: active) {
   :where(button, input, select, a):focus-visible {
-    outline: 2px solid Highlight;
+    outline-color: Highlight;
+    outline-style: solid;
+    outline-width: 2px;
     outline-offset: 2px;
   }
 }
@@ -2754,6 +2850,9 @@ not delegated to Task 11's implementer.
   migrated legacy selectors after replacement tests in the same task; Task 8
   moves dialog/cancellation selectors between existing owners. Task 11 audits
   rather than performs those migrations.
+- Token contract: Global Constraints, Task 1 parser fixtures and Task 11's
+  zero-legacy gate govern the same thirteen literal categories and the same
+  closed structural/focus allowlist.
 - Type consistency: `ResponsiveMode`, schedule data, projection results,
   `BookingRefreshOkEvent` without `ScheduleData`, modal owner and notification
   events have one definition and matching consumers; the conflict effect
