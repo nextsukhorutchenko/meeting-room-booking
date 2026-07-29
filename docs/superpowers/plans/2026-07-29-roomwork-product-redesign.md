@@ -49,6 +49,7 @@ src/
       auth.css                          login/register/verify surfaces
       base.css                          reset, document, shared typography
       booking-surface.css               composer/details/sheet placement
+      manifest.css                      sole ordered global stylesheet entry
       my-bookings.css                   grouped history layout
       notifications.css                 bell, center, toast host
       schedule-layout.css               workspace, room rail, navigation
@@ -56,7 +57,7 @@ src/
       timetable.css                     native table, cells, booking blocks
       tokens.css                        only literal design values
       ui.css                            shared controls and state surfaces
-    globals.css                         Tailwind import plus remaining legacy CSS
+    globals.css                         first-loaded Tailwind/legacy source
   components/
     app/
       app-shell.tsx                     persistent authenticated composition
@@ -97,12 +98,18 @@ tests/
     booking-controller.test.ts
     booking-groups.test.ts
     day-agenda.test.tsx
+    design-contrast.test.ts
+    design-token-contract.test.ts
+    e2e-projects.test.ts
     notification-controller.test.ts
     presentation-coordinator.test.tsx
     responsive-mode.test.tsx
     schedule-projection.test.ts
     timetable.test.tsx
     ui-errors.test.ts
+scripts/
+  check-design-contrast.ts             WCAG token-pair calculator
+  check-design-tokens.ts               manifest and literal-policy lint
 e2e/
   accessibility.spec.ts
   geometry.spec.ts
@@ -113,6 +120,67 @@ docs/design/
 
 Existing tests are migrated in place according to section 27.2.1 of the
 approved spec. Existing API and integration test files are not renamed.
+
+## Global Style Manifest and Ownership
+
+`src/app/layout.tsx` imports exactly one global style entry:
+
+```ts
+import './styles/manifest.css';
+```
+
+No page or component imports a global stylesheet. `manifest.css` is the
+deterministic cascade manifest. It contains only `@import` statements in this
+exact order, adding a line only in the task that creates the corresponding
+file:
+
+```css
+@import "../globals.css";
+@import "./tokens.css";
+@import "./base.css";
+@import "./ui.css";
+@import "./shell.css";
+@import "./auth.css";
+@import "./schedule-layout.css";
+@import "./timetable.css";
+@import "./agenda.css";
+@import "./booking-surface.css";
+@import "./notifications.css";
+@import "./my-bookings.css";
+```
+
+`globals.css` is deliberately first so an imported, task-owned replacement
+always wins without `!important` or selector escalation. Import order also
+encodes ownership:
+
+| Stylesheet | Exclusive selector responsibility | First owning task |
+| --- | --- | ---: |
+| `globals.css` | Tailwind entry and selectors not yet migrated; never receives new product selectors | 1 |
+| `tokens.css` | all literal colors, spacing, type metrics, radii, borders, shadows, dimensions and durations | 1 |
+| `base.css` | document reset, system font, typography defaults, reduced-motion and forced-colors global behavior | 1, hardened in 11 |
+| `ui.css` | Button, Field, Alert, Dialog primitives, focus geometry, spinner and generic state surfaces | 1, dialog handoff in 8 |
+| `shell.css` | authenticated header, navigation, account area, skip link and bottom navigation | 2 |
+| `auth.css` | login, register and verification composition | 2 |
+| `schedule-layout.css` | page/workspace tracks, room/filter rail, navigation, timezone summary and load-state placement | 3 |
+| `timetable.css` | native table, time gutter, cells and booking-block fit | 5 |
+| `agenda.css` | one-day list, date strip, jump controls and mobile row geometry | 6 |
+| `booking-surface.css` | adaptive booking composer/details and cancellation sheet/dialog presentation | 7, 8 |
+| `notifications.css` | bell, badge, center, popover/sheet and toast host | 9 |
+| `my-bookings.css` | nearest/grouped history, row link and sibling Cancel column | 10 |
+
+Every task that creates an owning stylesheet must:
+
+1. Add its import once at the table-defined position in `manifest.css`.
+2. Include `manifest.css` and `globals.css` in Files and staging.
+3. Run the replacement unit/component tests with the new sheet loaded.
+4. After those tests pass, move that surface's selectors out of `globals.css`
+   in the same task; the task does not leave duplicate old/new selectors.
+5. Run `npm run check:design-tokens`, the focused tests, `npm run build` and
+   `git diff --check` after deletion.
+
+Task 11 audits this contract and may delete an empty `globals.css`/Tailwind
+entry when no utility class remains. It does not migrate selectors owned by
+Tasks 2-10.
 
 ## Interface Ledger
 
@@ -184,6 +252,12 @@ export type ModalOwner =
   | 'booking'
   | 'cancellation'
   | 'notifications';
+
+export type BookingRefreshOkEvent = {
+  type: 'REFRESH_OK';
+  conflictGeneration: number;
+  options: readonly BookingEndTimeOption[];
+};
 ```
 
 ---
@@ -201,10 +275,14 @@ schedule behavior.
 - Create: `src/app/styles/tokens.css`
 - Create: `src/app/styles/base.css`
 - Create: `src/app/styles/ui.css`
+- Create: `src/app/styles/manifest.css`
+- Create: `scripts/check-design-tokens.ts`
+- Create: `tests/unit/design-token-contract.test.ts`
 - Create: `tests/unit/ui-errors.test.ts`
 - Create: `tests/unit/root-layout.test.tsx`
 - Modify: `src/app/layout.tsx`
 - Modify: `src/app/globals.css`
+- Modify: `package.json`
 - Modify: `src/lib/time/browser-zone.test.ts`
 - Modify: `tests/unit/office-time.test.ts`
 - Verify unchanged: `tests/integration/auth-api.test.ts`
@@ -274,6 +352,19 @@ export function formatAccessibleSlot(input: {
   userTimeZone: string;
 }): string;
 export function formatDuration(minutes: number): string;
+
+export type DesignTokenViolation = {
+  file: string;
+  line: number;
+  property: string;
+  value: string;
+  category: 'color' | 'spacing' | 'radius' | 'shadow' | 'duration';
+};
+
+export function findDesignTokenViolations(input: {
+  css: string;
+  file: string;
+}): readonly DesignTokenViolation[];
 ```
 
 - Produces CSS variables under `:root`, including
@@ -317,6 +408,36 @@ it('renders the Ukrainian document contract', () => {
   expect(tree.props.lang).toBe('uk');
   expect(metadata.title).toBe('Roomwork — Бронювання переговорних');
 });
+
+it('keeps the style manifest ordered and rejects governed literals', () => {
+  const importOrder = [
+    '../globals.css',
+    './tokens.css',
+    './base.css',
+    './ui.css',
+    './shell.css',
+    './auth.css',
+    './schedule-layout.css',
+    './timetable.css',
+    './agenda.css',
+    './booking-surface.css',
+    './notifications.css',
+    './my-bookings.css',
+  ];
+  const expectedExistingImports = importOrder.filter((path) =>
+    path === '../globals.css' ||
+    existsSync(resolve('src/app/styles', path.slice(2))),
+  );
+  expect(readManifestImports()).toEqual(expectedExistingImports);
+  expect(findDesignTokenViolations({
+    css: '.control { padding: 10px; border-radius: 6px; transition: 180ms; }',
+    file: 'control.css',
+  }).map(({category}) => category)).toEqual([
+    'spacing',
+    'radius',
+    'duration',
+  ]);
+});
 ```
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
@@ -324,11 +445,11 @@ it('renders the Ukrainian document contract', () => {
 Run:
 
 ```powershell
-npx vitest run --config vitest.config.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx src/lib/time/browser-zone.test.ts tests/unit/office-time.test.ts
+npx vitest run --config vitest.config.ts tests/unit/design-token-contract.test.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx src/lib/time/browser-zone.test.ts tests/unit/office-time.test.ts
 ```
 
-Expected: FAIL because `src/lib/i18n/*` does not exist and the root layout is
-still English.
+Expected: FAIL because `manifest.css`, the token lint and `src/lib/i18n/*` do
+not exist and the root layout is still English.
 
 - [ ] **Step 3: Implement exhaustive mappings, formatters and additive tokens**
 
@@ -396,16 +517,63 @@ requiring the pathname to equal `/schedule` or `/my-bookings`, then returning
 that pathname with its query string. Every rejection returns `/schedule`.
 
 Import `tokens.css`, `base.css` and `ui.css` from `layout.tsx` before
-`globals.css`. Keep legacy rules in `globals.css` until their owning task has
-replacement coverage. Set `lang="uk"`, localized metadata and the system stack
-`system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`.
+`globals.css` through the sole `manifest.css` contract above; RootLayout
+imports only the manifest. Keep legacy rules in `globals.css` until their
+owning task has replacement coverage. Set `lang="uk"`, localized metadata and
+the system stack `system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+sans-serif`.
 
-- [ ] **Step 4: Verify the focused foundation and source hygiene**
+Implement `check-design-tokens.ts` as a deterministic CSS declaration lint.
+The default command scans every `src/app/styles/*.css` file except
+`tokens.css`; `--include-legacy` additionally scans `globals.css` and is the
+Task 11 zero-legacy gate. It reports:
+
+- color literals: hex, `rgb[a]()`, `hsl[a]()`, `oklch()`, `lab()` and named
+  colors other than forced-color system values `Canvas`, `CanvasText`,
+  `ButtonText`, `GrayText`, `LinkText` and `Highlight`; CSS semantic keywords
+  `transparent`, `currentColor` and `inherit` are also allowed;
+- spacing/dimension literals in `margin*`, `padding*`, `gap`,
+  `inset`/`top`/`right`/`bottom`/`left`, `width`/`height` and
+  `min-*`/`max-*`;
+- `border-radius` literals;
+- `box-shadow`/`text-shadow` literals;
+- `transition*`/`animation-duration` time literals.
+
+Percentages, unitless grid counts and zero are structural allowlist values.
+The only raw `2px` allowlist entries are `outline-width: 2px` and
+`outline-offset: 2px` in the focus/forced-colors rules; borders and every other
+dimension use a token. Media-query breakpoints are the approved responsive
+contract and are not declaration values. The parser returns file, line,
+property, value and category, and exits nonzero on a violation. Add:
+
+```json
+"check:design-tokens": "tsx scripts/check-design-tokens.ts"
+```
+
+- [ ] **Step 4: Load the manifest foundation and remove its legacy selectors**
+
+Run the focused Task 1 tests with RootLayout importing only `manifest.css`.
+After they pass, move document/body/reset/system-font rules into `base.css`;
+move `.control-field*`, `.primary-button*`, `.secondary-button*`,
+`.destructive-button*`, `.icon-button*`, `.alert*`, `.spinner*` and generic
+focus-visible declarations into `ui.css`. Leave dialog, shell, auth, schedule,
+booking, notification and history selectors for their declared owning tasks.
+Remove the migrated declarations from `globals.css` and confirm their selector
+families do not remain there.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/design-token-contract.test.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx src/lib/time/browser-zone.test.ts tests/unit/office-time.test.ts
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 5: Verify the focused foundation and source hygiene**
 
 Run:
 
 ```powershell
-npx vitest run --config vitest.config.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx src/lib/time/browser-zone.test.ts tests/unit/office-time.test.ts
+npx vitest run --config vitest.config.ts tests/unit/design-token-contract.test.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx src/lib/time/browser-zone.test.ts tests/unit/office-time.test.ts
+npm run check:design-tokens
 npm run typecheck
 npm run lint
 npm run check:source
@@ -413,7 +581,7 @@ npm run check:source
 
 Expected: all commands PASS; no API route or service file appears in the diff.
 
-- [ ] **Step 5: Run the frozen backend contract suite**
+- [ ] **Step 6: Run the frozen backend contract suite**
 
 Run with a pre-validated isolated `TEST_DATABASE_URL`:
 
@@ -425,10 +593,10 @@ Expected: existing integration behavior remains green without assertion
 changes to machine codes, payload fields, timezone, overlap, concurrency or
 pagination.
 
-- [ ] **Step 6: Commit only Task 1 paths**
+- [ ] **Step 7: Commit only Task 1 paths**
 
 ```powershell
-git add src/app/layout.tsx src/app/globals.css src/app/styles/tokens.css src/app/styles/base.css src/app/styles/ui.css src/lib/i18n src/lib/time/browser-zone.test.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx tests/unit/office-time.test.ts
+git add src/app/layout.tsx src/app/globals.css src/app/styles/manifest.css src/app/styles/tokens.css src/app/styles/base.css src/app/styles/ui.css scripts/check-design-tokens.ts package.json src/lib/i18n/ui-copy.ts src/lib/i18n/ui-errors.ts src/lib/i18n/formatters.ts src/lib/time/browser-zone.test.ts tests/unit/design-token-contract.test.ts tests/unit/ui-errors.test.ts tests/unit/root-layout.test.tsx tests/unit/office-time.test.ts
 git commit -m "feat: add Roomwork locale and design foundation"
 ```
 
@@ -449,6 +617,8 @@ responsive Roomwork shell while preserving all route URLs and auth lifecycle.
 - Create: `src/app/styles/auth.css`
 - Create: `tests/unit/app-shell.test.tsx`
 - Create: `tests/unit/auth-surfaces.test.tsx`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
 - Modify: `src/components/app/app-header.tsx`
 - Modify: `src/components/auth/login-form.tsx`
 - Modify: `src/components/auth/register-form.tsx`
@@ -534,21 +704,41 @@ checks from the moved page files. Translate field labels, buttons, pending,
 success, invalid, expired and unavailable verification states; preserve
 one-shot token removal and do not add resend.
 
-- [ ] **Step 4: Verify shell/auth behavior and direct URLs**
+- [ ] **Step 4: Load the owner styles, pass replacement tests and remove legacy selectors**
+
+Append `shell.css` and then `auth.css` after `ui.css` in `manifest.css`.
+Run the focused tests once with the new styles loaded:
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/app-shell.test.tsx tests/unit/auth-surfaces.test.tsx tests/unit/verify-page.test.tsx tests/unit/verify-clean-start.test.ts
+```
+
+Expected: PASS. Then move only `.app-header*`, `.app-brand`, `.app-nav*`,
+`.app-account*`, `.app-user-name`, `.bottom-nav*`, `.auth-*` and the
+login/register/verify form selectors from `globals.css` into their declared
+owners. Do not move `.notification-*`; Task 9 owns them. Confirm each import
+appears once and the migrated selector families no longer appear in
+`globals.css`.
+
+- [ ] **Step 5: Verify shell/auth behavior, style ownership and direct URLs**
+
+Run:
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/app-shell.test.tsx tests/unit/auth-surfaces.test.tsx tests/unit/verify-page.test.tsx tests/unit/verify-clean-start.test.ts
+npm run check:design-tokens
 npm run typecheck
 npm run lint
 npm run build
+git diff --check
 ```
 
 Expected: PASS; build emits `/schedule` and `/my-bookings`, not route-group
-segments.
+segments; the manifest order is `globals, tokens, base, ui, shell, auth`.
 
-- [ ] **Step 5: Run auth smoke E2E**
+- [ ] **Step 6: Run auth smoke E2E**
 
 Run with a pre-validated isolated `TEST_DATABASE_URL`:
 
@@ -560,10 +750,10 @@ npx tsx scripts/run-e2e.ts e2e/smoke.spec.ts --project=desktop-auth-smoke --proj
 Expected: registration/login/redirect/verify-visible-state paths pass with
 Ukrainian labels and no console or hydration errors.
 
-- [ ] **Step 6: Commit only Task 2 paths**
+- [ ] **Step 7: Commit only Task 2 paths**
 
 ```powershell
-git add 'src/app/(authenticated)/layout.tsx' 'src/app/(authenticated)/schedule/page.tsx' 'src/app/(authenticated)/my-bookings/page.tsx' src/app/schedule/page.tsx src/app/my-bookings/page.tsx src/app/login/page.tsx src/app/register/page.tsx src/app/verify/page.tsx src/components/app/app-shell.tsx src/components/app/app-header.tsx src/components/auth/auth-shell.tsx src/components/auth/login-form.tsx src/components/auth/register-form.tsx src/components/auth/logout-button.tsx src/app/styles/shell.css src/app/styles/auth.css tests/unit/app-shell.test.tsx tests/unit/auth-surfaces.test.tsx tests/unit/verify-page.test.tsx tests/unit/verify-clean-start.test.ts e2e/smoke.spec.ts e2e/auth.setup.ts
+git add 'src/app/(authenticated)/layout.tsx' 'src/app/(authenticated)/schedule/page.tsx' 'src/app/(authenticated)/my-bookings/page.tsx' src/app/schedule/page.tsx src/app/my-bookings/page.tsx src/app/login/page.tsx src/app/register/page.tsx src/app/verify/page.tsx src/components/app/app-shell.tsx src/components/app/app-header.tsx src/components/auth/auth-shell.tsx src/components/auth/login-form.tsx src/components/auth/register-form.tsx src/components/auth/logout-button.tsx src/app/styles/manifest.css src/app/styles/shell.css src/app/styles/auth.css src/app/globals.css tests/unit/app-shell.test.tsx tests/unit/auth-surfaces.test.tsx tests/unit/verify-page.test.tsx tests/unit/verify-clean-start.test.ts e2e/smoke.spec.ts e2e/auth.setup.ts
 git commit -m "feat: add persistent Roomwork application shell"
 ```
 
@@ -585,6 +775,8 @@ without changing API calls or booking behavior.
 - Create: `src/components/schedule/schedule-workspace.tsx`
 - Create: `src/app/styles/schedule-layout.css`
 - Create: `tests/unit/responsive-mode.test.tsx`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
 - Modify: `src/app/(authenticated)/schedule/page.tsx`
 - Modify: `tests/unit/room-filter.test.tsx`
 - Modify: `tests/unit/schedule-toolbar.test.tsx`
@@ -684,23 +876,44 @@ guards. Room pane is visible at expanded/medium; tablet/mobile filter trigger
 opens a controlled `RoomFilterSurface`. Date strip keeps seven office dates,
 with the URL `day` as the 3/2-day anchor.
 
-- [ ] **Step 4: Verify request races, URL restoration and layout ownership**
+- [ ] **Step 4: Load schedule layout styles and remove their legacy selectors**
+
+Append `schedule-layout.css` after `auth.css` in `manifest.css`, then run:
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/responsive-mode.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx
+```
+
+Expected: PASS. Move `.schedule-page`, `.schedule-title-*`,
+`.schedule-eyebrow`, `.schedule-workspace`, `.schedule-toolbar*`,
+`.room-context`, `.room-meta*`, `.room-filter*`, `.schedule-navigation*`,
+`.timezone-*`, `.schedule-message*`, `.schedule-loading*` and
+`.schedule-viewport*` into `schedule-layout.css`. Leave week/timetable,
+day/agenda, booking, notification and history selectors for their owning
+tasks. Confirm the migrated selector families no longer occur in
+`globals.css`.
+
+- [ ] **Step 5: Verify request races, URL restoration and style ownership**
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/responsive-mode.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Expected: PASS, including superseded room/week response, popstate, filter and
-deep-link tests; one semantic renderer exists after hydration.
+deep-link tests; one semantic renderer exists after hydration; manifest order
+ends with `schedule-layout.css`.
 
-- [ ] **Step 5: Commit only Task 3 paths**
+- [ ] **Step 6: Commit only Task 3 paths**
 
 ```powershell
-git add src/components/schedule/schedule-types.ts src/components/schedule/use-responsive-mode.ts src/components/schedule/room-picker.tsx src/components/schedule/room-filter-surface.tsx src/components/schedule/schedule-navigation.tsx src/components/schedule/schedule-viewport.tsx src/components/schedule/schedule-workspace.tsx src/components/schedule/schedule-client.tsx src/components/schedule/schedule-toolbar.tsx 'src/app/(authenticated)/schedule/page.tsx' src/app/styles/schedule-layout.css tests/unit/responsive-mode.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx
+git add src/components/schedule/schedule-types.ts src/components/schedule/use-responsive-mode.ts src/components/schedule/room-picker.tsx src/components/schedule/room-filter-surface.tsx src/components/schedule/schedule-navigation.tsx src/components/schedule/schedule-viewport.tsx src/components/schedule/schedule-workspace.tsx src/components/schedule/schedule-client.tsx src/components/schedule/schedule-toolbar.tsx 'src/app/(authenticated)/schedule/page.tsx' src/app/styles/manifest.css src/app/styles/schedule-layout.css src/app/globals.css tests/unit/responsive-mode.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx
 git commit -m "refactor: extract adaptive schedule workspace"
 ```
 
@@ -889,6 +1102,8 @@ details triggers.
 - Create: `src/components/schedule/timetable.tsx`
 - Create: `src/app/styles/timetable.css`
 - Create: `tests/unit/timetable.test.tsx`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
 - Modify: `src/components/schedule/schedule-viewport.tsx`
 - Modify: `src/components/schedule/booking-block.tsx`
 - Modify: `tests/unit/booking-block.test.tsx`
@@ -995,23 +1210,44 @@ Derive visible days from URL anchor `day`; do not fetch a narrower dataset.
 Delete `week-grid.tsx` only after migrated `week-grid.test.tsx` passes against
 `Timetable`.
 
-- [ ] **Step 5: Verify native semantics, timezone fixtures and controller races**
+- [ ] **Step 5: Load timetable styles and remove the replaced grid selectors**
+
+Append `timetable.css` after `schedule-layout.css` in `manifest.css`. Run the
+Task 5 focused tests once with the native table and new sheet loaded. After
+they pass, move `.schedule-grid-shell`, `.week-grid*`,
+`.schedule-day-headers`, `.schedule-days`, `.day-header*`,
+`.schedule-time-gutter`, `.schedule-time-row`, `.schedule-day-column*`,
+`.free-slot-button*`, `.booking-block*` and `.current-time-line*` from
+`globals.css` into `timetable.css`. Do not move day-agenda or booking-surface
+selectors. Confirm no listed legacy family remains in `globals.css`.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/timetable.test.tsx tests/unit/week-grid.test.tsx tests/unit/booking-block.test.tsx tests/unit/schedule-client.test.tsx
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 6: Verify native semantics, timezone fixtures and controller races**
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/timetable.test.tsx tests/unit/week-grid.test.tsx tests/unit/booking-block.test.tsx tests/unit/schedule-client.test.tsx tests/unit/schedule-projection.test.ts tests/unit/office-time.test.ts
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Expected: PASS for 7/3/2 days, same-zone, US-only DST, Kyiv-only DST,
-date-crossing, rowSpan adjacency, deep-link highlight and no `role="grid"`.
+date-crossing, rowSpan adjacency, deep-link highlight, no `role="grid"` and an
+ordered manifest ending in `timetable.css`.
 
-- [ ] **Step 6: Commit only Task 5 paths**
+- [ ] **Step 7: Commit only Task 5 paths**
 
 ```powershell
-git add src/components/schedule/timetable.tsx src/components/schedule/schedule-viewport.tsx src/components/schedule/booking-block.tsx src/components/schedule/week-grid.tsx src/app/styles/timetable.css tests/unit/timetable.test.tsx tests/unit/week-grid.test.tsx tests/unit/booking-block.test.tsx tests/unit/schedule-client.test.tsx
+git add src/components/schedule/timetable.tsx src/components/schedule/schedule-viewport.tsx src/components/schedule/booking-block.tsx src/components/schedule/week-grid.tsx src/app/styles/manifest.css src/app/styles/timetable.css src/app/globals.css tests/unit/timetable.test.tsx tests/unit/week-grid.test.tsx tests/unit/booking-block.test.tsx tests/unit/schedule-client.test.tsx
 git commit -m "feat: render native adaptive timetable"
 ```
 
@@ -1026,6 +1262,10 @@ agenda, deterministic one-time positioning and a bounded keyboard path.
 - Create: `src/components/schedule/day-agenda.tsx`
 - Create: `src/app/styles/agenda.css`
 - Create: `tests/unit/day-agenda.test.tsx`
+- Create: `tests/unit/e2e-projects.test.ts`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
+- Modify: `test-config/playwright-configs.ts`
 - Modify: `src/components/schedule/schedule-navigation.tsx`
 - Modify: `src/components/schedule/schedule-viewport.tsx`
 - Modify: `src/components/schedule/schedule-workspace.tsx`
@@ -1141,30 +1381,109 @@ vertical growth with no clipping or horizontal overflow.
 `ScheduleJumpControls` uses native day/time selects and one `Перейти` button.
 Option values are exact UTC ISO slot instants; no arrow key is intercepted.
 
-- [ ] **Step 5: Switch mobile mode, delete the old renderer and verify**
+- [ ] **Step 5: Load agenda styles and remove the old mobile selectors**
+
+Append `agenda.css` after `timetable.css` in `manifest.css`. Run the focused
+Task 6 unit tests with the new agenda and sheet loaded. After they pass, move
+`.mobile-day-controls`, `.mobile-schedule`, `.day-schedule*`,
+`.day-row-time`, `.day-row-end-time` and their media-query rules from
+`globals.css` into `agenda.css`; add the new agenda/jump selectors only there.
+Confirm none of those legacy families remains in `globals.css`.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/day-agenda.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 6: Establish the scoped responsive Playwright projects and prove selection**
+
+Modify `createDeterministicPlaywrightConfig()` in
+`test-config/playwright-configs.ts` in this task, before any booking/transition
+E2E task runs. Preserve `seed`, `auth-setup`, `desktop-new-york`,
+`desktop-new-york-fr`, `desktop-auth-smoke` and `mobile-auth-smoke`. Replace
+`desktop-kyiv`/`mobile-kyiv` with these authenticated projects and exact
+matches:
+
+```ts
+const responsiveProjectMatches = {
+  expanded: [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/my-bookings.spec.ts',
+    '**/notifications.spec.ts',
+    '**/schedule.spec.ts',
+    '**/transition.spec.ts',
+  ],
+  medium: ['**/booking.spec.ts', '**/schedule.spec.ts'],
+  tablet: [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/schedule.spec.ts',
+    '**/transition.spec.ts',
+  ],
+  'mobile-lg': [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/mobile.spec.ts',
+    '**/my-bookings.spec.ts',
+    '**/notifications.spec.ts',
+    '**/transition.spec.ts',
+  ],
+  mobile: [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/mobile.spec.ts',
+    '**/my-bookings.spec.ts',
+  ],
+  reflow: ['**/booking.spec.ts', '**/mobile.spec.ts'],
+} as const;
+```
+
+All six depend on `auth-setup`, use the shared storage state and
+`Europe/Kyiv`. Their exact viewports are `1440x900`, `1024x768`, `768x1024`,
+`390x844` with touch, `360x800` and `320x800`. The project unit test asserts
+the names, viewports, dependencies and every `testMatch` entry.
+
+With a pre-validated `TEST_DATABASE_URL`, prove that Playwright lists the
+mobile test under the new mobile project:
+
+```powershell
+$list = npx playwright test --config playwright.config.ts e2e/mobile.spec.ts --project=mobile-lg --list | Out-String
+if ($list -notmatch '\[mobile-lg\].*mobile\.spec\.ts') {
+  throw 'mobile-lg did not list e2e/mobile.spec.ts'
+}
+```
+
+Expected: the assertion exits zero and the list contains at least one
+`[mobile-lg] ... mobile.spec.ts` entry.
+
+- [ ] **Step 7: Switch mobile mode, delete the old renderer and verify**
 
 Run:
 
 ```powershell
-npx vitest run --config vitest.config.ts tests/unit/day-agenda.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx tests/unit/schedule-projection.test.ts tests/unit/office-time.test.ts
+npx vitest run --config vitest.config.ts tests/unit/day-agenda.test.tsx tests/unit/e2e-projects.test.ts tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx tests/unit/schedule-projection.test.ts tests/unit/office-time.test.ts
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Then run with a pre-validated isolated `TEST_DATABASE_URL`:
 
 ```powershell
-npm run build
-npx tsx scripts/run-e2e.ts e2e/mobile.spec.ts e2e/timezone.spec.ts --project=mobile-kyiv --project=desktop-new-york
+npx tsx scripts/run-e2e.ts e2e/mobile.spec.ts e2e/timezone.spec.ts --project=mobile-lg --project=desktop-new-york
 ```
 
 Expected: unit tests and E2E pass; one agenda exists on mobile, old
 `DaySchedule` is absent, and no page-level horizontal overflow occurs.
 
-- [ ] **Step 6: Commit only Task 6 paths**
+- [ ] **Step 8: Commit only Task 6 paths**
 
 ```powershell
-git add src/components/schedule/day-agenda.tsx src/components/schedule/day-schedule.tsx src/components/schedule/schedule-navigation.tsx src/components/schedule/schedule-viewport.tsx src/components/schedule/schedule-workspace.tsx src/app/styles/agenda.css tests/unit/day-agenda.test.tsx tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx e2e/mobile.spec.ts e2e/timezone.spec.ts
+git add src/components/schedule/day-agenda.tsx src/components/schedule/day-schedule.tsx src/components/schedule/schedule-navigation.tsx src/components/schedule/schedule-viewport.tsx src/components/schedule/schedule-workspace.tsx src/app/styles/manifest.css src/app/styles/agenda.css src/app/globals.css test-config/playwright-configs.ts tests/unit/day-agenda.test.tsx tests/unit/e2e-projects.test.ts tests/unit/schedule-toolbar.test.tsx tests/unit/schedule-client.test.tsx e2e/mobile.spec.ts e2e/timezone.spec.ts
 git commit -m "feat: add deterministic mobile day agenda"
 ```
 
@@ -1182,6 +1501,8 @@ render one stable controlled booking pane/sheet subtree across all breakpoints.
 - Create: `src/app/styles/booking-surface.css`
 - Create: `tests/unit/booking-controller.test.ts`
 - Create: `tests/unit/adaptive-booking-surface.test.tsx`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
 - Modify: `src/components/schedule/schedule-workspace.tsx`
 - Modify: `src/components/schedule/booking-selection.ts`
 - Modify: `src/modules/bookings/end-time-options.ts`
@@ -1237,8 +1558,7 @@ export type BookingControllerEvent =
       code: DomainErrorCode;
       fields: Partial<Record<BookingFieldKey, string>>}
   | {type: 'CREATE_TRANSPORT_ERROR'; requestId: number}
-  | {type: 'REFRESH_OK'; conflictGeneration: number;
-      options: readonly BookingEndTimeOption[]; schedule: ScheduleData}
+  | BookingRefreshOkEvent
   | {type: 'REFRESH_ERROR'; conflictGeneration: number}
   | {type: 'RETRY_REFRESH'}
   | {type: 'CLOSE'}
@@ -1248,6 +1568,18 @@ export function bookingReducer(
   state: BookingControllerState,
   event: BookingControllerEvent,
 ): BookingControllerState;
+
+export type ConflictRefreshSuccessPorts = {
+  activeConflictGeneration: number;
+  buildOptions(schedule: ScheduleData): readonly BookingEndTimeOption[];
+  commitSchedule(schedule: ScheduleData): void;
+  dispatch(event: BookingRefreshOkEvent): void;
+};
+
+export function applyConflictRefreshSuccess(
+  input: {conflictGeneration: number; schedule: ScheduleData},
+  ports: ConflictRefreshSuccessPorts,
+): void;
 ```
 
 - [ ] **Step 1: Write the reducer and controlled-form RED tests**
@@ -1277,6 +1609,27 @@ it('retains the title and replaces a removed end after conflict refresh', () => 
     title: 'Планування',
     endsAt: refreshedOptions[0].endsAt,
     liveMessage: 'Час завершення змінено відповідно до доступності',
+  });
+});
+
+it('commits refreshed schedule before dispatching reducer options', async () => {
+  await applyConflictRefreshSuccess({
+    conflictGeneration: 3,
+    schedule: refreshedSchedule,
+  }, {
+    activeConflictGeneration: 3,
+    buildOptions: () => refreshedOptions,
+    commitSchedule,
+    dispatch,
+  });
+  expect(commitSchedule).toHaveBeenCalledWith(refreshedSchedule);
+  expect(commitSchedule.mock.invocationCallOrder[0]).toBeLessThan(
+    dispatch.mock.invocationCallOrder[0],
+  );
+  expect(dispatch).toHaveBeenCalledWith({
+    type: 'REFRESH_OK',
+    conflictGeneration: 3,
+    options: refreshedOptions,
   });
 });
 
@@ -1326,36 +1679,94 @@ room/week after conflict and ignores stale request/generation responses. A
 stale committed success only revalidates its captured room/week; it does not
 close a newer surface, toast or move focus.
 
+The conflict-refresh success effect uses one exact sequence:
+
+```ts
+function applyConflictRefreshSuccess(input: {
+  conflictGeneration: number;
+  schedule: ScheduleData;
+}, ports: ConflictRefreshSuccessPorts): void {
+  if (input.conflictGeneration !== ports.activeConflictGeneration) return;
+  ports.commitSchedule(input.schedule);
+  const options = ports.buildOptions(input.schedule);
+  ports.dispatch({
+    type: 'REFRESH_OK',
+    conflictGeneration: input.conflictGeneration,
+    options,
+  });
+}
+```
+
+`ScheduleData` belongs to workspace state and is never part of the reducer
+event. React batches the schedule commit and reducer dispatch; the reducer
+decides retained/replaced/no-option state from the supplied options.
+
 `AdaptiveBookingSurface` always renders the same backdrop/panel/composer
 ancestry. CSS places it as expanded 320px region, medium 320px region, tablet
 right sheet and mobile bottom/full-screen sheet. Expanded closed state shows
 guidance; medium/tablet/mobile closed state is hidden and unfocusable.
 
-- [ ] **Step 5: Verify unit, create/conflict E2E and API regression**
+- [ ] **Step 5: Load booking-surface styles and remove replaced composer selectors**
+
+Append `booking-surface.css` after `agenda.css` in `manifest.css`. Run the
+focused Task 7 unit/component tests with the sheet loaded. After they pass,
+move `.booking-form*`, `.booking-summary*` and any old booking-dialog composer
+selectors into `booking-surface.css`. Leave `.dialog-*` and
+`.cancellation-dialog-*` for Task 8. Confirm the migrated selectors no longer
+occur in `globals.css`.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/booking-controller.test.ts tests/unit/adaptive-booking-surface.test.tsx tests/unit/booking-dialog.test.tsx tests/unit/schedule-client.test.tsx
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 6: Prove Task 7 lists desktop and mobile booking/transition cases**
+
+With a pre-validated `TEST_DATABASE_URL`, run:
+
+```powershell
+$list = npx playwright test --config playwright.config.ts e2e/booking.spec.ts e2e/transition.spec.ts --project=expanded --project=mobile-lg --list | Out-String
+$required = @(
+  '\[expanded\].*booking\.spec\.ts',
+  '\[expanded\].*transition\.spec\.ts',
+  '\[mobile-lg\].*booking\.spec\.ts',
+  '\[mobile-lg\].*transition\.spec\.ts'
+)
+$missing = @($required | Where-Object { $list -notmatch $_ })
+if ($missing.Count -gt 0) { throw "Missing scoped E2E evidence: $($missing -join ', ')" }
+```
+
+Expected: all four exact project/file patterns are present. A zero-test or
+desktop-only listing fails before the real run.
+
+- [ ] **Step 7: Verify unit, create/conflict E2E and API regression**
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/booking-controller.test.ts tests/unit/adaptive-booking-surface.test.tsx tests/unit/booking-dialog.test.tsx tests/unit/schedule-client.test.tsx tests/unit/end-time-options.test.ts
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Then run with a pre-validated isolated `TEST_DATABASE_URL`:
 
 ```powershell
-npm run build
-npx tsx scripts/run-e2e.ts e2e/booking.spec.ts e2e/transition.spec.ts --project=desktop-kyiv --project=mobile-kyiv
+npx tsx scripts/run-e2e.ts e2e/booking.spec.ts e2e/transition.spec.ts --project=expanded --project=mobile-lg
 npm run test:integration
 ```
 
 Expected: 30-minute default and multi-slot create pass, conflict retains draft,
 retry works, exact `endsAt` persists, server overlap/race behavior is unchanged.
 
-- [ ] **Step 6: Commit only Task 7 paths**
+- [ ] **Step 8: Commit only Task 7 paths**
 
 ```powershell
-git add src/components/schedule/booking-controller.ts src/components/schedule/booking-composer.tsx src/components/schedule/adaptive-booking-surface.tsx src/components/schedule/booking-dialog.tsx src/components/schedule/booking-selection.ts src/components/schedule/schedule-workspace.tsx src/modules/bookings/end-time-options.ts src/app/styles/booking-surface.css tests/unit/booking-controller.test.ts tests/unit/adaptive-booking-surface.test.tsx tests/unit/booking-dialog.test.tsx tests/unit/schedule-client.test.tsx tests/unit/end-time-options.test.ts e2e/booking.spec.ts e2e/transition.spec.ts
+git add src/components/schedule/booking-controller.ts src/components/schedule/booking-composer.tsx src/components/schedule/adaptive-booking-surface.tsx src/components/schedule/booking-dialog.tsx src/components/schedule/booking-selection.ts src/components/schedule/schedule-workspace.tsx src/modules/bookings/end-time-options.ts src/app/styles/manifest.css src/app/styles/booking-surface.css src/app/globals.css tests/unit/booking-controller.test.ts tests/unit/adaptive-booking-surface.test.tsx tests/unit/booking-dialog.test.tsx tests/unit/schedule-client.test.tsx tests/unit/end-time-options.test.ts e2e/booking.spec.ts e2e/transition.spec.ts
 git commit -m "feat: add adaptive booking controller"
 ```
 
@@ -1377,6 +1788,10 @@ fully controlled.
 - Modify: `src/components/schedule/room-filter-surface.tsx`
 - Modify: `src/components/schedule/schedule-workspace.tsx`
 - Modify: `src/components/bookings/booking-list.tsx`
+- Modify: `src/app/styles/ui.css`
+- Modify: `src/app/styles/booking-surface.css`
+- Modify: `src/app/globals.css`
+- Modify: `tests/unit/booking-list.test.tsx`
 - Modify: `tests/unit/cancel-booking-dialog.test.tsx`
 - Modify: `tests/unit/room-filter.test.tsx`
 - Modify: `tests/unit/schedule-client.test.tsx`
@@ -1489,33 +1904,73 @@ export type CancellationDialogProps = {
 `ScheduleWorkspace` retains a cancelled block until schedule refresh.
 `BookingList` removes a successfully cancelled upcoming row immediately.
 Both allocate request IDs, block duplicate DELETE, ignore stale responses and
-publish localized error/success state.
+publish localized error/success state. Add `booking-list.test.tsx` assertions
+that the first confirm owns exactly one DELETE, pending blocks a duplicate,
+stale success cannot remove a newer row, successful cancellation immediately
+removes only the matching future row and failure retains the row with localized
+error.
 
-- [ ] **Step 5: Verify modal frames, focus and cancellation outcomes**
+- [ ] **Step 5: Migrate dialog/cancellation presentation out of legacy CSS**
+
+Run the focused Task 8 unit/component suite first. After it passes, move
+`.dialog-backdrop`, `.dialog-panel`, `.dialog-heading*`, `.dialog-alert` and
+shared focus/containment rules into `ui.css`; move `.dialog-actions`,
+`.cancellation-dialog-*` and adaptive cancellation suspension rules into
+`booking-surface.css`. Remove those selectors from `globals.css` in this task
+and confirm no duplicate family remains. `manifest.css` order is unchanged
+because both owner sheets already load.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/presentation-coordinator.test.tsx tests/unit/cancel-booking-dialog.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-client.test.tsx tests/unit/booking-list.test.tsx
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 6: Prove Task 8 lists desktop and mobile cancellation transitions**
+
+With a pre-validated `TEST_DATABASE_URL`, run:
+
+```powershell
+$list = npx playwright test --config playwright.config.ts e2e/cancellation.spec.ts e2e/transition.spec.ts --project=expanded --project=mobile-lg --list | Out-String
+$required = @(
+  '\[expanded\].*cancellation\.spec\.ts',
+  '\[expanded\].*transition\.spec\.ts',
+  '\[mobile-lg\].*cancellation\.spec\.ts',
+  '\[mobile-lg\].*transition\.spec\.ts'
+)
+$missing = @($required | Where-Object { $list -notmatch $_ })
+if ($missing.Count -gt 0) { throw "Missing scoped E2E evidence: $($missing -join ', ')" }
+```
+
+Expected: all four project/file patterns are listed.
+
+- [ ] **Step 7: Verify modal frames, focus and cancellation outcomes**
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/presentation-coordinator.test.tsx tests/unit/cancel-booking-dialog.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-client.test.tsx tests/unit/booking-list.test.tsx
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Then run with a pre-validated isolated `TEST_DATABASE_URL`:
 
 ```powershell
-npm run build
-npx tsx scripts/run-e2e.ts e2e/cancellation.spec.ts e2e/transition.spec.ts --project=desktop-kyiv --project=mobile-kyiv
+npx tsx scripts/run-e2e.ts e2e/cancellation.spec.ts e2e/transition.spec.ts --project=expanded --project=mobile-lg
 ```
 
 Expected: exactly one active modal for every owner, no focus escape, Keep/error
 close restore the exact trigger, success uses schedule/history fallback and
 duplicate cancellation is blocked.
 
-- [ ] **Step 6: Commit only Task 8 paths**
+- [ ] **Step 8: Commit only Task 8 paths**
 
 ```powershell
-git add src/components/app/presentation-coordinator.tsx src/components/app/app-shell.tsx src/components/ui/dialog.tsx src/components/bookings/cancellation-dialog.tsx src/components/bookings/cancel-booking-dialog.tsx src/components/bookings/booking-list.tsx src/components/schedule/adaptive-booking-surface.tsx src/components/schedule/room-filter-surface.tsx src/components/schedule/schedule-workspace.tsx tests/unit/presentation-coordinator.test.tsx tests/unit/cancel-booking-dialog.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-client.test.tsx tests/unit/booking-list.test.tsx e2e/cancellation.spec.ts e2e/transition.spec.ts
+git add src/components/app/presentation-coordinator.tsx src/components/app/app-shell.tsx src/components/ui/dialog.tsx src/components/bookings/cancellation-dialog.tsx src/components/bookings/cancel-booking-dialog.tsx src/components/bookings/booking-list.tsx src/components/schedule/adaptive-booking-surface.tsx src/components/schedule/room-filter-surface.tsx src/components/schedule/schedule-workspace.tsx src/app/styles/ui.css src/app/styles/booking-surface.css src/app/globals.css tests/unit/presentation-coordinator.test.tsx tests/unit/cancel-booking-dialog.test.tsx tests/unit/room-filter.test.tsx tests/unit/schedule-client.test.tsx tests/unit/booking-list.test.tsx e2e/cancellation.spec.ts e2e/transition.spec.ts
 git commit -m "feat: coordinate modal and cancellation presentation"
 ```
 
@@ -1532,9 +1987,12 @@ client navigation.
 - Create: `src/components/app/notification-center.tsx`
 - Create: `src/app/styles/notifications.css`
 - Create: `tests/unit/notification-controller.test.ts`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
 - Modify: `src/components/app/app-shell.tsx`
 - Modify: `src/components/app/presentation-coordinator.tsx`
 - Modify: `tests/unit/notification-bell.test.tsx`
+- Modify: `tests/unit/presentation-coordinator.test.tsx`
 - Modify: `e2e/notifications.spec.ts`
 - Delete after replacement tests pass: `src/components/app/notification-bell.tsx`
 
@@ -1605,6 +2063,21 @@ it('does not resurrect a dismissed redelivery but acknowledges it', () => {
   expect(next.retainedById.has(notification.id)).toBe(false);
   expect(ackEffectIds()).toEqual([notification.id]);
 });
+
+it.each(['expanded', 'medium', 'tablet'] as const)(
+  'renders %s notification center as a non-modal popover',
+  (mode) => {
+    render(<NotificationCenter {...props} mode={mode} open />);
+    expect(screen.getByRole('region', {name: 'Сповіщення'})).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  },
+);
+
+it('renders only mobile notification center as a modal sheet', () => {
+  render(<NotificationCenter {...props} mode="mobile" open />);
+  expect(screen.getByRole('dialog', {name: 'Сповіщення'}))
+    .toHaveAttribute('aria-modal', 'true');
+});
 ```
 
 - [ ] **Step 2: Run notification tests and confirm RED**
@@ -1632,37 +2105,68 @@ queue and active presentation for the client lifetime.
 
 - [ ] **Step 4: Implement controlled center/popover/sheet and suppression**
 
-Desktop renders a non-modal popover; mobile requests owner
-`notifications`. Bell is 44px and named `Сповіщення, {n} нових`. Any non-null
-modal owner suppresses active toast and resets its four-second timer; toast
-resumes only after owner is null and center is closed. Route navigation closes
-the center but retains controller state; logout/full reload clears it.
+`expanded`, `medium` and `tablet` render a non-modal popover. Only `mobile`
+requests owner `notifications` and renders a modal sheet. Bell is 44px and
+named `Сповіщення, {n} нових`. Any non-null modal owner suppresses active
+toast and resets its four-second timer; toast resumes only after owner is null
+and center is closed. Route navigation closes the center but retains
+controller state; logout/full reload clears it.
 
-- [ ] **Step 5: Verify lifecycle, route persistence and backend ack contract**
+- [ ] **Step 5: Load notification styles and remove the legacy notification family**
+
+Append `notifications.css` after `booking-surface.css` in `manifest.css`. Run
+the Task 9 unit/component suite with the new center loaded. After it passes,
+move all `.notification-*` selectors, including bell, badge, popover/sheet,
+toast region and dismiss action, from `globals.css` into `notifications.css`.
+Confirm no `.notification-*` selector remains in `globals.css`.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/notification-controller.test.ts tests/unit/notification-bell.test.tsx tests/unit/presentation-coordinator.test.tsx
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 6: Prove and run expanded/mobile notification coverage**
+
+With a pre-validated `TEST_DATABASE_URL`, run:
+
+```powershell
+$list = npx playwright test --config playwright.config.ts e2e/notifications.spec.ts --project=expanded --project=mobile-lg --list | Out-String
+if ($list -notmatch '\[expanded\].*notifications\.spec\.ts' -or
+    $list -notmatch '\[mobile-lg\].*notifications\.spec\.ts') {
+  throw 'Notification E2E was not listed for expanded and mobile-lg'
+}
+```
+
+Expected: both project/file patterns are listed.
+
+- [ ] **Step 7: Verify lifecycle, route persistence and backend ack contract**
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/notification-controller.test.ts tests/unit/notification-bell.test.tsx tests/unit/presentation-coordinator.test.tsx tests/unit/notification-service.test.ts
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Then run with a pre-validated isolated `TEST_DATABASE_URL`:
 
 ```powershell
-npm run build
-npx tsx scripts/run-e2e.ts e2e/notifications.spec.ts --project=mobile-kyiv --project=desktop-kyiv
+npx tsx scripts/run-e2e.ts e2e/notifications.spec.ts --project=expanded --project=mobile-lg
 npm run test:integration
 ```
 
 Expected: polling/dedupe/ack integration remains green; badge, retained list,
 toast and dismiss change independently; every modal owner suppresses toasts.
 
-- [ ] **Step 6: Commit only Task 9 paths**
+- [ ] **Step 8: Commit only Task 9 paths**
 
 ```powershell
-git add src/components/app/notification-controller.tsx src/components/app/notification-center.tsx src/components/app/notification-bell.tsx src/components/app/app-shell.tsx src/components/app/presentation-coordinator.tsx src/app/styles/notifications.css tests/unit/notification-controller.test.ts tests/unit/notification-bell.test.tsx tests/unit/presentation-coordinator.test.tsx e2e/notifications.spec.ts
+git add src/components/app/notification-controller.tsx src/components/app/notification-center.tsx src/components/app/notification-bell.tsx src/components/app/app-shell.tsx src/components/app/presentation-coordinator.tsx src/app/styles/manifest.css src/app/styles/notifications.css src/app/globals.css tests/unit/notification-controller.test.ts tests/unit/notification-bell.test.tsx tests/unit/presentation-coordinator.test.tsx e2e/notifications.spec.ts
 git commit -m "feat: separate notification lifecycle and presentation"
 ```
 
@@ -1678,6 +2182,8 @@ sibling Cancel action.
 - Create: `src/components/bookings/booking-groups.tsx`
 - Create: `src/app/styles/my-bookings.css`
 - Create: `tests/unit/booking-groups.test.ts`
+- Modify: `src/app/styles/manifest.css`
+- Modify: `src/app/globals.css`
 - Modify: `src/components/bookings/booking-list.tsx`
 - Modify: `src/app/(authenticated)/my-bookings/page.tsx`
 - Modify: `tests/unit/booking-list.test.tsx`
@@ -1746,31 +2252,65 @@ The row uses two grid columns: the `<Link>` owns date, time, title, room,
 status and all free area; Cancel owns a separate right action column. Do not
 overlay or nest controls and do not rely on `stopPropagation`.
 
-- [ ] **Step 4: Verify derived state, deep link and cancellation**
+- [ ] **Step 4: Load My Bookings styles and remove the history legacy selectors**
+
+Append `my-bookings.css` after `notifications.css` in `manifest.css`. Run the
+Task 10 unit/component tests with the grouped view loaded. After they pass,
+move `.booking-history-*`, `.booking-list*`, `.booking-status*` and
+`.booking-load-more*` from `globals.css` into `my-bookings.css`. Confirm no
+listed selector family remains in `globals.css`.
+
+```powershell
+npx vitest run --config vitest.config.ts tests/unit/booking-groups.test.ts tests/unit/booking-list.test.tsx tests/unit/cancel-booking-dialog.test.tsx
+```
+
+Expected before selector deletion: PASS.
+
+- [ ] **Step 5: Prove Task 10 lists desktop and mobile history/cancellation cases**
+
+With a pre-validated `TEST_DATABASE_URL`, run:
+
+```powershell
+$list = npx playwright test --config playwright.config.ts e2e/my-bookings.spec.ts e2e/cancellation.spec.ts --project=expanded --project=mobile-lg --list | Out-String
+$required = @(
+  '\[expanded\].*my-bookings\.spec\.ts',
+  '\[expanded\].*cancellation\.spec\.ts',
+  '\[mobile-lg\].*my-bookings\.spec\.ts',
+  '\[mobile-lg\].*cancellation\.spec\.ts'
+)
+$missing = @($required | Where-Object { $list -notmatch $_ })
+if ($missing.Count -gt 0) { throw "Missing scoped E2E evidence: $($missing -join ', ')" }
+```
+
+Expected: all four exact project/file patterns are listed.
+
+- [ ] **Step 6: Verify derived state, deep link and cancellation**
 
 Run:
 
 ```powershell
 npx vitest run --config vitest.config.ts tests/unit/booking-groups.test.ts tests/unit/booking-list.test.tsx tests/unit/cancel-booking-dialog.test.tsx
+npm run check:design-tokens
 npm run typecheck
 npm run lint
+npm run build
+git diff --check
 ```
 
 Then run with a pre-validated isolated `TEST_DATABASE_URL`:
 
 ```powershell
-npm run build
-npx tsx scripts/run-e2e.ts e2e/my-bookings.spec.ts e2e/cancellation.spec.ts --project=desktop-kyiv --project=mobile-kyiv
+npx tsx scripts/run-e2e.ts e2e/my-bookings.spec.ts e2e/cancellation.spec.ts --project=expanded --project=mobile-lg
 ```
 
 Expected: nearest row appears once, pagination dedupes by ID, deep link
 restores room/week/day/bookingId, row and Cancel keyboard behavior remain
 separate.
 
-- [ ] **Step 5: Commit only Task 10 paths**
+- [ ] **Step 7: Commit only Task 10 paths**
 
 ```powershell
-git add src/components/bookings/booking-groups.tsx src/components/bookings/booking-list.tsx 'src/app/(authenticated)/my-bookings/page.tsx' src/app/styles/my-bookings.css tests/unit/booking-groups.test.ts tests/unit/booking-list.test.tsx e2e/my-bookings.spec.ts
+git add src/components/bookings/booking-groups.tsx src/components/bookings/booking-list.tsx 'src/app/(authenticated)/my-bookings/page.tsx' src/app/styles/manifest.css src/app/styles/my-bookings.css src/app/globals.css tests/unit/booking-groups.test.ts tests/unit/booking-list.test.tsx e2e/my-bookings.spec.ts
 git commit -m "feat: redesign accessible booking history"
 ```
 
@@ -1778,25 +2318,36 @@ git commit -m "feat: redesign accessible booking history"
 
 ### Task 11: Complete States, Accessibility, Geometry and Final Evidence
 
-**Responsibility:** Close cross-surface loading/error/empty gaps, migrate the
-deterministic browser matrix, remove replaced legacy CSS only after coverage,
-and produce auditable before/after evidence. The controller performs the broad
-independent review after this task's scoped review.
+**Responsibility:** Close cross-surface loading/error/empty gaps, complete the
+already-established deterministic browser matrix, audit prior task-local CSS
+migrations and produce auditable before/after evidence. This task does not
+absorb selector migration owned by Tasks 2-10. The controller performs the
+broad independent review after this task's scoped review.
 
 **Files:**
 - Create: `e2e/accessibility.spec.ts`
 - Create: `e2e/geometry.spec.ts`
-- Create: `tests/unit/design-system-contract.test.ts`
+- Create: `scripts/check-design-contrast.ts`
+- Create: `tests/unit/design-contrast.test.ts`
 - Create: `docs/design/06-implementation-evidence.md`
-- Create: `docs/design/evidence/final/schedule-expanded-1440x900.png`
-- Create: `docs/design/evidence/final/schedule-medium-1024x768.png`
-- Create: `docs/design/evidence/final/schedule-tablet-768x1024.png`
-- Create: `docs/design/evidence/final/schedule-mobile-390x844.png`
-- Create: `docs/design/evidence/final/schedule-reflow-320x800.png`
-- Create: `docs/design/evidence/final/booking-mobile-390x844.png`
-- Create: `docs/design/evidence/final/my-bookings-mobile-390x844.png`
-- Create: `docs/design/evidence/final/auth-desktop-1440x900.png`
+- Create: `docs/design/evidence/final/schedule-settled-expanded-1440x900.png`
+- Create: `docs/design/evidence/final/booking-open-expanded-1440x900.png`
+- Create: `docs/design/evidence/final/schedule-settled-medium-1024x768.png`
+- Create: `docs/design/evidence/final/booking-open-medium-1024x768.png`
+- Create: `docs/design/evidence/final/schedule-settled-tablet-768x1024.png`
+- Create: `docs/design/evidence/final/booking-open-tablet-768x1024.png`
+- Create: `docs/design/evidence/final/schedule-settled-mobile-lg-390x844.png`
+- Create: `docs/design/evidence/final/booking-open-mobile-lg-390x844.png`
+- Create: `docs/design/evidence/final/schedule-settled-mobile-360x800.png`
+- Create: `docs/design/evidence/final/booking-open-mobile-360x800.png`
+- Create: `docs/design/evidence/final/schedule-settled-reflow-320x800.png`
+- Create: `docs/design/evidence/final/booking-open-reflow-320x800.png`
+- Create: `docs/design/evidence/final/auth-login-expanded-1440x900.png`
+- Create: `docs/design/evidence/final/my-bookings-mobile-lg-390x844.png`
+- Create: `docs/design/evidence/final/state-conflict-expanded-1440x900.png`
+- Create: `docs/design/evidence/final/state-notifications-mobile-lg-390x844.png`
 - Modify: `test-config/playwright-configs.ts`
+- Modify: `package.json`
 - Modify: `e2e/fixtures.ts`
 - Modify: `e2e/impact-map.ts`
 - Modify: `e2e/schedule.spec.ts`
@@ -1806,6 +2357,8 @@ independent review after this task's scoped review.
 - Modify: `e2e/transition.spec.ts`
 - Modify: `e2e/exploratory/schedule-visual.spec.ts`
 - Modify: `e2e/exploratory/mobile-booking.spec.ts`
+- Modify: `tests/unit/design-token-contract.test.ts`
+- Modify: `tests/unit/e2e-projects.test.ts`
 - Modify: `tests/unit/impact-map.test.ts`
 - Modify: `tests/unit/source-hygiene.test.ts`
 - Modify: `src/app/styles/base.css`
@@ -1818,18 +2371,22 @@ independent review after this task's scoped review.
 - Modify: `src/app/styles/notifications.css`
 - Modify: `src/app/styles/my-bookings.css`
 - Modify: `src/app/styles/auth.css`
+- Modify: `src/app/styles/manifest.css`
 - Modify: `src/app/globals.css`
 
 **Interfaces:**
 - Consumes: all Task 1-10 public component contracts and the unchanged test DB
   preflight.
-- Produces six deterministic Playwright projects:
-  `expanded`, `medium`, `tablet`, `mobile-lg`, `mobile`, `reflow`; a final
-  evidence report mapping AC-001 through AC-049 to tests and screenshots.
+- Produces final `geometry.spec.ts`/`accessibility.spec.ts` allocation across
+  the six projects established in Task 6; calculated token-contrast results;
+  and a final evidence report mapping AC-001 through AC-049 to tests,
+  screenshots and mandatory manual checks.
 
 - [ ] **Step 1: Write failing browser matrix and state assertions**
 
-Add projects with exact viewports:
+Extend each Task 6 responsive project's `testMatch` with
+`**/geometry.spec.ts` and `**/accessibility.spec.ts`; do not rename or recreate
+the projects. Assert their exact viewports remain:
 
 ```ts
 const responsiveProjects = [
@@ -1859,53 +2416,134 @@ refresh overlay, malformed schedule atomic error, conflict error/retry,
 start-unavailable, cancel error, notification empty and My Bookings independent
 states.
 
-- [ ] **Step 2: Write and run a deterministic CSS ownership test to confirm RED**
+- [ ] **Step 2: Write calculated contrast and final token-contract RED tests**
+
+Create `check-design-contrast.ts` to parse `tokens.css`, convert sRGB values to
+relative luminance and calculate `(lighter + 0.05) / (darker + 0.05)`. It
+exports:
 
 ```ts
-const componentStylePaths = [
-  'agenda.css',
-  'auth.css',
-  'booking-surface.css',
-  'my-bookings.css',
-  'notifications.css',
-  'schedule-layout.css',
-  'shell.css',
-  'timetable.css',
-  'ui.css',
-] as const;
+export type ContrastPair = {
+  foreground: string;
+  background: string;
+  kind: 'normal-text' | 'large-text' | 'non-text';
+  minimum: 3 | 4.5;
+};
 
-function readComponentStyleFiles(): string {
-  return componentStylePaths.map((name) => readFileSync(
-    resolve('src/app/styles', name),
-    'utf8',
-  )).join('\n');
-}
+export type ContrastResult = ContrastPair & {
+  foregroundValue: string;
+  backgroundValue: string;
+  ratio: number;
+  pass: boolean;
+};
 
-function allStyles(): string {
-  return [
-    readFileSync(resolve('src/app/styles/base.css'), 'utf8'),
-    readFileSync(resolve('src/app/styles/tokens.css'), 'utf8'),
-    readComponentStyleFiles(),
-  ].join('\n');
-}
-
-it('keeps literal colors in tokens and defines accessibility media gates', () => {
-  const componentCss = readComponentStyleFiles();
-  expect(componentCss).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-  expect(componentCss).not.toMatch(/\brgb\(/i);
-  expect(allStyles()).toContain('@media (prefers-reduced-motion: reduce)');
-  expect(allStyles()).toContain('@media (forced-colors: active)');
-});
+export function calculateContrastTable(
+  tokens: ReadonlyMap<string, string>,
+  pairs: readonly ContrastPair[],
+): readonly ContrastResult[];
 ```
+
+The required pair manifest is exhaustive for every semantic text/background
+and meaningful non-text use:
+
+```ts
+export const contrastPairs = [
+  {foreground: '--color-text', background: '--color-surface',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text', background: '--color-canvas',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text-muted', background: '--color-surface',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text-muted', background: '--color-canvas',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text-subtle', background: '--color-surface',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text-subtle', background: '--color-canvas',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-brand', background: '--color-surface',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-surface', background: '--color-brand',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-surface', background: '--color-brand-hover',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-surface', background: '--color-brand-pressed',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-selected-text', background: '--color-brand-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-info', background: '--color-info-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-success', background: '--color-success-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-warning', background: '--color-warning-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-danger', background: '--color-danger-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-surface', background: '--color-danger',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-conflict-text', background: '--color-danger-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-own-text', background: '--color-own-surface',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-other-text', background: '--color-info-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-current', background: '--color-current-soft',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-disabled-text', background: '--color-disabled-bg',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-border-control', background: '--color-surface',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-border-strong', background: '--color-surface',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-brand', background: '--color-brand-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-info', background: '--color-info-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-success', background: '--color-success-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-warning', background: '--color-warning-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-danger', background: '--color-danger-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-conflict-text', background: '--color-danger-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-own-border', background: '--color-own-surface',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-other-border', background: '--color-info-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-current', background: '--color-current-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-focus', background: '--color-surface',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-focus-outer', background: '--color-focus',
+    kind: 'non-text', minimum: 3},
+] as const satisfies readonly ContrastPair[];
+```
+
+`--color-surface-subtle` and `--color-border-subtle` are explicitly reported
+as decorative-only exclusions; disabled control boundaries are exempt from
+WCAG non-text contrast but their text/background pair remains measured. The
+script fails on a missing token, missing pair, ratio below threshold or
+non-hex token value and supports `--format markdown` for evidence.
+
+Add:
+
+```json
+"check:contrast": "tsx scripts/check-design-contrast.ts"
+```
+
+Extend `design-token-contract.test.ts` to require the complete manifest order,
+all five literal categories, the documented percentage/grid-count/zero
+allowlist, only the two raw `2px` focus declarations, and zero violations from
+`npm run check:design-tokens -- --include-legacy`.
 
 Run:
 
 ```powershell
-npx vitest run --config vitest.config.ts tests/unit/design-system-contract.test.ts
+npx vitest run --config vitest.config.ts tests/unit/design-token-contract.test.ts tests/unit/design-contrast.test.ts
 ```
 
-Expected: FAIL because legacy component rules still contain literal colors and
-the complete reduced-motion/forced-colors contracts are not yet centralized.
+Expected: RED until the contrast script/reporting and final manifest/token
+rules exist.
 
 - [ ] **Step 3: Add accessibility and geometry gates**
 
@@ -1916,19 +2554,23 @@ no color-only labels, live-region priority and no unexpected focus movement.
 `geometry.spec.ts` checks 7/3/2/1-day modes, six-hour visibility, expanded
 internal schedule scroll, long title at 96.85px day width, safe-area clearance,
 320px long room/full IANA `top <=296px`, no overlap and no horizontal overflow.
-The automated `reflow` project uses a 320 CSS-pixel viewport as the deterministic
-200% reflow equivalent. Actual Chrome 200% zoom remains a required manual gate
-in Step 6; neither gate enforces the normal-zoom 296px budget after zoom.
+The automated `reflow` project is explicitly `320x800` at Chrome 100% zoom.
+It is not evidence for browser zoom. Actual Chrome 200% starts from a physical
+`1440x900` window and is a separate mandatory manual gate in Step 6; the
+normal-zoom 296px budget applies only to the 320x800 100% fixture.
 
 Use `page.emulateMedia({reducedMotion: 'reduce', forcedColors: 'active'})` to
 assert computed system-color borders, 2px focus outline and zero-duration/no
-translate animation. Keep manual Windows High Contrast and keyboard walkthrough
-as report entries because browser automation cannot prove screen-reader output.
+translate animation. Automated checks supplement, but do not replace, the
+mandatory NVDA, actual zoom and Windows High Contrast walkthroughs.
 
 - [ ] **Step 4: Finish loading/error/empty CSS and remove only proven legacy**
 
 Add consistent skeleton, busy overlay, alert/retry and empty-state treatment to
-the owning CSS file. Add:
+the already-owning CSS file from the manifest table. This task may add only
+cross-surface state and accessibility rules; it must not move shell, auth,
+schedule, timetable, agenda, booking, notification or history selectors that
+an earlier task owned. Add:
 
 ```css
 @media (prefers-reduced-motion: reduce) {
@@ -1949,10 +2591,14 @@ the owning CSS file. Add:
 }
 ```
 
-Remove a legacy selector from `globals.css` only when `rg` proves no component
-uses it and the replacement unit/E2E assertion is green. Retain the Tailwind
-import only while a surviving component uses utility classes; if none remain,
-remove the import and confirm build output.
+Audit `globals.css` after the Task 2-10 migrations. It may contain only the
+Tailwind entry and selectors for a demonstrably surviving utility-based
+surface. If `rg` finds no utility classes, remove Tailwind and leave
+`globals.css` empty; keep its first manifest import stable. Any owner selector
+still present is a blocking finding returned to its owning task, not migrated
+here. Run `npm run check:design-tokens -- --include-legacy` to enforce zero
+governed literals across both manifest-owned sheets and the remaining legacy
+file.
 
 - [ ] **Step 5: Run the complete local command suite**
 
@@ -1960,13 +2606,23 @@ Run:
 
 ```powershell
 npm ci
+npm run db:generate
 npm run check:source
+npm run check:design-tokens -- --include-legacy
+npm run check:contrast
 npm run lint
 npm run typecheck
 npm test
 npm run test:coverage
 npm run build
 docker compose --env-file .env.example config --quiet
+```
+
+Generate the auditable contrast table without changing its pass/fail
+calculation:
+
+```powershell
+npx tsx scripts/check-design-contrast.ts --format markdown | Tee-Object test-results/token-contrast.md
 ```
 
 Then, with a pre-validated isolated `TEST_DATABASE_URL`:
@@ -1976,28 +2632,70 @@ npm run test:integration
 npm run test:e2e
 ```
 
-Expected: every command exits zero. Record exact test totals, duration and any
-non-blocking warning in `docs/design/06-implementation-evidence.md`.
+Expected: every command exits zero. Record `npm ci` and the immediately
+following `db:generate` as separate rows, exact test totals, contrast ratios,
+duration and any non-blocking warning in
+`docs/design/06-implementation-evidence.md`.
 
 - [ ] **Step 6: Perform the deterministic visual and accessibility walkthrough**
 
-Start the built application against the isolated test database, then inspect
-all six viewports in Chromium. Use keyboard-only navigation on auth, schedule,
-booking, cancellation, notification center and My Bookings. Repeat the reflow
-fixture at actual 200% zoom, reduced motion and Windows High Contrast.
+Start the built application against the isolated test database and perform
+these separate blocking gates:
 
-Capture the eight named PNG files only after semantic, state and geometry
-assertions pass. The report links each after screenshot to the matching
-baseline in `docs/design/evidence/baseline/`, lists viewport/timezone/seed and
-states why each image is evidence rather than the sole assertion.
+1. **Responsive 100% visual gate:** inspect `1440x900`, `1024x768`,
+   `768x1024`, `390x844`, `360x800` and `320x800` at Chrome 100%. For every
+   viewport, capture the settled schedule and the default 30-minute
+   booking-open state using the twelve exact filenames in Files.
+2. **Actual browser zoom gate:** reset the OS/browser window to `1440x900`,
+   set Chrome page zoom to actual 200% through Chrome UI, reload, and verify
+   auth, schedule, booking sheet/pane, cancellation and My Bookings have no
+   clipped text, incoherent overlap or unreachable control. Record physical
+   window, Chrome zoom indicator and pass/fail. Do not reuse the 320x800
+   screenshot as zoom evidence.
+3. **320px reflow gate:** return Chrome to 100%, set viewport `320x800`, use
+   the long-room + `America/Argentina/Buenos_Aires` fixture, and verify full
+   IANA text, `agenda-first-body-item.top <=296px`, no horizontal overflow and
+   a reachable full-screen booking sheet.
+4. **NVDA + Chrome gate (mandatory):** with NVDA browse/table navigation,
+   verify the timetable caption, day column headers and office row headers are
+   announced for occupied and free cells; same-zone and date-crossing slot
+   names include room/date/time/timezone; booking details and Cancel have
+   distinct names; booking/cancellation/notification dialogs announce role,
+   name and focus; conflict, refreshed-end, success and notification live
+   regions announce once at the specified priority. Record NVDA/Chrome
+   versions, exact scenario, spoken result summary and pass/fail. A failure is
+   release-blocking.
+5. **Keyboard gate:** complete auth, room filter, jump controls, default
+   booking, booking-to-cancellation handoff, notifications and My Bookings
+   without pointer input; record deterministic focus restoration.
+6. **Contrast/forced-color gate:** attach
+   `test-results/token-contrast.md` containing every required calculated pair,
+   then inspect all six viewport/state categories with Chrome forced colors
+   and Windows High Contrast. Verify boundaries, focus, own/other/current/
+   selected/conflict/invalid states and modal backdrop remain visible without
+   shadows or color alone.
+7. **Reduced-motion gate:** verify sheets, toasts, current state and spinner
+   remain understandable with animation disabled and no smooth auto-scroll.
+8. **VoiceOver spot check (optional):** run only when macOS hardware is
+   available; record `not available` without weakening the mandatory NVDA
+   result.
+
+After the twelve primary captures pass, capture the four additional named
+auth, My Bookings, conflict and notification images. The report links each
+image to the matching baseline where one exists and records viewport, zoom,
+timezone, seed, state and assertion source. Screenshots remain evidence, not
+the sole test.
 
 - [ ] **Step 7: Verify impact mapping, stale locators and final source ownership**
 
 Run:
 
 ```powershell
-npx vitest run --config vitest.config.ts tests/unit/impact-map.test.ts tests/unit/source-hygiene.test.ts tests/unit/playwright-agent-contract.test.ts
+npx vitest run --config vitest.config.ts tests/unit/design-token-contract.test.ts tests/unit/design-contrast.test.ts tests/unit/e2e-projects.test.ts tests/unit/impact-map.test.ts tests/unit/source-hygiene.test.ts tests/unit/playwright-agent-contract.test.ts
+npm run check:design-tokens -- --include-legacy
+npm run check:contrast
 rg -n "WeekGrid|DaySchedule|BookingDialog|CancelBookingDialog|role=\"grid\"|Meeting Room Booking|Schedule|My Bookings|Book |Cancel booking|Upcoming|Completed" src tests e2e
+rg -n "^@import" src/app/styles/manifest.css
 git diff --check
 git status --short
 ```
@@ -2005,11 +2703,13 @@ git status --short
 Expected: impact/source tests PASS; search results contain no deleted component
 imports, partial grid semantics or user-visible legacy English. Machine-level
 English in API tests remains allowed and is documented in the evidence report.
+Manifest output has exactly twelve imports in the Global Style Manifest order;
+`globals.css` has no selector family assigned to Tasks 2-10.
 
 - [ ] **Step 8: Commit only final hardening and evidence paths**
 
 ```powershell
-git add test-config/playwright-configs.ts e2e/fixtures.ts e2e/impact-map.ts e2e/schedule.spec.ts e2e/mobile.spec.ts e2e/locale.spec.ts e2e/timezone.spec.ts e2e/transition.spec.ts e2e/accessibility.spec.ts e2e/geometry.spec.ts e2e/exploratory/schedule-visual.spec.ts e2e/exploratory/mobile-booking.spec.ts tests/unit/design-system-contract.test.ts tests/unit/impact-map.test.ts tests/unit/source-hygiene.test.ts src/app/styles/base.css src/app/styles/ui.css src/app/styles/shell.css src/app/styles/schedule-layout.css src/app/styles/timetable.css src/app/styles/agenda.css src/app/styles/booking-surface.css src/app/styles/notifications.css src/app/styles/my-bookings.css src/app/styles/auth.css src/app/globals.css docs/design/06-implementation-evidence.md docs/design/evidence/final
+git add scripts/check-design-contrast.ts package.json test-config/playwright-configs.ts e2e/fixtures.ts e2e/impact-map.ts e2e/schedule.spec.ts e2e/mobile.spec.ts e2e/locale.spec.ts e2e/timezone.spec.ts e2e/transition.spec.ts e2e/accessibility.spec.ts e2e/geometry.spec.ts e2e/exploratory/schedule-visual.spec.ts e2e/exploratory/mobile-booking.spec.ts tests/unit/design-token-contract.test.ts tests/unit/design-contrast.test.ts tests/unit/e2e-projects.test.ts tests/unit/impact-map.test.ts tests/unit/source-hygiene.test.ts src/app/styles/manifest.css src/app/styles/base.css src/app/styles/ui.css src/app/styles/shell.css src/app/styles/schedule-layout.css src/app/styles/timetable.css src/app/styles/agenda.css src/app/styles/booking-surface.css src/app/styles/notifications.css src/app/styles/my-bookings.css src/app/styles/auth.css src/app/globals.css docs/design/06-implementation-evidence.md docs/design/evidence/final/schedule-settled-expanded-1440x900.png docs/design/evidence/final/booking-open-expanded-1440x900.png docs/design/evidence/final/schedule-settled-medium-1024x768.png docs/design/evidence/final/booking-open-medium-1024x768.png docs/design/evidence/final/schedule-settled-tablet-768x1024.png docs/design/evidence/final/booking-open-tablet-768x1024.png docs/design/evidence/final/schedule-settled-mobile-lg-390x844.png docs/design/evidence/final/booking-open-mobile-lg-390x844.png docs/design/evidence/final/schedule-settled-mobile-360x800.png docs/design/evidence/final/booking-open-mobile-360x800.png docs/design/evidence/final/schedule-settled-reflow-320x800.png docs/design/evidence/final/booking-open-reflow-320x800.png docs/design/evidence/final/auth-login-expanded-1440x900.png docs/design/evidence/final/my-bookings-mobile-lg-390x844.png docs/design/evidence/final/state-conflict-expanded-1440x900.png docs/design/evidence/final/state-notifications-mobile-lg-390x844.png
 git commit -m "test: harden Roomwork redesign across viewports"
 ```
 
@@ -2049,14 +2749,22 @@ not delegated to Task 11's implementer.
   notifications, My Bookings, auth/verify, all states, WCAG, reflow and evidence.
 - Backend scope: no route, domain service, Prisma schema or migration is planned
   for modification; existing integration suites are explicit gates.
-- CSS ownership: token/base/UI rules are additive first; schedule, booking,
-  notification, history and auth selectors move only with their tested surface;
-  legacy removal is deferred to Task 11.
+- CSS ownership: `manifest.css` is the sole import owner with twelve ordered
+  imports. Tasks 2, 3, 5, 6, 7, 9 and 10 import their sheet and remove its
+  migrated legacy selectors after replacement tests in the same task; Task 8
+  moves dialog/cancellation selectors between existing owners. Task 11 audits
+  rather than performs those migrations.
 - Type consistency: `ResponsiveMode`, schedule data, projection results,
-  booking events, modal owner and notification events have one definition and
-  matching consumers.
+  `BookingRefreshOkEvent` without `ScheduleData`, modal owner and notification
+  events have one definition and matching consumers; the conflict effect
+  commits schedule before reducer options.
 - Test migration: every existing file named in spec section 27.2.1 is assigned
-  to a task; E2E evidence supplements state/semantic/geometry assertions.
+  to a task; Task 6 establishes exact responsive project matches and Tasks 7,
+  8, 9 and 10 prove project/file selection before running scoped E2E.
+- Evidence/accessibility: Task 11 names twelve required schedule/booking
+  viewport captures plus four additional states, separates 1440x900 Chrome
+  200% from 320x800 100%, and makes NVDA, calculated contrast and Windows High
+  Contrast blocking gates.
 - Execution safety: implementers are sequential, commits are path-scoped, test
   DB commands retain the existing fail-fast preflight, and no destructive
   database reset is prescribed.
