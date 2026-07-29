@@ -470,6 +470,29 @@ it.each([
   );
 });
 
+it.each([
+  ['.spinner { animation: spin 0.8s linear infinite; }', ['duration']],
+  ['.delayed { animation-delay: 180ms; }', ['duration']],
+  [
+    '.meta { font: 500 13px/18px var(--font-sans); }',
+    ['font-size', 'line-height'],
+  ],
+  [
+    '.workspace { grid-template: "rail main" 56px / 248px 1fr; }',
+    ['grid-track'],
+  ],
+  ['.rail { flex: 0 0 248px; }', ['flex-basis']],
+] as const)(
+  'extracts governed shorthand tokens from %s',
+  (css, expectedCategories) => {
+    expect(
+      findDesignTokenViolations({css, file: 'shorthand.css'}).map(
+        ({category}) => category,
+      ),
+    ).toEqual(expectedCategories);
+  },
+);
+
 it('allows only the documented structural and focus literals', () => {
   const css = `
     .structure {
@@ -591,21 +614,34 @@ Task 11 zero-legacy gate. It reports:
 - dimension literals in `inset*`, `top`, `right`, `bottom`, `left`,
   `width`, `height`, `inline-size`, `block-size` and every physical/logical
   `min-*`/`max-*` size;
-- track lengths in `grid-template-columns` and `grid-template-rows`;
-- `flex-basis` lengths;
+- track lengths in `grid-template-columns`, `grid-template-rows`,
+  `grid-template` and `grid`;
+- basis lengths in `flex-basis` and the `flex` shorthand;
 - lengths in physical/logical `border*` shorthands and
   `border-*-width`/`border-width`, plus `outline` shorthands, except the exact
   focus allowlist below;
-- `font-size`, `line-height` and `letter-spacing` literals;
+- `font-size`, `line-height` and `letter-spacing` literals, including the
+  size and optional `/ line-height` tokens in `font`;
 - `border-radius` literals;
 - `box-shadow`/`text-shadow` literals;
 - every length value in `transform` or the individual `translate` property,
   including nested `translate*()` and `perspective()` functions;
-- `transition*`/`animation-duration` time literals.
+- time literals in `transition`, `transition-duration`, `transition-delay`,
+  `animation`, `animation-duration` and `animation-delay`.
 
 Parse each declaration with a CSS value AST so literals nested inside
 `calc()`, `min()`, `max()`, `clamp()`, `minmax()` or transform functions cannot
-bypass classification. The allowlist is closed and property-aware:
+bypass classification. Property-specific shorthand classifiers extract tokens
+instead of accepting or rejecting the whole declaration: `animation` and
+`transition` classify each `<time>` token as `duration`; `font` classifies its
+`<font-size>` and optional slash-separated `<line-height>` while ignoring
+unitless weight `500`; `grid-template` and `grid` ignore area strings and
+classify non-allowlisted track lengths as `grid-track`; `flex` ignores
+unitless grow/shrink values and classifies its basis component as
+`flex-basis`. Return at most one violation per declaration/category, so the
+two governed lengths in one `grid-template` declaration produce one
+`grid-track` violation while one `font` declaration can produce both
+`font-size` and `line-height`. The allowlist is closed and property-aware:
 
 - exact `0` and `0px` are accepted in every governed declaration;
 - percentages, viewport units (`vw`, `vh`, `vi`, `vb`, `vmin`, `vmax`,
@@ -2625,6 +2661,10 @@ Extend `design-token-contract.test.ts` to require the complete manifest order;
 all thirteen literal categories (`color`, `spacing`, `dimension`,
 `grid-track`, `flex-basis`, `border`, `font-size`, `line-height`,
 `letter-spacing`, `radius`, `shadow`, `transform-length`, `duration`); the
+Task 1 shorthand paths `animation`, `animation-delay`, `font`,
+`grid-template`/`grid` and `flex` with expected existing-category results
+`duration`, `duration`, `font-size` + `line-height`, `grid-track` and
+`flex-basis`; the
 closed zero, structural percentage/viewport/container-unit, grid count/track,
 unitless `line-height: 1`, centering-transform and focus-geometry allowlist;
 only the two raw `2px` focus declarations; and zero violations from
