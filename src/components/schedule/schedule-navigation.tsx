@@ -50,6 +50,12 @@ export function ScheduleNavigation({
     `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}` :
     uiCopy.currentWeek;
   const days = Array.from({length: 7}, (_, index) => start.plus({days: index}));
+  const selectedDayIndex = Math.max(0, days.findIndex((day) =>
+    day.toFormat('yyyy-LL-dd') === selectedDay));
+  const mobileDateStart = Math.min(
+    Math.max(selectedDayIndex - 1, 0),
+    Math.max(days.length - 3, 0),
+  );
   const selectedJumpDay = days.some((day) =>
     day.toFormat('yyyy-LL-dd') === selectedDay) ? selectedDay : weekStart;
   const slots = officeDaySlotStarts({
@@ -101,10 +107,18 @@ export function ScheduleNavigation({
         <p aria-live="polite" className="week-label">{weekLabel}</p>
       </div>
       <div aria-label={uiCopy.officeWeekDates} className="schedule-date-strip" role="list">
-        {days.map((day) => {
+        {days.map((day, index) => {
           const value = day.toFormat('yyyy-LL-dd');
           return (
-            <div key={value} role="listitem">
+            <div
+              data-mobile-date-visible={
+                index >= mobileDateStart && index < mobileDateStart + 3 ?
+                  'true' :
+                  'false'
+              }
+              key={value}
+              role="listitem"
+            >
               <button
                 aria-current={value === selectedDay ? 'date' : undefined}
                 aria-label={day.toFormat('cccc, LLLL d')}

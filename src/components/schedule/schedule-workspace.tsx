@@ -180,6 +180,7 @@ export function ScheduleWorkspace({
   );
   const [positionEpoch, setPositionEpoch] = useState(0);
   const hasSettledInitialLoad = useRef(false);
+  const positionedDayRef = useRef(selectedDay);
   const selectedRoomIdRef = useRef(selectedRoomId);
   const weekStartRef = useRef(weekStart);
   const selectedDayRef = useRef(selectedDay);
@@ -222,6 +223,12 @@ export function ScheduleWorkspace({
     weekStartRef.current = weekStart;
     selectedDayRef.current = selectedDay;
   }, [selectedDay, selectedRoomId, weekStart]);
+
+  useEffect(() => {
+    if (positionedDayRef.current === selectedDay) return;
+    positionedDayRef.current = selectedDay;
+    setPositionEpoch((epoch) => epoch + 1);
+  }, [selectedDay]);
 
   useEffect(() => {
     const nextWeekStart = normalizeWeekStart(
@@ -551,7 +558,6 @@ export function ScheduleWorkspace({
     linkedBookingIdRef.current = null;
     const nextDay = nextDayValue.toFormat('yyyy-LL-dd');
     if (nextDay === selectedDay) return;
-    setPositionEpoch((epoch) => epoch + 1);
     const nextWeek = nextDayValue.startOf('week').toFormat('yyyy-LL-dd');
     if (nextWeek !== weekStart) {
       conflictRefreshRequestRef.current = false;
@@ -580,9 +586,6 @@ export function ScheduleWorkspace({
       .setZone(officeTimeZone)
       .toFormat('yyyy-LL-dd');
     const currentWeek = currentOfficeWeek(officeTimeZone);
-    if (today !== selectedDay) {
-      setPositionEpoch((epoch) => epoch + 1);
-    }
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
     setConflictRefresh({status: 'idle'});
@@ -647,6 +650,8 @@ export function ScheduleWorkspace({
   function jumpTo(target: ScheduleJumpTarget) {
     if (target.officeDay !== selectedDay) {
       changeDay(target.officeDay);
+    } else {
+      setPositionEpoch((epoch) => epoch + 1);
     }
     setAgendaJumpStartsAt(target.startsAt);
   }

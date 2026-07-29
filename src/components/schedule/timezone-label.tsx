@@ -24,10 +24,15 @@ export function TimezoneLabel({
   }
 
   return (
-    <p className="timezone-label">
+    <p className="timezone-label timezone-notice" data-testid="timezone-notice">
       <Globe2 aria-hidden="true" className="size-4" />
-      {uiCopy.officeHours}: {hourLabel(officeOpenHour)}–
-      {hourLabel(officeCloseHour)} {officeTimeZone}
+      <span className="timezone-notice-content">
+        <span>
+          {uiCopy.officeHours}: {hourLabel(officeOpenHour)}–
+          {hourLabel(officeCloseHour)}
+        </span>
+        <span>{officeTimeZone}</span>
+      </span>
     </p>
   );
 }

@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import {readFileSync} from 'node:fs';
 import {cleanup, render, screen} from '@testing-library/react';
 import {Settings} from 'luxon';
 import {afterEach, describe, expect, it, vi} from 'vitest';
@@ -67,5 +68,36 @@ describe('ScheduleNavigation locale', () => {
     expect(screen.getByRole('option', {
       name: /28 лип.*23:00.*офіс.*29 лип.*09:00/,
     })).toHaveValue('2026-07-29T06:00:00.000Z');
+  });
+
+  it('keeps seven source dates while exposing three mobile date controls', () => {
+    render(
+      <ScheduleNavigation
+        onDayChange={vi.fn()}
+        onJump={vi.fn()}
+        onNextDay={vi.fn()}
+        onNextWeek={vi.fn()}
+        onPreviousDay={vi.fn()}
+        onPreviousWeek={vi.fn()}
+        onToday={vi.fn()}
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+        selectedDay="2026-07-29"
+        userTimeZone="Europe/Kyiv"
+        weekStart="2026-07-27"
+      />,
+    );
+
+    expect(document.querySelectorAll(
+      '.schedule-date-strip [role="listitem"]',
+    )).toHaveLength(7);
+    expect(document.querySelectorAll(
+      '[data-mobile-date-visible="true"]',
+    )).toHaveLength(3);
+
+    const css = readFileSync('src/app/styles/agenda.css', 'utf8');
+    expect(css).toMatch(/\.schedule-date-strip \{[\s\S]*repeat\(3,/);
+    expect(css).toMatch(/min-height: calc\(var\(--space-8\) \+ var\(--space-3\)\)/);
   });
 });

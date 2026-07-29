@@ -129,6 +129,30 @@
   overflow-wrap: anywhere;
 }
 
+@media (max-width: 599px) {
+  .schedule-date-strip {
+    grid-template-columns: repeat(3, minmax(var(--space-0), 1fr));
+    min-height: calc(var(--space-8) + var(--space-3));
+  }
+
+  .schedule-date-strip > [data-mobile-date-visible="false"] {
+    display: none;
+  }
+
+  .timezone-notice {
+    display: grid;
+    grid-template-columns: auto minmax(var(--space-0), 1fr);
+    align-items: start;
+    min-height: var(--space-5);
+    overflow-wrap: anywhere;
+  }
+
+  .timezone-notice-content {
+    display: grid;
+    min-width: var(--space-0);
+  }
+}
+
 @media (max-width: 899px) {
   .schedule-jump-controls {
     display: grid;

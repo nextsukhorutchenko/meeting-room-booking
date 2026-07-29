@@ -70,7 +70,11 @@ export function DayAgenda({
   });
 
   useLayoutEffect(() => {
-    if (!projection.ok || positionedEpoch.current === positionEpoch) return;
+    if (
+      !projection.ok ||
+      positionEpoch === 0 ||
+      positionedEpoch.current === positionEpoch
+    ) return;
     positionedEpoch.current = positionEpoch;
     const current = DateTime.fromISO(now, {setZone: true}).toUTC();
     const busyItems = projection.value.items.filter((item) =>

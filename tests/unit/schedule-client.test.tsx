@@ -19,6 +19,8 @@ const navigation = vi.hoisted(() => ({
   ),
 }));
 
+const scrollIntoView = vi.fn();
+
 vi.mock('next/navigation', () => ({
   useRouter: () => navigation.router,
   useSearchParams: () => navigation.searchParams,
@@ -144,12 +146,95 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     navigation.router.replace.mockReset();
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    scrollIntoView.mockReset();
   });
 
   afterEach(() => {
     cleanup();
     Settings.now = originalNow;
     vi.unstubAllGlobals();
+    scrollIntoView.mockReset();
+  });
+
+  it('positions a same-day jump once without moving focus', async () => {
+    setViewportWidth(320);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Existing booking'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    scrollIntoView.mockReset();
+    const focusedBeforeJump = screen.getByRole('button', {name: 'Перейти'});
+    focusedBeforeJump.focus();
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Час'), '2026-08-03T10:00:00.000Z');
+    await user.click(focusedBeforeJump);
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(focusedBeforeJump);
+  });
+
+  it('positions once when week navigation changes the office day', async () => {
+    setViewportWidth(320);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('weekStart=2026-08-03')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'First week'));
+      }
+      if (url.includes('weekStart=2026-08-10')) {
+        return Promise.resolve(scheduleResponse('2026-08-10', 'Second week'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    scrollIntoView.mockReset();
+    await userEvent.setup().click(
+      screen.getByRole('button', {name: 'Наступний тиждень'}),
+    );
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('positions once when URL state restores a different office day', async () => {
+    setViewportWidth(320);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Popstate booking'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const view = renderScheduleClient();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    scrollIntoView.mockReset();
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
+    );
+    view.rerender(
+      <ScheduleWorkspace
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+      />,
+    );
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
   });
 
   it('ignores a superseded schedule response and does not refetch rooms', async () => {
