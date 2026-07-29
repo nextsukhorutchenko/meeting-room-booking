@@ -1,12 +1,19 @@
 'use client';
 
 import {X} from 'lucide-react';
+import {createPortal} from 'react-dom';
 import {
+  useCallback,
   useEffect,
   useRef,
+  useState,
   type ReactNode,
   type RefObject,
 } from 'react';
+import {
+  usePresentationSurface,
+  type ModalOwner,
+} from '../app/presentation-coordinator';
 
 type DialogProps = {
   children: ReactNode;
@@ -14,6 +21,7 @@ type DialogProps = {
   label: string;
   onClose(): void;
   open: boolean;
+  owner?: Exclude<ModalOwner, 'none'>;
 };
 
 const focusableSelector = [
@@ -30,19 +38,26 @@ export function Dialog({
   label,
   onClose,
   open,
+  owner,
 }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
+  const setPanelRef = useCallback((element: HTMLDivElement | null) => {
+    panelRef.current = element;
+    setPanel((current) => current === element ? current : element);
+  }, []);
+  const ownerActive = usePresentationSurface(
+    owner ?? 'cancellation',
+    panel,
+    initialFocusRef,
+  );
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const previousFocus = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    const initialFocus = initialFocusRef?.current ??
-      panel?.querySelector<HTMLElement>(focusableSelector);
-    initialFocus?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -83,7 +98,6 @@ export function Dialog({
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
     };
   }, [initialFocusRef, onClose, open]);
 
@@ -91,13 +105,13 @@ export function Dialog({
     return null;
   }
 
-  return (
+  const dialog = (
     <div className="dialog-backdrop">
       <div
         aria-label={label}
-        aria-modal="true"
+        aria-modal={owner ? ownerActive : true}
         className="dialog-panel"
-        ref={panelRef}
+        ref={setPanelRef}
         role="dialog"
         tabIndex={-1}
       >
@@ -117,4 +131,5 @@ export function Dialog({
       </div>
     </div>
   );
+  return typeof document === 'undefined' ? dialog : createPortal(dialog, document.body);
 }

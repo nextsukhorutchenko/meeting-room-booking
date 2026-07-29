@@ -1,7 +1,12 @@
 'use client';
 
 import {X} from 'lucide-react';
-import {useEffect, useRef} from 'react';
+import {createPortal} from 'react-dom';
+import {useCallback, useState} from 'react';
+import {
+  usePresentationCoordinatorAvailable,
+  usePresentationSurface,
+} from '../app/presentation-coordinator';
 import {uiCopy} from '../../lib/i18n/ui-copy';
 import {BookingComposer, type BookingComposerProps} from './booking-composer';
 import type {BookingControllerState} from './booking-controller';
@@ -27,48 +32,35 @@ export function AdaptiveBookingSurface({
   onTitleChange,
   state,
 }: AdaptiveBookingSurfaceProps) {
-  const panelRef = useRef<HTMLElement>(null);
+  const [panel, setPanel] = useState<HTMLElement | null>(null);
   const isOpen = isBookingDraft(state) || state.status === 'details';
-  const selectionGeneration = isBookingDraft(state) ?
-    state.selectionGeneration : null;
   const compact = mode === 'tablet' || mode === 'mobile';
   const hidden = !isOpen && mode !== 'expanded';
   const label = isBookingDraft(state) ? `Бронювання: ${state.selection.roomName}` :
     uiCopy.bookingDetails;
-
-  useEffect(() => {
-    if (selectionGeneration === null) return;
-    panelRef.current?.querySelector<HTMLInputElement>('[name="title"]')?.focus();
-  }, [selectionGeneration]);
-
-  useEffect(() => {
-    if (!isBookingDraft(state)) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && state.status === 'editing') {
-        event.preventDefault();
-        onClose();
-      }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, state]);
-
-  return (
+  const ownerActive = usePresentationSurface('booking', panel);
+  const hasCoordinator = usePresentationCoordinatorAvailable();
+  const modalActive = compact && isOpen && ownerActive;
+  const setPanelRef = useCallback((element: HTMLElement | null) => {
+    setPanel((current) => current === element ? current : element);
+  }, []);
+  const surface = (
     <div
-      aria-hidden={hidden || undefined}
+      aria-hidden={hidden || (compact && isOpen && !modalActive) || undefined}
       className="booking-surface"
       data-mode={mode}
       data-open={isOpen}
+      data-suspended={compact && isOpen && !modalActive ? 'true' : undefined}
       hidden={hidden}
       inert={hidden || undefined}
     >
       <div className="booking-surface-backdrop" />
       <section
         aria-label={label}
-        aria-modal={compact && isOpen ? true : undefined}
+        aria-modal={modalActive || undefined}
         className="booking-surface-panel"
-        ref={panelRef}
-        role={compact && isOpen ? 'dialog' : undefined}
+        ref={setPanelRef}
+        role={modalActive ? 'dialog' : undefined}
       >
         <div className="booking-surface-heading">
           <h2>{isBookingDraft(state) ? uiCopy.book : uiCopy.bookingDetails}</h2>
@@ -105,4 +97,7 @@ export function AdaptiveBookingSurface({
       </section>
     </div>
   );
+  return hasCoordinator && compact && isOpen && typeof document !== 'undefined' ?
+    createPortal(surface, document.body) :
+    surface;
 }

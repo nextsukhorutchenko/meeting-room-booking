@@ -2,8 +2,12 @@
 
 import {CalendarDays, ListChecks} from 'lucide-react';
 import Link from 'next/link';
-import type {ReactElement, ReactNode} from 'react';
+import {useRef, type ReactElement, type ReactNode} from 'react';
 import {AppHeader} from './app-header';
+import {
+  PresentationCoordinator,
+  usePresentationCoordinator,
+} from './presentation-coordinator';
 
 export type AppShellProps = {
   children: ReactNode;
@@ -12,7 +16,24 @@ export type AppShellProps = {
 
 export function AppShell({children, user}: AppShellProps): ReactElement {
   return (
-    <div className="app-shell">
+    <PresentationCoordinator>
+      <AppShellContent user={user}>{children}</AppShellContent>
+    </PresentationCoordinator>
+  );
+}
+
+function AppShellContent({children, user}: AppShellProps): ReactElement {
+  const backgroundRef = useRef<HTMLDivElement>(null);
+  const {registerBackground} = usePresentationCoordinator();
+
+  return (
+    <div
+      className="app-shell"
+      ref={(element) => {
+        backgroundRef.current = element;
+        registerBackground(element);
+      }}
+    >
       <a className="skip-link" href="#main-content">
         Перейти до основного вмісту
       </a>

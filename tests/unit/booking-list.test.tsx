@@ -10,6 +10,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {BookingList} from '../../src/components/bookings/booking-list';
+import {PresentationCoordinator} from '../../src/components/app/presentation-coordinator';
 
 type BookingItem = {
   id: string;
@@ -74,7 +75,9 @@ function requestUrl(input: RequestInfo | URL): URL {
 }
 
 function renderBookingList() {
-  return render(<BookingList officeTimeZone="Europe/Kyiv" />);
+  return render(<PresentationCoordinator>
+    <BookingList officeTimeZone="Europe/Kyiv" />
+  </PresentationCoordinator>);
 }
 
 describe('BookingList', () => {

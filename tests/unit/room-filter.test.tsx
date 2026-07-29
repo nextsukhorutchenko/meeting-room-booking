@@ -6,6 +6,8 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import {RoomFilterSurface} from
   '../../src/components/schedule/room-filter-surface';
 import {RoomPicker} from '../../src/components/schedule/room-picker';
+import {PresentationCoordinator} from '../../src/components/app/presentation-coordinator';
+import {usePresentationCoordinator} from '../../src/components/app/presentation-coordinator';
 
 const rooms = [
   {id: 'maple', name: 'Maple', floor: 1, capacity: 4},
@@ -15,17 +17,30 @@ const rooms = [
 afterEach(cleanup);
 
 function RoomFilterHarness() {
+  return <PresentationCoordinator><RoomFilterContent /></PresentationCoordinator>;
+}
+
+function RoomFilterContent() {
   const [isOpen, setIsOpen] = useState(false);
+  const {request} = usePresentationCoordinator();
   return (
     <>
-      <button onClick={() => setIsOpen(true)} type="button">
+      <button onClick={(event) => {
+        if (request({trigger: event.currentTarget, type: 'OPEN_FILTER'}) === 'ACCEPTED') {
+          setIsOpen(true);
+        }
+      }} type="button">
         Відкрити фільтри переговорних
       </button>
       <button type="button">Фонова команда</button>
       <RoomFilterSurface
         isOpen={isOpen}
         minCapacity=""
-        onClose={() => setIsOpen(false)}
+        onClose={() => {
+          if (request({type: 'CLOSE_FILTER'}) === 'ACCEPTED') {
+            setIsOpen(false);
+          }
+        }}
         onMinCapacityChange={vi.fn()}
         onRoomChange={vi.fn()}
         rooms={rooms}
@@ -113,9 +128,9 @@ describe('RoomPicker', () => {
       name: 'Переговорна',
     });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(roomSelector).toHaveFocus();
+    expect(screen.getByRole('button', {name: 'Close dialog'})).toHaveFocus();
 
-    screen.getByRole('button', {name: 'Закрити'}).focus();
+    screen.getByRole('button', {name: 'Close dialog'}).focus();
     await user.tab();
     expect(roomSelector).toHaveFocus();
 

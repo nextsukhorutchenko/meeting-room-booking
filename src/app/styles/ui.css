@@ -90,6 +90,39 @@
   font-size: var(--type-meta);
 }
 
+.dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--color-text) 48%, transparent);
+  padding: var(--space-2);
+}
+
+.dialog-panel {
+  width: min(100%, calc(var(--space-7) * 8));
+  border: var(--border-default) solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-popover);
+}
+
+.dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.dialog-heading h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--type-subsection);
+}
+
 .dialog-alert {
   margin: 0;
   border-left: var(--border-emphasis) solid var(--color-danger);
@@ -132,6 +165,11 @@
 .free-slot-button:focus-visible,
 .booking-cancel-button:focus-visible,
 .destructive-button:focus-visible {
+  outline: var(--border-emphasis) solid var(--color-focus);
+  outline-offset: var(--border-emphasis);
+}
+
+.dialog-panel:focus-visible {
   outline: var(--border-emphasis) solid var(--color-focus);
   outline-offset: var(--border-emphasis);
 }

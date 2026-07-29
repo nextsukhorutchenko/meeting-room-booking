@@ -56,6 +56,34 @@
   min-width: 0;
 }
 
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.cancellation-dialog-copy {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--type-compact);
+  line-height: var(--type-body-line-height);
+  overflow-wrap: anywhere;
+}
+
+.cancellation-dialog-copy strong {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+  vertical-align: bottom;
+}
+
+.booking-surface[data-suspended="true"] {
+  visibility: hidden;
+}
+
 .booking-summary {
   display: grid;
   gap: var(--space-1);

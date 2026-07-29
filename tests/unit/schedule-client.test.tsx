@@ -11,6 +11,7 @@ import {DateTime, Settings} from 'luxon';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ScheduleWorkspace} from
   '../../src/components/schedule/schedule-workspace';
+import {PresentationCoordinator} from '../../src/components/app/presentation-coordinator';
 
 const navigation = vi.hoisted(() => ({
   router: {push: vi.fn(), replace: vi.fn()},
@@ -124,11 +125,13 @@ function setViewportWidth(width: number) {
 
 function renderScheduleClient() {
   return render(
-    <ScheduleWorkspace
-      officeCloseHour={19}
-      officeOpenHour={9}
-      officeTimeZone="Europe/Kyiv"
-    />,
+    <PresentationCoordinator>
+      <ScheduleWorkspace
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+      />
+    </PresentationCoordinator>,
   );
 }
 
@@ -227,11 +230,11 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
     );
     view.rerender(
-      <ScheduleWorkspace
+      <PresentationCoordinator><ScheduleWorkspace
         officeCloseHour={19}
         officeOpenHour={9}
         officeTimeZone="Europe/Kyiv"
-      />,
+      /></PresentationCoordinator>,
     );
 
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
@@ -346,11 +349,11 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       '&bookingId=active-popstate',
     );
     view.rerender(
-      <ScheduleWorkspace
+      <PresentationCoordinator><ScheduleWorkspace
         officeCloseHour={19}
         officeOpenHour={9}
         officeTimeZone="Europe/Kyiv"
-      />,
+      /></PresentationCoordinator>,
     );
 
     const activeBookings = await screen.findAllByRole('button', {
@@ -450,11 +453,11 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       'roomId=oak&weekStart=2026-08-03&day=2026-08-03&bookingId=other-booking',
     );
     view.rerender(
-      <ScheduleWorkspace
+      <PresentationCoordinator><ScheduleWorkspace
         officeCloseHour={19}
         officeOpenHour={9}
         officeTimeZone="Europe/Kyiv"
-      />,
+      /></PresentationCoordinator>,
     );
     expect(screen.getByRole('button', {name: /Чуже бронювання/}))
       .toHaveAttribute('data-highlighted', 'true');
@@ -470,11 +473,11 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       'roomId=oak&weekStart=2026-08-03&day=2026-08-03&bookingId=own-booking',
     );
     view.rerender(
-      <ScheduleWorkspace
+      <PresentationCoordinator><ScheduleWorkspace
         officeCloseHour={19}
         officeOpenHour={9}
         officeTimeZone="Europe/Kyiv"
-      />,
+      /></PresentationCoordinator>,
     );
     expect(screen.getByRole('button', {name: /Власне бронювання/}))
       .toHaveAttribute('data-highlighted', 'true');
@@ -504,10 +507,6 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     expect(screen.getByRole('dialog', {
       name: 'Фільтри переговорних',
     })).toBeVisible();
-    expect(
-      document.querySelector('.schedule-workspace-layout')?.parentElement,
-    ).toHaveAttribute('inert');
-
     await act(async () => setViewportWidth(1440));
 
     expect(screen.queryByRole('dialog', {

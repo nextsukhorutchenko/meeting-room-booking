@@ -22,9 +22,10 @@ import type {
   BookingPage,
 } from '../../modules/bookings/booking.types';
 import {
-  CancelBookingDialog,
+  CancellationDialog,
   type CancellationSelection,
-} from './cancel-booking-dialog';
+} from './cancellation-dialog';
+import {usePresentationCoordinator} from '../app/presentation-coordinator';
 import {Toast} from '../ui/toast';
 
 type Scope = 'future' | 'past';
@@ -182,7 +183,7 @@ type BookingSectionProps = {
   heading: string;
   loadingText: string;
   officeTimeZone: string;
-  onCancel?(booking: CancellationSelection): void;
+  onCancel?(booking: CancellationSelection, invoker: HTMLElement): void;
   onLoadMore(): void;
   state: SectionState;
   userTimeZone: string;
@@ -263,10 +264,10 @@ function BookingSection({
                   <button
                     aria-label={`Cancel ${booking.title}`}
                     className="booking-list-cancel"
-                    onClick={() => onCancel({
+                    onClick={(event) => onCancel({
                       id: booking.id,
                       title: booking.title,
-                    })}
+                    }, event.currentTarget)}
                     title="Cancel booking"
                     type="button"
                   >
@@ -306,10 +307,14 @@ type BookingListProps = {
 };
 
 export function BookingList({officeTimeZone}: BookingListProps) {
+  const {modalOwner, request} = usePresentationCoordinator();
   const [future, setFuture] = useState<SectionState>(initialState);
   const [past, setPast] = useState<SectionState>(initialState);
-  const [cancellation, setCancellation] =
-    useState<CancellationSelection | null>(null);
+  const [cancellation, setCancellation] = useState<{
+    booking: CancellationSelection;
+    error: string;
+    pending: boolean;
+  } | null>(null);
   const [toastMessage, setToastMessage] = useState('');
   const readBrowserTimeZone = useCallback(
     () => getBrowserTimeZone(officeTimeZone),
@@ -325,6 +330,8 @@ export function BookingList({officeTimeZone}: BookingListProps) {
     past: false,
   });
   const mounted = useRef(true);
+  const cancellationRequestIdRef = useRef(0);
+  const activeCancellationRequestIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -417,16 +424,64 @@ export function BookingList({officeTimeZone}: BookingListProps) {
     }
   }
 
-  function handleCancelled() {
-    if (!cancellation) {
-      return;
-    }
-    setFuture((state) => ({
-      ...state,
-      items: state.items.filter((booking) => booking.id !== cancellation.id),
-    }));
-    setCancellation(null);
-    setToastMessage('Booking cancelled');
+  function openCancellation(booking: CancellationSelection, invoker: HTMLElement) {
+    if (request({
+      origin: {invoker, kind: 'history'},
+      type: 'OPEN_CANCEL_DIRECT',
+    }) !== 'ACCEPTED') return;
+    setCancellation({booking, error: '', pending: false});
+  }
+
+  function closeCancellation(command: 'KEEP_CANCEL' | 'CANCEL_ERROR_CLOSE') {
+    if (cancellation?.pending) return;
+    if (request({type: command}) === 'ACCEPTED') setCancellation(null);
+  }
+
+  function confirmCancellation() {
+    if (!cancellation || activeCancellationRequestIdRef.current !== null) return;
+    const requestId = ++cancellationRequestIdRef.current;
+    const bookingId = cancellation.booking.id;
+    activeCancellationRequestIdRef.current = requestId;
+    setCancellation((current) => current?.booking.id === bookingId ? {
+      ...current,
+      error: '',
+      pending: true,
+    } : current);
+    void (async () => {
+      try {
+        const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+          method: 'DELETE',
+        });
+        if (activeCancellationRequestIdRef.current !== requestId) return;
+        if (!response.ok) {
+          setCancellation((current) => current?.booking.id === bookingId ? {
+            ...current,
+            error: 'Не вдалося скасувати бронювання.',
+            pending: false,
+          } : current);
+          return;
+        }
+        activeCancellationRequestIdRef.current = null;
+        setFuture((state) => ({
+          ...state,
+          items: state.items.filter((booking) => booking.id !== bookingId),
+        }));
+        setCancellation(null);
+        request({type: 'CANCEL_SUCCESS'});
+        setToastMessage('Booking cancelled');
+      } catch {
+        if (activeCancellationRequestIdRef.current !== requestId) return;
+        setCancellation((current) => current?.booking.id === bookingId ? {
+          ...current,
+          error: 'Не вдалося скасувати бронювання.',
+          pending: false,
+        } : current);
+      } finally {
+        if (activeCancellationRequestIdRef.current === requestId) {
+          activeCancellationRequestIdRef.current = null;
+        }
+      }
+    })();
   }
 
   return (
@@ -436,7 +491,7 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         heading="Upcoming bookings"
         loadingText="Loading upcoming bookings"
         officeTimeZone={officeTimeZone}
-        onCancel={setCancellation}
+        onCancel={openCancellation}
         onLoadMore={() => void loadMore('future', future, setFuture)}
         state={future}
         userTimeZone={userTimeZone}
@@ -450,11 +505,14 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         state={past}
         userTimeZone={userTimeZone}
       />
-      {cancellation ? (
-        <CancelBookingDialog
-          booking={cancellation}
-          onCancelled={handleCancelled}
-          onClose={() => setCancellation(null)}
+      {cancellation && modalOwner === 'cancellation' ? (
+        <CancellationDialog
+          booking={cancellation.booking}
+          error={cancellation.error}
+          onCloseError={() => closeCancellation('CANCEL_ERROR_CLOSE')}
+          onConfirm={confirmCancellation}
+          onKeep={() => closeCancellation('KEEP_CANCEL')}
+          pending={cancellation.pending}
         />
       ) : null}
       {toastMessage ? <Toast message={toastMessage} /> : null}
