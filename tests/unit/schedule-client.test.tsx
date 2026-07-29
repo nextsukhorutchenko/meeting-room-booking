@@ -1264,9 +1264,12 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     }));
     await user.type(screen.getByLabelText('Назва'), 'Планування');
     await user.click(screen.getByRole('button', {name: 'Забронювати'}));
-    await user.click(screen.getByRole('button', {
+    const secondSlot = screen.getByRole('button', {
       name: /Забронювати вівторок.*13:00/i,
-    }));
+    });
+
+    expect(secondSlot).toBeDisabled();
+    await user.click(secondSlot);
 
     expect(screen.getByLabelText('Назва')).toHaveValue('Планування');
     expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
@@ -1298,9 +1301,12 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     await user.type(screen.getByLabelText('Назва'), 'Планування');
     await user.click(screen.getByRole('button', {name: 'Забронювати'}));
     await waitFor(() => expect(scheduleRequests).toBe(2));
-    await user.click(screen.getByRole('button', {
+    const secondSlot = screen.getByRole('button', {
       name: /Забронювати вівторок.*13:00/i,
-    }));
+    });
+
+    expect(secondSlot).toBeDisabled();
+    await user.click(secondSlot);
 
     expect(screen.getByLabelText('Назва')).toHaveValue('Планування');
     expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();

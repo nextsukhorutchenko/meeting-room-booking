@@ -28,6 +28,7 @@ export type DayAgendaProps = {
   positionEpoch: number;
   room: RoomSummary;
   selectedStartsAt: string | null;
+  slotSelectionDisabled: boolean;
   userTimeZone: string;
   weekStart: string;
 };
@@ -52,6 +53,7 @@ export function DayAgenda({
   positionEpoch,
   room,
   selectedStartsAt,
+  slotSelectionDisabled,
   userTimeZone,
   weekStart,
 }: DayAgendaProps) {
@@ -194,7 +196,7 @@ export function DayAgenda({
                   userTimeZone,
                 })}
                 className="day-agenda-slot-button"
-                disabled={past}
+                disabled={past || slotSelectionDisabled}
                 onClick={(event) => onSelectSlot({
                   dateLabel: formatDateLong(startsAt, userTimeZone),
                   roomId: room.id,

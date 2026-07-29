@@ -29,6 +29,7 @@ const props = {
   positionEpoch: 1,
   room: {id: 'oak', name: 'Oak', floor: 3, capacity: 8},
   selectedStartsAt: null,
+  slotSelectionDisabled: false,
   userTimeZone: 'America/New_York',
   weekStart: '2026-07-27',
 };
@@ -58,6 +59,22 @@ describe('DayAgenda', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(focusedBeforeRender);
     focusedBeforeRender.remove();
+  });
+
+  it('disables free-slot actions while selection is pending and reenables them', () => {
+    const {container, rerender} = render(
+      <DayAgenda {...props} slotSelectionDisabled />,
+    );
+    const freeSlots = container.querySelectorAll<HTMLButtonElement>(
+      '.day-agenda-free .day-agenda-slot-button',
+    );
+
+    expect(freeSlots.length).toBeGreaterThan(0);
+    freeSlots.forEach((slot) => expect(slot).toBeDisabled());
+
+    rerender(<DayAgenda {...props} slotSelectionDisabled={false} />);
+
+    freeSlots.forEach((slot) => expect(slot).toBeEnabled());
   });
 });
 

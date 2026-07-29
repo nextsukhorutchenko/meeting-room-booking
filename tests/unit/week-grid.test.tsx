@@ -54,6 +54,7 @@ function renderTimetable(input: {
       onOpenDetails={vi.fn()}
       onSelectSlot={input.onSelectSlot ?? vi.fn()}
       room={{id: 'oak', name: 'Oak', floor: 1, capacity: 6}}
+      slotSelectionDisabled={false}
       userTimeZone={input.userTimeZone ?? 'America/New_York'}
       visibleDays={input.visibleDays ?? sevenDays}
       weekStart={input.weekStart ?? '2026-03-02'}

@@ -37,6 +37,7 @@ export type TimetableProps = {
   onOpenDetails(booking: ScheduleBooking, invoker: HTMLElement): void;
   onSelectSlot(selection: StartSlotSelection, invoker: HTMLElement): void;
   room: RoomSummary;
+  slotSelectionDisabled: boolean;
   userTimeZone: string;
   visibleDays: readonly string[];
   weekStart: string;
@@ -111,6 +112,7 @@ export function Timetable({
   onOpenDetails,
   onSelectSlot,
   room,
+  slotSelectionDisabled,
   userTimeZone,
   visibleDays,
   weekStart,
@@ -293,7 +295,7 @@ export function Timetable({
                     })}
                     className="free-slot-button"
                     data-past={past ? 'true' : undefined}
-                    disabled={past}
+                    disabled={past || slotSelectionDisabled}
                     onClick={(event) => onSelectSlot({
                       dateLabel: formatDateLong(startsAt, userTimeZone),
                       roomId: room.id,

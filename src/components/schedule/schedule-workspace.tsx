@@ -504,6 +504,8 @@ export function ScheduleWorkspace({
   );
   const activeStartSelection = 'selection' in bookingState ?
     bookingState.selection : null;
+  const slotSelectionDisabled = bookingState.status === 'submitting' ||
+    bookingState.status === 'conflictRefreshing';
 
   const selectedRoom = useMemo(
     () => rooms.find((room) => room.id === selectedRoomId) ??
@@ -994,7 +996,7 @@ export function ScheduleWorkspace({
           <ScheduleViewport
             mode={mode}
             onVisibleTimeAnchorChange={setVisibleTimeAnchor}
-            renderAgenda={() => (
+            renderAgenda={(slotSelectionDisabled) => (
               <DayAgenda
                 bookings={schedule?.bookings ?? []}
                 highlightedBookingId={linkedBookingId}
@@ -1009,11 +1011,12 @@ export function ScheduleWorkspace({
                 positionEpoch={positionEpoch}
                 room={selectedRoom}
                 selectedStartsAt={agendaJumpStartsAt ?? activeStartSelection?.startsAt ?? null}
+                slotSelectionDisabled={slotSelectionDisabled}
                 userTimeZone={userTimeZone}
                 weekStart={weekStart}
               />
             )}
-            renderTimetable={(visibleDayCount) => schedule ? (
+            renderTimetable={(visibleDayCount, slotSelectionDisabled) => schedule ? (
               <Timetable
                 bookings={schedule.bookings}
                 highlightedBookingId={linkedBookingId}
@@ -1024,6 +1027,7 @@ export function ScheduleWorkspace({
                 onOpenDetails={selectBooking}
                 onSelectSlot={selectStartSlot}
                 room={selectedRoom}
+                slotSelectionDisabled={slotSelectionDisabled}
                 userTimeZone={userTimeZone}
                 visibleDays={visibleTimetableDays(
                   selectedDay,
@@ -1035,6 +1039,7 @@ export function ScheduleWorkspace({
               />
             ) : null}
             selectedDay={selectedDay}
+            slotSelectionDisabled={slotSelectionDisabled}
             visibleTimeAnchor={visibleTimeAnchor}
           />
           {scheduleLoading || roomsLoading ? (

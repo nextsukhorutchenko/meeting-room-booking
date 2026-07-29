@@ -6,10 +6,14 @@ import type {ResponsiveMode, VisibleDayCount} from './schedule-types';
 export type ScheduleViewportProps = {
   mode: ResponsiveMode;
   selectedDay: string;
+  slotSelectionDisabled: boolean;
   visibleTimeAnchor: string | null;
   onVisibleTimeAnchorChange(value: string): void;
-  renderAgenda(): ReactNode;
-  renderTimetable(visibleDayCount: VisibleDayCount): ReactNode;
+  renderAgenda(slotSelectionDisabled: boolean): ReactNode;
+  renderTimetable(
+    visibleDayCount: VisibleDayCount,
+    slotSelectionDisabled: boolean,
+  ): ReactNode;
 };
 
 export function visibleDayCountForMode(
@@ -35,6 +39,7 @@ export function ScheduleViewport({
   renderAgenda,
   renderTimetable,
   selectedDay,
+  slotSelectionDisabled,
   visibleTimeAnchor,
 }: ScheduleViewportProps) {
   const visibleDayCount = visibleDayCountForMode(mode);
@@ -59,8 +64,11 @@ export function ScheduleViewport({
       }}
     >
       {mode === 'expanded' || mode === 'medium' || mode === 'tablet' ?
-        renderTimetable(visibleDayCount as VisibleDayCount) :
-        renderAgenda()}
+        renderTimetable(
+          visibleDayCount as VisibleDayCount,
+          slotSelectionDisabled,
+        ) :
+        renderAgenda(slotSelectionDisabled)}
     </div>
   );
 }

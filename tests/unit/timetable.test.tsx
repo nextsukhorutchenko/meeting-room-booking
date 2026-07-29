@@ -39,6 +39,7 @@ const longBooking: ScheduleBooking = {
 function renderTimetable(
   bookings: readonly ScheduleBooking[] = [],
   visibleDays: readonly string[] = sevenDays,
+  slotSelectionDisabled = false,
 ) {
   return render(
     <Timetable
@@ -51,6 +52,7 @@ function renderTimetable(
       onOpenDetails={vi.fn()}
       onSelectSlot={vi.fn()}
       room={{id: 'maple', name: 'Maple', floor: 3, capacity: 8}}
+      slotSelectionDisabled={slotSelectionDisabled}
       userTimeZone="Europe/Kyiv"
       visibleDays={visibleDays}
       weekStart={weekStart}
@@ -221,6 +223,7 @@ describe('Timetable', () => {
         onOpenDetails={vi.fn()}
         onSelectSlot={vi.fn()}
         room={{id: 'maple', name: 'Maple', floor: 3, capacity: 8}}
+        slotSelectionDisabled={false}
         userTimeZone="Europe/Kyiv"
         visibleDays={sevenDays}
         weekStart={weekStart}
@@ -288,6 +291,7 @@ describe('Timetable', () => {
           onOpenDetails={vi.fn()}
           onSelectSlot={vi.fn()}
           room={{id: 'maple', name: 'Maple', floor: 3, capacity: 8}}
+          slotSelectionDisabled={false}
           userTimeZone={userTimeZone}
           visibleDays={visibleDays}
           weekStart={fixtureWeek}
@@ -304,5 +308,39 @@ describe('Timetable', () => {
     const slot = screen.getAllByRole('button', {name: /Забронювати.*Maple/})[0];
     expect(slot).toHaveTextContent('Вільно');
     expect(slot.querySelector('svg')).toBeTruthy();
+  });
+
+  it('disables free-slot actions while selection is pending and reenables them', () => {
+    const {container, rerender} = renderTimetable(
+      [],
+      ['2026-07-27'],
+      true,
+    );
+    const freeSlots = container.querySelectorAll<HTMLButtonElement>(
+      '.free-slot-button:not([data-past])',
+    );
+
+    expect(freeSlots.length).toBeGreaterThan(0);
+    freeSlots.forEach((slot) => expect(slot).toBeDisabled());
+
+    rerender(
+      <Timetable
+        bookings={[]}
+        highlightedBookingId={null}
+        now="2026-07-20T06:00:00.000Z"
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+        onOpenDetails={vi.fn()}
+        onSelectSlot={vi.fn()}
+        room={{id: 'maple', name: 'Maple', floor: 3, capacity: 8}}
+        slotSelectionDisabled={false}
+        userTimeZone="Europe/Kyiv"
+        visibleDays={['2026-07-27']}
+        weekStart={weekStart}
+      />,
+    );
+
+    freeSlots.forEach((slot) => expect(slot).toBeEnabled());
   });
 });
