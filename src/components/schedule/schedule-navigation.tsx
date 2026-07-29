@@ -2,28 +2,46 @@
 
 import {CalendarClock, ChevronLeft, ChevronRight} from 'lucide-react';
 import {DateTime} from 'luxon';
+import {useState} from 'react';
+import {formatDateShort, formatTime} from '../../lib/i18n/formatters';
 import {APP_LOCALE} from '../../lib/time/browser-zone';
+import {officeDaySlotStarts} from '../../lib/time/office-time';
 import {uiCopy} from '../../lib/i18n/ui-copy';
+
+export type ScheduleJumpTarget = {
+  officeDay: string;
+  slotIndex: number;
+  startsAt: string;
+  label: string;
+};
 
 type ScheduleNavigationProps = {
   onDayChange(value: string): void;
+  onJump(target: ScheduleJumpTarget): void;
   onNextDay(): void;
   onNextWeek(): void;
   onPreviousDay(): void;
   onPreviousWeek(): void;
   onToday(): void;
+  officeCloseHour: number;
+  officeOpenHour: number;
+  officeTimeZone: string;
   selectedDay: string;
+  userTimeZone: string;
   weekStart: string;
 };
 
 export function ScheduleNavigation({
   onDayChange,
-  onNextDay,
+  onJump,
   onNextWeek,
-  onPreviousDay,
   onPreviousWeek,
   onToday,
+  officeCloseHour,
+  officeOpenHour,
+  officeTimeZone,
   selectedDay,
+  userTimeZone,
   weekStart,
 }: ScheduleNavigationProps) {
   const start = DateTime.fromISO(weekStart).setLocale(APP_LOCALE);
@@ -32,6 +50,28 @@ export function ScheduleNavigation({
     `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}` :
     uiCopy.currentWeek;
   const days = Array.from({length: 7}, (_, index) => start.plus({days: index}));
+  const selectedJumpDay = days.some((day) =>
+    day.toFormat('yyyy-LL-dd') === selectedDay) ? selectedDay : weekStart;
+  const slots = officeDaySlotStarts({
+    officeCloseHour,
+    officeDay: selectedJumpDay,
+    officeOpenHour,
+    officeTimeZone,
+  }).map((slot, slotIndex): ScheduleJumpTarget => {
+    const startsAt = slot.toUTC().toISO() ?? '';
+    return {
+      officeDay: selectedJumpDay,
+      slotIndex,
+      startsAt,
+      label: `${formatDateShort(startsAt, userTimeZone)} ${formatTime(startsAt, userTimeZone)}; ` +
+        `офіс ${formatDateShort(startsAt, officeTimeZone)} ${formatTime(startsAt, officeTimeZone)}`,
+    };
+  });
+  const selectedSlot = slots.find((slot) => slot.officeDay === selectedDay) ?? slots[0];
+  const [jumpStartsAt, setJumpStartsAt] = useState(selectedSlot?.startsAt ?? '');
+  const currentJumpStartsAt = slots.some((slot) => slot.startsAt === jumpStartsAt) ?
+    jumpStartsAt :
+    selectedSlot?.startsAt ?? '';
 
   return (
     <nav aria-label={uiCopy.scheduleNavigation} className="schedule-navigation">
@@ -83,32 +123,49 @@ export function ScheduleNavigation({
           );
         })}
       </div>
-      <div className="schedule-navigation-day-controls">
-        <button
-          aria-label={uiCopy.previousDay}
-          className="icon-button"
-          onClick={onPreviousDay}
-          title={uiCopy.previousDay}
-          type="button"
-        >
-          <ChevronLeft aria-hidden="true" />
-        </button>
-        <label className="control-field day-picker-field">
+      <div className="schedule-jump-controls">
+        <label className="control-field">
           <span>{uiCopy.day}</span>
-          <input
-            onChange={(event) => onDayChange(event.target.value)}
-            type="date"
+          <select
+            onChange={(event) => {
+              const nextDay = event.target.value;
+              const nextStartsAt = officeDaySlotStarts({
+                officeCloseHour,
+                officeDay: nextDay,
+                officeOpenHour,
+                officeTimeZone,
+              })[0]?.toUTC().toISO() ?? '';
+              setJumpStartsAt(nextStartsAt);
+              onDayChange(nextDay);
+            }}
             value={selectedDay}
-          />
+          >
+            {days.map((day) => {
+              const value = day.toFormat('yyyy-LL-dd');
+              return <option key={value} value={value}>{day.toFormat('cccc, d LLLL')}</option>;
+            })}
+          </select>
+        </label>
+        <label className="control-field">
+          <span>Час</span>
+          <select
+            onChange={(event) => setJumpStartsAt(event.target.value)}
+            value={currentJumpStartsAt}
+          >
+            {slots.map((slot) => (
+              <option key={slot.startsAt} value={slot.startsAt}>{slot.label}</option>
+            ))}
+          </select>
         </label>
         <button
-          aria-label={uiCopy.nextDay}
-          className="icon-button"
-          onClick={onNextDay}
-          title={uiCopy.nextDay}
+          className="schedule-jump-button"
+          onClick={() => {
+            const target = slots.find((slot) => slot.startsAt === currentJumpStartsAt);
+            if (target) onJump(target);
+          }}
           type="button"
         >
-          <ChevronRight aria-hidden="true" />
+          Перейти
         </button>
       </div>
     </nav>

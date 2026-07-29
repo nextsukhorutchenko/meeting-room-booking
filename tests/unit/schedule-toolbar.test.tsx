@@ -18,12 +18,17 @@ describe('ScheduleNavigation locale', () => {
     render(
       <ScheduleNavigation
         onDayChange={vi.fn()}
+        onJump={vi.fn()}
         onNextDay={vi.fn()}
         onNextWeek={vi.fn()}
         onPreviousDay={vi.fn()}
         onPreviousWeek={vi.fn()}
         onToday={vi.fn()}
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
         selectedDay="2026-03-02"
+        userTimeZone="Europe/Kyiv"
         weekStart="2026-03-02"
       />,
     );
@@ -38,5 +43,29 @@ describe('ScheduleNavigation locale', () => {
     expect(screen.getByRole('button', {
       name: 'понеділок, березень 2',
     })).toBeVisible();
+  });
+
+  it('labels date-crossing jump values with user and office context', () => {
+    render(
+      <ScheduleNavigation
+        onDayChange={vi.fn()}
+        onJump={vi.fn()}
+        onNextDay={vi.fn()}
+        onNextWeek={vi.fn()}
+        onPreviousDay={vi.fn()}
+        onPreviousWeek={vi.fn()}
+        onToday={vi.fn()}
+        officeCloseHour={19}
+        officeOpenHour={9}
+        officeTimeZone="Europe/Kyiv"
+        selectedDay="2026-07-29"
+        userTimeZone="America/Los_Angeles"
+        weekStart="2026-07-27"
+      />,
+    );
+
+    expect(screen.getByRole('option', {
+      name: /28 лип.*23:00.*офіс.*29 лип.*09:00/,
+    })).toHaveValue('2026-07-29T06:00:00.000Z');
   });
 });

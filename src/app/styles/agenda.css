@@ -1,0 +1,192 @@
+.day-agenda {
+  min-width: var(--space-0);
+  background: var(--color-surface);
+}
+
+.day-agenda h2 {
+  margin: var(--space-0);
+  border-bottom: var(--border-default) solid var(--color-border);
+  padding: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--type-subsection);
+  line-height: var(--type-subsection-line-height);
+}
+
+.day-agenda ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-0);
+  padding: var(--space-1);
+  list-style: none;
+}
+
+.day-agenda-item {
+  display: grid;
+  grid-template-columns: var(--space-8) minmax(var(--space-0), 1fr) auto;
+  align-items: stretch;
+  min-width: var(--space-0);
+  border: var(--border-default) solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.day-agenda-item > time {
+  display: grid;
+  align-items: center;
+  padding: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--type-compact);
+  font-weight: 700;
+}
+
+.day-agenda-slot-button,
+.day-agenda-details,
+.day-agenda-cancel {
+  min-height: var(--space-6);
+  border: var(--space-0);
+  border-radius: var(--space-0);
+  background: transparent;
+  padding: var(--space-1);
+  font: inherit;
+  text-align: left;
+}
+
+.day-agenda-slot-button,
+.day-agenda-details {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: var(--space-0);
+  color: var(--color-text);
+}
+
+.day-agenda-slot-button svg {
+  width: var(--space-2);
+  height: var(--space-2);
+  color: var(--color-brand);
+}
+
+.day-agenda-free .day-agenda-slot-button:hover,
+.day-agenda-free .day-agenda-slot-button:focus-visible {
+  background: var(--color-brand-soft);
+}
+
+.day-agenda-past {
+  background: var(--color-surface-subtle);
+}
+
+.day-agenda-past .day-agenda-slot-button {
+  color: var(--color-disabled-text);
+}
+
+.day-agenda-busy {
+  border-left: var(--border-emphasis) solid var(--color-other-border);
+  background: var(--color-info-soft);
+}
+
+.day-agenda-own {
+  border-left-color: var(--color-own-border);
+  background: var(--color-own-surface);
+}
+
+.day-agenda-highlighted {
+  outline: var(--border-emphasis) solid var(--color-current);
+  outline-offset: var(--space-0);
+}
+
+.day-agenda-details {
+  display: grid;
+  grid-template-columns: minmax(var(--space-0), 1fr) auto;
+  align-items: center;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.day-agenda-details:hover,
+.day-agenda-details:focus-visible,
+.day-agenda-cancel:hover,
+.day-agenda-cancel:focus-visible {
+  background: var(--color-brand-soft);
+}
+
+.day-agenda-cancel {
+  border-left: var(--border-default) solid var(--color-border);
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.day-agenda-error {
+  margin: var(--space-0);
+  padding: var(--space-2);
+  color: var(--color-danger);
+}
+
+.schedule-jump-controls {
+  display: none;
+}
+
+.schedule-workspace .timezone-label {
+  min-width: var(--space-0);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 899px) {
+  .schedule-jump-controls {
+    display: grid;
+    grid-template-columns: minmax(var(--space-0), 1fr) minmax(var(--space-0), 1fr) auto;
+    align-items: end;
+    gap: var(--space-1);
+  }
+
+  .schedule-jump-controls select {
+    width: 100%;
+    min-width: var(--space-0);
+    min-height: var(--space-5);
+  }
+
+  .schedule-jump-button {
+    min-height: var(--space-5);
+    border: var(--border-default) solid var(--color-border-control);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    padding: var(--space-1);
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 700;
+  }
+
+  .day-agenda h2 {
+    padding: var(--space-1) var(--space-2);
+  }
+}
+
+@media (max-width: 360px) {
+  .schedule-jump-controls {
+    grid-template-columns: minmax(var(--space-0), 1fr) auto;
+  }
+
+  .schedule-jump-controls .control-field:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .day-agenda-item {
+    grid-template-columns: var(--space-8) minmax(var(--space-0), 1fr);
+  }
+
+  .day-agenda-cancel {
+    grid-column: 2;
+    border-top: var(--border-default) solid var(--color-border);
+    border-left: var(--space-0);
+  }
+}
+
+@media (forced-colors: active) {
+  .day-agenda-item,
+  .day-agenda-slot-button,
+  .day-agenda-details,
+  .day-agenda-cancel {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

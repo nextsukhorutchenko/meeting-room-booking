@@ -154,13 +154,13 @@ describe('Timetable timezone semantics', () => {
     })).toBeVisible();
   });
 
-  it('keeps the legacy one-day agenda layout scoped to DaySchedule', () => {
-    const css = readFileSync('src/app/globals.css', 'utf8');
+  it('keeps the native one-day agenda layout outside global styles', () => {
+    const css = readFileSync('src/app/styles/agenda.css', 'utf8');
+    const globals = readFileSync('src/app/globals.css', 'utf8');
 
-    expect(css).toMatch(/\.day-schedule \.schedule-time-gutter/);
-    expect(css).toMatch(/\.day-schedule \.free-slot-button/);
-    expect(css).toMatch(/\.day-schedule \.booking-block/);
-    expect(css).toMatch(/--day-schedule-booking-top/);
+    expect(css).toMatch(/\.day-agenda ol/);
+    expect(css).toMatch(/\.schedule-jump-controls/);
+    expect(globals).not.toMatch(/\.day-schedule/);
     expect(css).not.toMatch(/\.week-grid/);
   });
 });

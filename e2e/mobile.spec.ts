@@ -33,14 +33,14 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
   await page.getByRole('combobox', {name: 'Room'})
     .selectOption({label: 'Pine, 8 people'});
   await page.getByLabel('Day', {exact: true})
-    .fill(selectedDay.toISODate() ?? '');
+    .selectOption(selectedDay.toISODate() ?? '');
   await expect(page).toHaveURL(new RegExp(
     `roomId=${room.id}.*weekStart=${weekStart}.*day=` +
     `${selectedDay.toISODate()}`,
   ));
 
   await page.getByRole('button', {
-    name: /Book Tuesday.*10:00/i,
+    name: /Забронювати.*10:00/i,
   }).click();
   const dialog = page.getByRole('dialog', {name: 'Book Pine'});
   await expect(dialog.getByText('10:00-10:30', {exact: false})).toBeVisible();
@@ -66,53 +66,34 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
   );
 
   await expect(
-    page.getByRole('status').filter({hasText: 'Booking created'}),
+    page.getByRole('status').filter({hasText: 'Бронювання створено'}),
   ).toBeVisible();
-  const bookingBlock = page.getByRole('article', {name: new RegExp(title)});
+  const bookingBlock = page.locator('li[data-booking-id]', {hasText: title});
   await expect(bookingBlock).toBeVisible();
   await expect(bookingBlock).toContainText('10:00-12:00');
-  await expect(bookingBlock).toHaveCSS('height', '172px');
   const booking = await database.booking.findFirstOrThrow({where: {title}});
   expect(booking.endsAt.toISOString()).toBe(
     officeSlot(weekStart, 1, 12).toUTC().toISO(),
   );
   const createdBlockLayout = await bookingBlock.evaluate((bookingElement) => {
-    const dayColumn = bookingElement.closest(
-      '[data-testid="day-schedule-day-column"]',
-    );
     const bookingRect = bookingElement.getBoundingClientRect();
-    const dayColumnRect = dayColumn?.getBoundingClientRect();
-    const titleRect = bookingElement
-      .querySelector('strong')
-      ?.getBoundingClientRect();
-    const metaRect = bookingElement
-      .querySelector('.booking-block-meta')
+    const detailsRect = bookingElement
+      .querySelector('.day-agenda-details')
       ?.getBoundingClientRect();
     const cancelRect = bookingElement
-      .querySelector('.booking-cancel-button')
+      .querySelector('.day-agenda-cancel')
       ?.getBoundingClientRect();
     return {
-      bookingContainedInDayColumn: Boolean(
-        dayColumnRect &&
-        bookingRect.left >= dayColumnRect.left &&
-        bookingRect.right <= dayColumnRect.right + 0.5 &&
-        bookingRect.top >= dayColumnRect.top &&
-        bookingRect.bottom <= dayColumnRect.bottom + 0.5,
-      ),
       bookingContainedInViewport:
         bookingRect.left >= 0 &&
         bookingRect.right <= window.innerWidth + 0.5,
       bookingContentContained: Boolean(
-        titleRect &&
-        metaRect &&
+        detailsRect &&
         cancelRect &&
-        titleRect.left >= bookingRect.left &&
-        titleRect.right <= cancelRect.left + 0.5 &&
-        titleRect.top >= bookingRect.top &&
-        titleRect.bottom <= metaRect.top + 0.5 &&
-        metaRect.left >= bookingRect.left &&
-        metaRect.right <= cancelRect.left + 0.5 &&
-        metaRect.bottom <= bookingRect.bottom + 0.5 &&
+        detailsRect.left >= bookingRect.left &&
+        detailsRect.right <= bookingRect.right + 0.5 &&
+        detailsRect.bottom <= bookingRect.bottom + 0.5 &&
+        cancelRect.left >= bookingRect.left &&
         cancelRect.top >= bookingRect.top &&
         cancelRect.right <= bookingRect.right + 0.5 &&
         cancelRect.bottom <= bookingRect.bottom + 0.5,
@@ -123,7 +104,6 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
     };
   });
   expect(createdBlockLayout).toEqual({
-    bookingContainedInDayColumn: true,
     bookingContainedInViewport: true,
     bookingContentContained: true,
     horizontalOverflow: 0,
@@ -133,19 +113,17 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
     path: resolve(artifactsDirectory, 'mobile-booking-created.png'),
   });
 
-  await page.getByRole('link', {name: 'My Bookings'}).click();
   const row = page.locator(`[data-booking-id="${booking.id}"]`);
-  await expect(row).toBeVisible();
-  await row.getByRole('button', {name: `Cancel ${title}`}).click();
+  await row.getByRole('button', {name: 'Скасувати'}).click();
   const cancellationDialog =
     page.getByRole('dialog', {name: 'Cancel booking'});
   await cancellationDialog
     .getByRole('button', {name: 'Cancel booking'})
     .click();
 
-  await expect(row).toHaveCount(0);
+  await expect(page.locator(`[data-booking-id="${booking.id}"]`)).toHaveCount(0);
   await expect(
-    page.getByRole('status').filter({hasText: 'Booking cancelled'}),
+    page.getByRole('status').filter({hasText: 'Бронювання скасовано'}),
   ).toBeVisible();
   await expect(database.booking.findUniqueOrThrow({where: {id: booking.id}}))
     .resolves.toMatchObject({cancelledAt: expect.any(Date)});
@@ -161,21 +139,16 @@ test('@mobile daily schedule has stable geometry and reachable controls', async 
     `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${weekStart}`,
   );
 
-  await expect(page.getByRole('grid', {name: 'Daily room schedule'}))
-    .toBeVisible();
-  await expect(page.getByRole('grid', {name: 'Weekly room schedule'}))
-    .toBeHidden();
+  await expect(page.getByRole('list', {name: /Розклад на/})).toHaveCount(1);
   const layout = await page.evaluate(() => {
-    const board = document.querySelector<HTMLElement>('.day-schedule');
+    const board = document.querySelector<HTMLElement>('.day-agenda');
     const controls = Array.from(document.querySelectorAll<HTMLElement>(
-      '.mobile-day-controls button, .mobile-day-controls input',
+      '.schedule-jump-controls button, .schedule-jump-controls select',
     ));
-    const bookingColumns = document.querySelectorAll(
-      '.day-schedule [data-testid="day-schedule-day-column"]',
-    );
+    const firstItem = board?.querySelector('li');
     const boardRect = board?.getBoundingClientRect();
     return {
-      boardHeight: boardRect?.height ?? 0,
+      firstItemTop: firstItem?.getBoundingClientRect().top ?? Infinity,
       boardWithinViewport: Boolean(
         boardRect &&
         boardRect.left >= 0 &&
@@ -190,19 +163,18 @@ test('@mobile daily schedule has stable geometry and reachable controls', async 
           rect.right <= window.innerWidth + 0.5
         );
       }),
-      dayColumnCount: bookingColumns.length,
       horizontalOverflow:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth,
     };
   });
   expect(layout).toEqual({
-    boardHeight: 934,
+    firstItemTop: expect.any(Number),
     boardWithinViewport: true,
     controlsReachable: true,
-    dayColumnCount: 1,
     horizontalOverflow: 0,
   });
+  expect(layout.firstItemTop).toBeLessThanOrEqual(296);
 
   await page.screenshot({
     fullPage: true,
@@ -243,16 +215,16 @@ test('@mobile room week and day URL state restores through back navigation', asy
     `/schedule?roomId=${oak.id}&weekStart=${firstWeek}&day=${firstDay}` +
     `&bookingId=${highlightedId}`,
   );
-  await expect(page.getByRole('article', {name: new RegExp(highlightedTitle)}))
-    .toHaveAttribute('data-highlighted', 'true');
+  await expect(page.locator(`[data-booking-id="${highlightedId}"]`))
+    .toHaveClass(/day-agenda-highlighted/);
   await page.getByRole('combobox', {name: 'Room'})
     .selectOption({label: 'Pine, 8 people'});
   await expect(page).toHaveURL(new RegExp(`roomId=${pine.id}`));
 
-  await page.getByRole('button', {name: 'Next day'}).click();
+  await page.getByLabel('Day', {exact: true}).selectOption(secondDay);
   await expect(page).toHaveURL(new RegExp(`day=${secondDay}`));
 
-  await page.getByLabel('Day', {exact: true}).fill(secondWeek);
+  await page.getByRole('button', {name: 'Наступний тиждень'}).click();
   await expect(page).toHaveURL(new RegExp(
     `roomId=${pine.id}.*weekStart=${secondWeek}.*day=${secondWeek}`,
   ));
@@ -273,8 +245,8 @@ test('@mobile room week and day URL state restores through back navigation', asy
     .toHaveValue(oak.id);
   await expect(page.getByLabel('Day', {exact: true})).toHaveValue(firstDay);
   await expect(page).toHaveURL(new RegExp(`bookingId=${highlightedId}`));
-  await expect(page.getByRole('article', {name: new RegExp(highlightedTitle)}))
-    .toHaveAttribute('data-highlighted', 'true');
+  await expect(page.locator(`[data-booking-id="${highlightedId}"]`))
+    .toHaveClass(/day-agenda-highlighted/);
 
   await page.goForward();
   await expect(page.getByRole('combobox', {name: 'Room'}))
@@ -353,13 +325,12 @@ test('@mobile popstate rejects a delayed old room/week response', async ({
   await page.goto(
     `/schedule?roomId=${oak.id}&weekStart=${firstWeek}&day=${firstWeek}`,
   );
-  await expect(page.getByRole('grid', {name: 'Daily room schedule'}))
-    .toBeVisible();
-  await page.getByRole('button', {name: 'Next day'}).click();
+  await expect(page.getByRole('list', {name: /Розклад на/})).toHaveCount(1);
+  await page.getByLabel('Day', {exact: true}).selectOption(secondDay);
   await expect(page).toHaveURL(new RegExp(
     `roomId=${oak.id}.*weekStart=${firstWeek}.*day=${secondDay}`,
   ));
-  await page.getByLabel('Day', {exact: true}).fill(secondWeek);
+  await page.getByRole('button', {name: 'Наступний тиждень'}).click();
   await expect(page).toHaveURL(new RegExp(
     `roomId=${oak.id}.*weekStart=${secondWeek}.*day=${secondWeek}`,
   ));

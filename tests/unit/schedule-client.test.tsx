@@ -873,14 +873,16 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
     {
       navigationLabel: 'Наступний день',
       selectedDay: '2026-08-03',
+      nextDay: '2026-08-04',
     },
     {
       navigationLabel: 'Сьогодні',
       selectedDay: '2026-08-05',
+      nextDay: null,
     },
   ])(
     'keeps a failed conflict schedule usable after same-week $navigationLabel',
-    async ({navigationLabel, selectedDay}) => {
+    async ({navigationLabel, nextDay, selectedDay}) => {
       navigation.searchParams = new URLSearchParams(
         `roomId=oak&weekStart=2026-08-03&day=${selectedDay}`,
       );
@@ -926,7 +928,11 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
         .toBeVisible();
 
       await user.click(screen.getByRole('button', {name: 'Cancel'}));
-      await user.click(screen.getByRole('button', {name: navigationLabel}));
+      if (nextDay) {
+        await user.selectOptions(screen.getByLabelText('День'), nextDay);
+      } else {
+        await user.click(screen.getByRole('button', {name: navigationLabel}));
+      }
 
       expect(scheduleRequestCount).toBe(2);
       expect(screen.getAllByText('Same-week schedule')[0]).toBeVisible();
@@ -996,7 +1002,7 @@ describe('ScheduleWorkspace request state', {timeout: 30_000}, () => {
       .toBeVisible();
 
     await user.click(screen.getByRole('button', {name: 'Cancel'}));
-    await user.click(screen.getByRole('button', {name: 'Наступний день'}));
+    await user.click(screen.getByRole('button', {name: 'Наступний тиждень'}));
     expect(await screen.findByText('Next week schedule')).toBeVisible();
     const mondaySlots = screen.getAllByRole('button', {
       name: /Забронювати понеділок.*11:00/i,

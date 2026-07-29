@@ -28,10 +28,10 @@ import type {
   BookingSelection,
   StartSlotSelection,
 } from './booking-selection';
-import {DaySchedule} from './day-schedule';
+import {DayAgenda} from './day-agenda';
 import {RoomFilterSurface} from './room-filter-surface';
 import {RoomPicker} from './room-picker';
-import {ScheduleNavigation} from './schedule-navigation';
+import {ScheduleNavigation, type ScheduleJumpTarget} from './schedule-navigation';
 import {ScheduleViewport} from './schedule-viewport';
 import type {
   RoomSummary,
@@ -175,6 +175,11 @@ export function ScheduleWorkspace({
   const [visibleTimeAnchor, setVisibleTimeAnchor] = useState<string | null>(
     null,
   );
+  const [agendaJumpStartsAt, setAgendaJumpStartsAt] = useState<string | null>(
+    null,
+  );
+  const [positionEpoch, setPositionEpoch] = useState(0);
+  const hasSettledInitialLoad = useRef(false);
   const selectedRoomIdRef = useRef(selectedRoomId);
   const weekStartRef = useRef(weekStart);
   const selectedDayRef = useRef(selectedDay);
@@ -290,6 +295,7 @@ export function ScheduleWorkspace({
           body.data[0]?.id ?? '';
         setSelectedRoomId(roomId);
         if (roomId !== currentRoomId) {
+          setPositionEpoch((epoch) => epoch + 1);
           preserveScheduleOnRefreshRef.current = false;
           conflictRefreshRequestRef.current = false;
           setConflictRefresh({status: 'idle'});
@@ -409,6 +415,13 @@ export function ScheduleWorkspace({
   }, [activeScheduleKey, selectedRoomId, weekStart]);
 
   useEffect(() => {
+    if (scheduleState?.status === 'success' && !hasSettledInitialLoad.current) {
+      hasSettledInitialLoad.current = true;
+      setPositionEpoch((epoch) => epoch + 1);
+    }
+  }, [scheduleState]);
+
+  useEffect(() => {
     if (!toastMessage) {
       return;
     }
@@ -496,12 +509,15 @@ export function ScheduleWorkspace({
   }
 
   function changeRoom(roomId: string) {
+    if (roomId === selectedRoomId) return;
+    setPositionEpoch((epoch) => epoch + 1);
     linkedBookingIdRef.current = null;
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
     setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setCancellation(null);
+    setAgendaJumpStartsAt(null);
     setStartSelection(null);
     setSelectedRoomId(roomId);
     updateUrl(roomId, weekStart, selectedDay, 'push');
@@ -520,6 +536,7 @@ export function ScheduleWorkspace({
     setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setCancellation(null);
+    setAgendaJumpStartsAt(null);
     setStartSelection(null);
     setWeekStart(nextWeek);
     setSelectedDay(nextDay);
@@ -533,6 +550,8 @@ export function ScheduleWorkspace({
     }
     linkedBookingIdRef.current = null;
     const nextDay = nextDayValue.toFormat('yyyy-LL-dd');
+    if (nextDay === selectedDay) return;
+    setPositionEpoch((epoch) => epoch + 1);
     const nextWeek = nextDayValue.startOf('week').toFormat('yyyy-LL-dd');
     if (nextWeek !== weekStart) {
       conflictRefreshRequestRef.current = false;
@@ -541,6 +560,7 @@ export function ScheduleWorkspace({
     }
     preserveScheduleOnRefreshRef.current = false;
     setCancellation(null);
+    setAgendaJumpStartsAt(null);
     setStartSelection(null);
     setWeekStart(nextWeek);
     setSelectedDay(nextDay);
@@ -560,6 +580,9 @@ export function ScheduleWorkspace({
       .setZone(officeTimeZone)
       .toFormat('yyyy-LL-dd');
     const currentWeek = currentOfficeWeek(officeTimeZone);
+    if (today !== selectedDay) {
+      setPositionEpoch((epoch) => epoch + 1);
+    }
     preserveScheduleOnRefreshRef.current = false;
     conflictRefreshRequestRef.current = false;
     setConflictRefresh({status: 'idle'});
@@ -567,6 +590,7 @@ export function ScheduleWorkspace({
       setPreservedScheduleKey(null);
     }
     setCancellation(null);
+    setAgendaJumpStartsAt(null);
     setStartSelection(null);
     setWeekStart(currentWeek);
     setSelectedDay(today);
@@ -620,6 +644,13 @@ export function ScheduleWorkspace({
     }
   }
 
+  function jumpTo(target: ScheduleJumpTarget) {
+    if (target.officeDay !== selectedDay) {
+      changeDay(target.officeDay);
+    }
+    setAgendaJumpStartsAt(target.startsAt);
+  }
+
   return (
     <section aria-label={uiCopy.roomSchedule} className="schedule-workspace">
       <div
@@ -661,12 +692,17 @@ export function ScheduleWorkspace({
         <div className="schedule-workspace-main">
           <ScheduleNavigation
         onDayChange={changeDay}
+        onJump={jumpTo}
         onNextDay={() => moveDay(1)}
         onNextWeek={() => changeWeek(1)}
         onPreviousDay={() => moveDay(-1)}
         onPreviousWeek={() => changeWeek(-1)}
         onToday={goToToday}
+        officeCloseHour={officeCloseHour}
+        officeOpenHour={officeOpenHour}
+        officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
         selectedDay={selectedDay}
+        userTimeZone={userTimeZone}
         weekStart={weekStart}
       />
 
@@ -728,20 +764,22 @@ export function ScheduleWorkspace({
             mode={mode}
             onVisibleTimeAnchorChange={setVisibleTimeAnchor}
             renderAgenda={() => (
-              <DaySchedule
-                bookingEnabled={schedule !== null}
-                bookings={[...(schedule?.bookings ?? [])]}
-                day={selectedDay}
+              <DayAgenda
+                bookings={schedule?.bookings ?? []}
                 highlightedBookingId={linkedBookingId}
-                loading={scheduleLoading || roomsLoading}
+                now={DateTime.now().toUTC().toISO() ?? ''}
                 officeCloseHour={officeCloseHour}
+                officeDay={selectedDay}
                 officeOpenHour={officeOpenHour}
                 officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
+                onCancel={(booking) => selectBooking(booking)}
                 onOpenDetails={selectBooking}
-                onSelectSlot={setStartSelection}
-                roomId={selectedRoom.id}
-                roomName={selectedRoom.name}
+                onSelectSlot={(selection) => setStartSelection(selection)}
+                positionEpoch={positionEpoch}
+                room={selectedRoom}
+                selectedStartsAt={agendaJumpStartsAt ?? startSelection?.startsAt ?? null}
                 userTimeZone={userTimeZone}
+                weekStart={weekStart}
               />
             )}
             renderTimetable={(visibleDayCount) => schedule ? (

@@ -45,7 +45,6 @@
 .schedule-room-rail,
 .room-filter,
 .schedule-navigation-week-controls,
-.schedule-navigation-day-controls,
 .room-context,
 .room-meta,
 .timezone-label {
@@ -107,10 +106,6 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-1);
-}
-
-.schedule-navigation-day-controls {
-  display: none;
 }
 
 .today-button {
@@ -278,18 +273,6 @@
 
   .schedule-navigation-week-controls {
     justify-content: space-between;
-  }
-
-  .schedule-navigation-day-controls {
-    display: grid;
-    grid-template-columns: auto minmax(var(--space-0), 1fr) auto;
-    align-items: end;
-    gap: var(--space-1);
-  }
-
-  .day-picker-field input {
-    width: 100%;
-    min-width: var(--space-0);
   }
 
   .room-context {

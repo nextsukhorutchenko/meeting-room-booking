@@ -7,6 +7,39 @@ import {
 const deterministicBaseUrl = 'http://127.0.0.1:3105';
 const authStatePath = 'test-results/.auth/demo-user.json';
 
+const responsiveProjectMatches = {
+  expanded: [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/my-bookings.spec.ts',
+    '**/notifications.spec.ts',
+    '**/schedule.spec.ts',
+    '**/transition.spec.ts',
+  ],
+  medium: ['**/booking.spec.ts', '**/schedule.spec.ts'],
+  tablet: [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/schedule.spec.ts',
+    '**/transition.spec.ts',
+  ],
+  'mobile-lg': [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/mobile.spec.ts',
+    '**/my-bookings.spec.ts',
+    '**/notifications.spec.ts',
+    '**/transition.spec.ts',
+  ],
+  mobile: [
+    '**/booking.spec.ts',
+    '**/cancellation.spec.ts',
+    '**/mobile.spec.ts',
+    '**/my-bookings.spec.ts',
+  ],
+  reflow: ['**/booking.spec.ts', '**/mobile.spec.ts'],
+} as const;
+
 export interface ExploratoryConfigOptions {
   baseUrl: string;
   testDatabaseUrl: string;
@@ -66,24 +99,22 @@ export function createDeterministicPlaywrightConfig(
         dependencies: ['seed'],
         testMatch: '**/auth.setup.ts',
       },
-      {
-        name: 'desktop-kyiv',
+      ...Object.entries(responsiveProjectMatches).map(([name, testMatch]) => ({
+        name,
         dependencies: ['auth-setup'],
-        testIgnore: [
-          '**/exploratory/**',
-          '**/locale.spec.ts',
-          '**/mobile.spec.ts',
-          '**/seed.spec.ts',
-          '**/smoke.spec.ts',
-          '**/transition.spec.ts',
-        ],
+        testMatch: [...testMatch],
         use: {
-          ...devices['Desktop Chrome'],
+          ...devices[name === 'mobile-lg' ? 'Pixel 7' : 'Desktop Chrome'],
           storageState: authStatePath,
           timezoneId: 'Europe/Kyiv',
-          viewport: {width: 1440, height: 900},
+          viewport: name === 'expanded' ? {width: 1440, height: 900} :
+            name === 'medium' ? {width: 1024, height: 768} :
+              name === 'tablet' ? {width: 768, height: 1024} :
+                name === 'mobile-lg' ? {width: 390, height: 844} :
+                  name === 'mobile' ? {width: 360, height: 800} :
+                    {width: 320, height: 800},
         },
-      },
+      })),
       {
         name: 'desktop-new-york',
         dependencies: ['auth-setup'],
@@ -108,20 +139,6 @@ export function createDeterministicPlaywrightConfig(
           storageState: authStatePath,
           timezoneId: 'America/New_York',
           viewport: {width: 1440, height: 900},
-        },
-      },
-      {
-        name: 'mobile-kyiv',
-        dependencies: ['auth-setup'],
-        testMatch: [
-          '**/mobile.spec.ts',
-          '**/notifications.spec.ts',
-        ],
-        use: {
-          ...devices['Pixel 7'],
-          storageState: authStatePath,
-          timezoneId: 'Europe/Kyiv',
-          viewport: {width: 390, height: 844},
         },
       },
       {
