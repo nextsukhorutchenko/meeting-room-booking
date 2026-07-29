@@ -1,6 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {DomainError} from '../../src/lib/http/domain-error';
-import {officeWeekBounds} from '../../src/lib/time/office-time';
+import {
+  officeDaySlotStarts,
+  officeWeekBounds,
+} from '../../src/lib/time/office-time';
 import {TestClock} from '../helpers/test-clock';
 
 function expectDomainError(action: () => unknown): DomainError {
@@ -62,6 +65,20 @@ describe('officeWeekBounds', () => {
     expect(error.fields).toEqual({
       officeTimeZone: 'Must be a valid IANA time zone',
     });
+  });
+});
+
+describe('officeDaySlotStarts', () => {
+  it('generates half-hour UTC instants from each Kyiv office day independently', () => {
+    expect(officeDaySlotStarts({
+      officeCloseHour: 10,
+      officeDay: '2026-03-29',
+      officeOpenHour: 9,
+      officeTimeZone: 'Europe/Kyiv',
+    }).map((slot) => slot.toUTC().toISO())).toEqual([
+      '2026-03-29T06:00:00.000Z',
+      '2026-03-29T06:30:00.000Z',
+    ]);
   });
 });
 

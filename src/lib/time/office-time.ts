@@ -52,3 +52,38 @@ export function officeWeekBounds(
     endsAt: endsAt.toUTC().toJSDate(),
   };
 }
+
+export function officeDaySlotStarts(input: {
+  officeDay: string;
+  officeOpenHour: number;
+  officeCloseHour: number;
+  officeTimeZone: string;
+}): readonly DateTime[] {
+  assertOfficeTimeZone(input.officeTimeZone);
+
+  if (
+    !isoDatePattern.test(input.officeDay) ||
+    !Number.isInteger(input.officeOpenHour) ||
+    !Number.isInteger(input.officeCloseHour) ||
+    input.officeOpenHour < 0 ||
+    input.officeCloseHour > 24 ||
+    input.officeCloseHour <= input.officeOpenHour
+  ) {
+    return [];
+  }
+
+  const officeDay = DateTime.fromISO(input.officeDay, {
+    zone: input.officeTimeZone,
+  });
+  if (!officeDay.isValid) return [];
+
+  const slotCount = (input.officeCloseHour - input.officeOpenHour) * 2;
+  return Array.from({length: slotCount}, (_, index) =>
+    officeDay.startOf('day').set({
+      hour: input.officeOpenHour,
+      minute: index * 30,
+      second: 0,
+      millisecond: 0,
+    }),
+  );
+}
