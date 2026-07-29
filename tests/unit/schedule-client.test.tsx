@@ -9,7 +9,8 @@ import {
 import userEvent from '@testing-library/user-event';
 import {DateTime, Settings} from 'luxon';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {ScheduleClient} from '../../src/components/schedule/schedule-client';
+import {ScheduleWorkspace} from
+  '../../src/components/schedule/schedule-workspace';
 
 const navigation = vi.hoisted(() => ({
   router: {push: vi.fn(), replace: vi.fn()},
@@ -111,9 +112,17 @@ function requestUrl(input: RequestInfo | URL): string {
   return typeof input === 'string' ? input : input.toString();
 }
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: width,
+  });
+  window.dispatchEvent(new Event('resize'));
+}
+
 function renderScheduleClient() {
   return render(
-    <ScheduleClient
+    <ScheduleWorkspace
       officeCloseHour={19}
       officeOpenHour={9}
       officeTimeZone="Europe/Kyiv"
@@ -121,11 +130,12 @@ function renderScheduleClient() {
   );
 }
 
-describe('ScheduleClient request state', () => {
+describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
   const fetchMock = vi.fn();
   const originalNow = Settings.now;
 
   beforeEach(() => {
+    setViewportWidth(1440);
     Settings.now = () => Date.UTC(2026, 7, 3, 6);
     navigation.searchParams = new URLSearchParams(
       'roomId=oak&weekStart=2026-08-03',
@@ -251,7 +261,7 @@ describe('ScheduleClient request state', () => {
       '&bookingId=active-popstate',
     );
     view.rerender(
-      <ScheduleClient
+      <ScheduleWorkspace
         officeCloseHour={19}
         officeOpenHour={9}
         officeTimeZone="Europe/Kyiv"
@@ -261,7 +271,7 @@ describe('ScheduleClient request state', () => {
     const activeBookings = await screen.findAllByRole('article', {
       name: /Active popstate/,
     });
-    expect(activeBookings).toHaveLength(2);
+    expect(activeBookings).toHaveLength(1);
     for (const activeBooking of activeBookings) {
       expect(activeBooking).toHaveAttribute('data-highlighted', 'true');
     }
@@ -274,6 +284,44 @@ describe('ScheduleClient request state', () => {
 
     expect(activeBookings[0]).toBeVisible();
     expect(screen.queryByText('Stale popstate')).not.toBeInTheDocument();
+  });
+
+  it('keeps one rooms request and one schedule request across resize', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await screen.findByText('Stable');
+
+    await act(async () => {
+      setViewportWidth(768);
+      setViewportWidth(1440);
+    });
+
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input as RequestInfo | URL) === '/api/rooms',
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input as RequestInfo | URL).includes(
+          '/schedule?weekStart=',
+        ),
+      ),
+    ).toHaveLength(1);
+    expect(screen.getByRole('grid', {name: 'Weekly room schedule'}))
+      .toBeVisible();
+    expect(screen.queryByRole('grid', {name: 'Daily room schedule'}))
+      .not.toBeInTheDocument();
   });
 
   it('removes stale bookings and booking controls after an auth failure', async () => {
@@ -523,7 +571,7 @@ describe('ScheduleClient request state', () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', {
-      name: /Book Tuesday.*11:00/i,
+      name: /Book вівторок.*11:00/i,
     }));
     await user.type(screen.getByLabelText('Title'), 'Planning');
     await user.click(screen.getByRole('button', {name: 'Create booking'}));
@@ -575,7 +623,7 @@ describe('ScheduleClient request state', () => {
     renderScheduleClient();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', {
-      name: /Book Tuesday.*11:00/i,
+      name: /Book вівторок.*11:00/i,
     }));
 
     expect(screen.getByRole('dialog', {name: 'Book Oak'})).toBeVisible();
@@ -615,7 +663,7 @@ describe('ScheduleClient request state', () => {
     renderScheduleClient();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', {
-      name: /Book Tuesday.*11:00/i,
+      name: /Book вівторок.*11:00/i,
     }));
     await user.selectOptions(
       screen.getByLabelText('End time'),
@@ -686,7 +734,7 @@ describe('ScheduleClient request state', () => {
     renderScheduleClient();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', {
-      name: /Book Tuesday.*11:00/i,
+      name: /Book вівторок.*11:00/i,
     }));
     await user.type(screen.getByLabelText('Title'), 'Planning');
     await user.click(screen.getByRole('button', {name: 'Create booking'}));
@@ -765,7 +813,7 @@ describe('ScheduleClient request state', () => {
       renderScheduleClient();
       const user = userEvent.setup();
       await user.click(await screen.findByRole('button', {
-        name: /Book Tuesday.*11:00/i,
+        name: /Book вівторок.*11:00/i,
       }));
       await user.type(screen.getByLabelText('Title'), 'Planning');
       await user.click(screen.getByRole('button', {name: 'Create booking'}));
@@ -783,7 +831,7 @@ describe('ScheduleClient request state', () => {
       ).toBeGreaterThan(0);
 
       await user.click(screen.getByRole('button', {
-        name: /Book Thursday.*13:00/i,
+        name: /Book четвер.*13:00/i,
       }));
       expect(screen.getByRole('button', {name: 'Create booking'}))
         .toBeEnabled();
@@ -834,7 +882,7 @@ describe('ScheduleClient request state', () => {
     renderScheduleClient();
     const user = userEvent.setup();
     const sundaySlots = await screen.findAllByRole('button', {
-      name: /Book Sunday.*11:00/i,
+      name: /Book неділя.*11:00/i,
     });
     await user.click(sundaySlots[0]);
     await user.type(screen.getByLabelText('Title'), 'Planning');
@@ -846,7 +894,7 @@ describe('ScheduleClient request state', () => {
     await user.click(screen.getByRole('button', {name: 'Next day'}));
     expect(await screen.findByText('Next week schedule')).toBeVisible();
     const mondaySlots = screen.getAllByRole('button', {
-      name: /Book Monday.*11:00/i,
+      name: /Book понеділок.*11:00/i,
     });
     await user.click(mondaySlots[0]);
 
@@ -890,7 +938,7 @@ describe('ScheduleClient request state', () => {
     renderScheduleClient();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', {
-      name: /Book Tuesday.*11:00/i,
+      name: /Book вівторок.*11:00/i,
     }));
     await user.type(screen.getByLabelText('Title'), 'Planning');
     await user.click(screen.getByRole('button', {name: 'Create booking'}));
@@ -899,7 +947,7 @@ describe('ScheduleClient request state', () => {
 
     await user.click(screen.getByRole('button', {name: 'Cancel'}));
     await user.click(screen.getByRole('button', {
-      name: /Book Tuesday.*13:00/i,
+      name: /Book вівторок.*13:00/i,
     }));
 
     expect(screen.queryByText('Unable to refresh availability.'))
@@ -945,7 +993,7 @@ describe('ScheduleClient request state', () => {
       renderScheduleClient();
       const user = userEvent.setup();
       await user.click(await screen.findByRole('button', {
-        name: /Book Tuesday.*11:00/i,
+        name: /Book вівторок.*11:00/i,
       }));
       await user.type(screen.getByLabelText('Title'), 'Planning');
       await user.click(screen.getByRole('button', {name: 'Create booking'}));
@@ -961,7 +1009,7 @@ describe('ScheduleClient request state', () => {
       expect(screen.getByText('Prior schedule')).toBeVisible();
 
       await user.click(screen.getByRole('button', {
-        name: /Book Tuesday.*13:00/i,
+        name: /Book вівторок.*13:00/i,
       }));
       expect(screen.queryByText('Unable to refresh availability.'))
         .not.toBeInTheDocument();

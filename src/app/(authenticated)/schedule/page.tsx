@@ -1,4 +1,5 @@
-import {ScheduleClient} from '../../../components/schedule/schedule-client';
+import {ScheduleWorkspace} from
+  '../../../components/schedule/schedule-workspace';
 import {readAppEnv} from '../../../lib/config/env';
 
 export default function SchedulePage() {
@@ -16,7 +17,7 @@ export default function SchedulePage() {
           <h1>Розклад</h1>
         </div>
       </div>
-      <ScheduleClient
+      <ScheduleWorkspace
         officeCloseHour={officeCloseHour}
         officeOpenHour={officeOpenHour}
         officeTimeZone={officeTimeZone}

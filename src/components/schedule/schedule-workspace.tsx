@@ -1,6 +1,6 @@
 'use client';
 
-import {Building2, UsersRound} from 'lucide-react';
+import {Building2, SlidersHorizontal, UsersRound} from 'lucide-react';
 import {DateTime} from 'luxon';
 import {useRouter, useSearchParams} from 'next/navigation';
 import {
@@ -28,31 +28,14 @@ import type {
   StartSlotSelection,
 } from './booking-selection';
 import {DaySchedule} from './day-schedule';
-import {ScheduleToolbar} from './schedule-toolbar';
+import {RoomFilterSurface} from './room-filter-surface';
+import {RoomPicker} from './room-picker';
+import {ScheduleNavigation} from './schedule-navigation';
+import {ScheduleViewport} from './schedule-viewport';
+import type {RoomSummary, ScheduleData} from './schedule-types';
 import {TimezoneLabel} from './timezone-label';
+import {useResponsiveMode} from './use-responsive-mode';
 import {WeekGrid} from './week-grid';
-
-type Room = {
-  id: string;
-  name: string;
-  floor: number;
-  capacity: number;
-};
-
-type Schedule = {
-  room: Room;
-  officeTimeZone: string;
-  officeWeekStart: string;
-  range: {startsAt: string; endsAt: string};
-  bookings: Array<{
-    id: string;
-    title: string;
-    startsAt: string;
-    endsAt: string;
-    author: {id: string; name: string};
-    isOwn: boolean;
-  }>;
-};
 
 type ApiResponse<T> = {
   data?: T;
@@ -61,10 +44,10 @@ type ApiResponse<T> = {
 
 type ScheduleLoadState =
   | {key: string; status: 'loading'}
-  | {data: Schedule; key: string; status: 'success'}
+  | {data: ScheduleData; key: string; status: 'success'}
   | {error: string; key: string; status: 'error'};
 
-type ScheduleClientProps = {
+type ScheduleWorkspaceProps = {
   officeCloseHour: number;
   officeOpenHour: number;
   officeTimeZone: string;
@@ -120,19 +103,20 @@ function subscribeToBrowserTimeZone(): () => void {
   return () => undefined;
 }
 
-export function ScheduleClient({
+export function ScheduleWorkspace({
   officeCloseHour,
   officeOpenHour,
   officeTimeZone,
-}: ScheduleClientProps) {
+}: ScheduleWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialWeekStart = normalizeWeekStart(
     searchParams.get('weekStart'),
     officeTimeZone,
   );
-  const [minCapacity, setMinCapacity] = useState('');
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [draftMinCapacity, setDraftMinCapacity] = useState('');
+  const [appliedMinCapacity, setAppliedMinCapacity] = useState('');
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState(
     searchParams.get('roomId') ?? '',
   );
@@ -163,9 +147,14 @@ export function ScheduleClient({
     useState<string | null>(null);
   const [conflictRefresh, setConflictRefresh] =
     useState<ConflictRefreshState>({status: 'idle'});
+  const [isRoomFilterOpen, setIsRoomFilterOpen] = useState(false);
+  const [visibleTimeAnchor, setVisibleTimeAnchor] = useState<string | null>(
+    null,
+  );
   const selectedRoomIdRef = useRef(selectedRoomId);
   const weekStartRef = useRef(weekStart);
   const selectedDayRef = useRef(selectedDay);
+  const roomsRequestSequence = useRef(0);
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
   const conflictRefreshRequestRef = useRef(false);
@@ -253,18 +242,22 @@ export function ScheduleClient({
       setRoomsError('');
       try {
         const parameters = new URLSearchParams();
-        if (minCapacity) {
-          parameters.set('minCapacity', minCapacity);
+        if (appliedMinCapacity) {
+          parameters.set('minCapacity', appliedMinCapacity);
         }
         const suffix = parameters.size > 0 ? `?${parameters.toString()}` : '';
+        const requestSequence = ++roomsRequestSequence.current;
         const response = await fetch(`/api/rooms${suffix}`, {
           signal: controller.signal,
         });
-        const body = await response.json() as ApiResponse<Room[]>;
+        const body = await response.json() as ApiResponse<RoomSummary[]>;
         if (!response.ok || !body.data) {
           throw new Error(body.error?.message ?? 'Unable to load rooms.');
         }
-        if (controller.signal.aborted) {
+        if (
+          controller.signal.aborted ||
+          requestSequence !== roomsRequestSequence.current
+        ) {
           return;
         }
         setRooms(body.data);
@@ -304,7 +297,7 @@ export function ScheduleClient({
     }
     void loadRooms();
     return () => controller.abort();
-  }, [minCapacity, updateUrl]);
+  }, [appliedMinCapacity, updateUrl]);
 
   const activeScheduleKey = selectedRoomId ?
     `${selectedRoomId}:${weekStart}:${refreshKey}` :
@@ -336,7 +329,7 @@ export function ScheduleClient({
           `/api/rooms/${selectedRoomId}/schedule?weekStart=${weekStart}`,
           {signal: controller.signal},
         );
-        const body = await response.json() as ApiResponse<Schedule>;
+        const body = await response.json() as ApiResponse<ScheduleData>;
         if (
           controller.signal.aborted ||
           requestSequence !== scheduleRequestSequence.current
@@ -454,6 +447,12 @@ export function ScheduleClient({
       .setZone(schedule.officeTimeZone)
       .toFormat('yyyy-LL-dd') === selectedDay,
   ) ?? false;
+  const mode = useResponsiveMode();
+
+  function changeMinimumCapacity(value: string) {
+    setDraftMinCapacity(value);
+    setAppliedMinCapacity(value);
+  }
 
   function changeRoom(roomId: string) {
     linkedBookingIdRef.current = null;
@@ -574,23 +573,51 @@ export function ScheduleClient({
 
   return (
     <section aria-label="Room schedule" className="schedule-workspace">
-      <ScheduleToolbar
-        minCapacity={minCapacity}
+      <div className="schedule-workspace-layout">
+        {mode === 'expanded' || mode === 'medium' ? (
+          <aside aria-label="Room picker" className="schedule-room-rail">
+            <RoomPicker
+              onRoomChange={changeRoom}
+              rooms={rooms}
+              selectedRoomId={selectedRoomId}
+            />
+            <label className="control-field capacity-field">
+              <span>Minimum capacity</span>
+              <input
+                min="0"
+                onChange={(event) =>
+                  changeMinimumCapacity(event.target.value)}
+                placeholder="Any"
+                step="1"
+                type="number"
+                value={draftMinCapacity}
+              />
+            </label>
+          </aside>
+        ) : (
+          <button
+            aria-label="Open room filters"
+            className="room-filter-trigger icon-button"
+            onClick={() => setIsRoomFilterOpen(true)}
+            title="Open room filters"
+            type="button"
+          >
+            <SlidersHorizontal aria-hidden="true" />
+          </button>
+        )}
+        <div className="schedule-workspace-main">
+          <ScheduleNavigation
         onDayChange={changeDay}
-        onMinCapacityChange={setMinCapacity}
         onNextDay={() => moveDay(1)}
         onNextWeek={() => changeWeek(1)}
         onPreviousDay={() => moveDay(-1)}
         onPreviousWeek={() => changeWeek(-1)}
-        onRoomChange={changeRoom}
         onToday={goToToday}
-        rooms={rooms}
         selectedDay={selectedDay}
-        selectedRoomId={selectedRoomId}
         weekStart={weekStart}
       />
 
-      <div className="room-context">
+          <div className="room-context">
         {selectedRoom ? (
           <div className="room-meta">
             <strong>{selectedRoom.name}</strong>
@@ -633,24 +660,41 @@ export function ScheduleClient({
         </div>
       ) : null}
 
-      {selectedRoom ? (
+          {selectedRoom ? (
         <div className="schedule-grid-shell">
           <p className="empty-schedule-note">
-            <span className="desktop-schedule">
-              {schedule?.bookings.length === 0 && !scheduleLoading ?
+            {mode === 'expanded' || mode === 'medium' ?
+              schedule?.bookings.length === 0 && !scheduleLoading ?
                 'No bookings this week' :
-                ''}
-            </span>
-            <span className="mobile-schedule">
-              {!selectedDayHasBookings && !scheduleLoading ?
+                '' :
+              !selectedDayHasBookings && !scheduleLoading ?
                 'No bookings this day' :
                 ''}
-            </span>
           </p>
-          <div className="desktop-schedule">
-            <WeekGrid
+          <ScheduleViewport
+            mode={mode}
+            onVisibleTimeAnchorChange={setVisibleTimeAnchor}
+            renderAgenda={() => (
+              <DaySchedule
+                bookingEnabled={schedule !== null}
+                bookings={[...(schedule?.bookings ?? [])]}
+                day={selectedDay}
+                highlightedBookingId={linkedBookingId}
+                loading={scheduleLoading || roomsLoading}
+                officeCloseHour={officeCloseHour}
+                officeOpenHour={officeOpenHour}
+                officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
+                onCancelBooking={setCancellation}
+                onSelectSlot={setStartSelection}
+                roomId={selectedRoom.id}
+                roomName={selectedRoom.name}
+                userTimeZone={userTimeZone}
+              />
+            )}
+            renderTimetable={() => (
+              <WeekGrid
               bookingEnabled={schedule !== null}
-              bookings={schedule?.bookings ?? []}
+              bookings={[...(schedule?.bookings ?? [])]}
               highlightedBookingId={linkedBookingId}
               loading={scheduleLoading || roomsLoading}
               officeCloseHour={officeCloseHour}
@@ -662,25 +706,11 @@ export function ScheduleClient({
               roomName={selectedRoom.name}
               userTimeZone={userTimeZone}
               weekStart={weekStart}
-            />
-          </div>
-          <div className="mobile-schedule">
-            <DaySchedule
-              bookingEnabled={schedule !== null}
-              bookings={schedule?.bookings ?? []}
-              day={selectedDay}
-              highlightedBookingId={linkedBookingId}
-              loading={scheduleLoading || roomsLoading}
-              officeCloseHour={officeCloseHour}
-              officeOpenHour={officeOpenHour}
-              officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
-              onCancelBooking={setCancellation}
-              onSelectSlot={setStartSelection}
-              roomId={selectedRoom.id}
-              roomName={selectedRoom.name}
-              userTimeZone={userTimeZone}
-            />
-          </div>
+              />
+            )}
+            selectedDay={selectedDay}
+            visibleTimeAnchor={visibleTimeAnchor}
+          />
           {scheduleLoading || roomsLoading ? (
             <div className="schedule-loading-overlay">
               <Spinner />
@@ -688,6 +718,21 @@ export function ScheduleClient({
           ) : null}
         </div>
       ) : null}
+
+        </div>
+      </div>
+      <RoomFilterSurface
+        isOpen={isRoomFilterOpen}
+        minCapacity={draftMinCapacity}
+        onClose={() => setIsRoomFilterOpen(false)}
+        onMinCapacityChange={changeMinimumCapacity}
+        onRoomChange={(roomId) => {
+          changeRoom(roomId);
+          setIsRoomFilterOpen(false);
+        }}
+        rooms={rooms}
+        selectedRoomId={selectedRoomId}
+      />
 
       <BookingDialog
         conflictRefresh={conflictRefresh}

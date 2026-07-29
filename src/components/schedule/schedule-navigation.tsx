@@ -3,55 +3,38 @@
 import {CalendarClock, ChevronLeft, ChevronRight} from 'lucide-react';
 import {DateTime} from 'luxon';
 import {APP_LOCALE} from '../../lib/time/browser-zone';
-import {RoomFilter, type RoomOption} from './room-filter';
 
-type ScheduleToolbarProps = {
-  minCapacity: string;
+type ScheduleNavigationProps = {
   onDayChange(value: string): void;
   onNextDay(): void;
-  onMinCapacityChange(value: string): void;
   onNextWeek(): void;
   onPreviousDay(): void;
   onPreviousWeek(): void;
-  onRoomChange(roomId: string): void;
   onToday(): void;
-  rooms: RoomOption[];
   selectedDay: string;
-  selectedRoomId: string;
   weekStart: string;
 };
 
-export function ScheduleToolbar({
-  minCapacity,
+export function ScheduleNavigation({
   onDayChange,
   onNextDay,
-  onMinCapacityChange,
   onNextWeek,
   onPreviousDay,
   onPreviousWeek,
-  onRoomChange,
   onToday,
-  rooms,
   selectedDay,
-  selectedRoomId,
   weekStart,
-}: ScheduleToolbarProps) {
+}: ScheduleNavigationProps) {
   const start = DateTime.fromISO(weekStart).setLocale(APP_LOCALE);
   const end = start.plus({days: 6});
-  const weekLabel = start.isValid
-    ? `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}`
-    : 'Current week';
+  const weekLabel = start.isValid ?
+    `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}` :
+    'Current week';
+  const days = Array.from({length: 7}, (_, index) => start.plus({days: index}));
 
   return (
-    <div className="schedule-toolbar">
-      <RoomFilter
-        minCapacity={minCapacity}
-        onMinCapacityChange={onMinCapacityChange}
-        onRoomChange={onRoomChange}
-        rooms={rooms}
-        selectedRoomId={selectedRoomId}
-      />
-      <div className="week-controls desktop-week-controls">
+    <nav aria-label="Schedule navigation" className="schedule-navigation">
+      <div className="schedule-navigation-week-controls">
         <button
           aria-label="Previous week"
           className="icon-button"
@@ -74,9 +57,32 @@ export function ScheduleToolbar({
         >
           <ChevronRight aria-hidden="true" />
         </button>
-        <p className="week-label" aria-live="polite">{weekLabel}</p>
+        <p aria-live="polite" className="week-label">{weekLabel}</p>
       </div>
-      <div className="mobile-day-controls">
+      <div aria-label="Office week dates" className="schedule-date-strip" role="list">
+        {days.map((day) => {
+          const value = day.toFormat('yyyy-LL-dd');
+          return (
+            <div key={value} role="listitem">
+              <button
+                aria-current={value === selectedDay ? 'date' : undefined}
+                aria-label={day.toFormat('cccc, LLLL d')}
+                className={
+                  value === selectedDay ?
+                    'schedule-date-button current-day' :
+                    'schedule-date-button'
+                }
+                onClick={() => onDayChange(value)}
+                type="button"
+              >
+                <span>{day.toFormat('ccc')}</span>
+                <strong>{day.toFormat('d')}</strong>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="schedule-navigation-day-controls">
         <button
           aria-label="Previous day"
           className="icon-button"
@@ -104,6 +110,6 @@ export function ScheduleToolbar({
           <ChevronRight aria-hidden="true" />
         </button>
       </div>
-    </div>
+    </nav>
   );
 }

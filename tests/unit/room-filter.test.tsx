@@ -2,7 +2,9 @@ import '@testing-library/jest-dom/vitest';
 import {cleanup, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {RoomFilter} from '../../src/components/schedule/room-filter';
+import {RoomFilterSurface} from
+  '../../src/components/schedule/room-filter-surface';
+import {RoomPicker} from '../../src/components/schedule/room-picker';
 
 const rooms = [
   {id: 'maple', name: 'Maple', floor: 1, capacity: 4},
@@ -11,13 +13,11 @@ const rooms = [
 
 afterEach(cleanup);
 
-describe('RoomFilter', () => {
+describe('RoomPicker', () => {
   it('shows available rooms and reports a room selection', async () => {
     const onRoomChange = vi.fn();
     render(
-      <RoomFilter
-        minCapacity=""
-        onMinCapacityChange={vi.fn()}
+      <RoomPicker
         onRoomChange={onRoomChange}
         rooms={rooms}
         selectedRoomId="maple"
@@ -33,11 +33,13 @@ describe('RoomFilter', () => {
     expect(onRoomChange).toHaveBeenCalledWith('pine');
   });
 
-  it('reports minimum capacity changes without hiding the selected room locally', async () => {
+  it('keeps the selected room available while capacity draft changes', async () => {
     const onMinCapacityChange = vi.fn();
     render(
-      <RoomFilter
+      <RoomFilterSurface
+        isOpen
         minCapacity=""
+        onClose={vi.fn()}
         onMinCapacityChange={onMinCapacityChange}
         onRoomChange={vi.fn()}
         rooms={rooms}
@@ -54,10 +56,12 @@ describe('RoomFilter', () => {
     expect(screen.getByRole('option', {name: 'Maple, 4 people'})).toBeVisible();
   });
 
-  it('disables room selection when the filtered result is empty', () => {
+  it('hides its controlled filter dialog when closed', () => {
     render(
-      <RoomFilter
-        minCapacity="20"
+      <RoomFilterSurface
+        isOpen={false}
+        minCapacity=""
+        onClose={vi.fn()}
         onMinCapacityChange={vi.fn()}
         onRoomChange={vi.fn()}
         rooms={[]}
@@ -65,8 +69,7 @@ describe('RoomFilter', () => {
       />,
     );
 
-    expect(screen.getByRole('combobox', {name: 'Room'})).toBeDisabled();
-    expect(screen.getByRole('option', {name: 'No rooms available'}))
-      .toBeVisible();
+    expect(screen.queryByRole('dialog', {name: 'Room filters'}))
+      .not.toBeInTheDocument();
   });
 });
