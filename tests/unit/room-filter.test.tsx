@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import {cleanup, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {useState} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {RoomFilterSurface} from
   '../../src/components/schedule/room-filter-surface';
@@ -13,6 +14,27 @@ const rooms = [
 
 afterEach(cleanup);
 
+function RoomFilterHarness() {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setIsOpen(true)} type="button">
+        Відкрити фільтри переговорних
+      </button>
+      <button type="button">Фонова команда</button>
+      <RoomFilterSurface
+        isOpen={isOpen}
+        minCapacity=""
+        onClose={() => setIsOpen(false)}
+        onMinCapacityChange={vi.fn()}
+        onRoomChange={vi.fn()}
+        rooms={rooms}
+        selectedRoomId="maple"
+      />
+    </>
+  );
+}
+
 describe('RoomPicker', () => {
   it('shows available rooms and reports a room selection', async () => {
     const onRoomChange = vi.fn();
@@ -24,10 +46,12 @@ describe('RoomPicker', () => {
       />,
     );
 
-    const roomSelector = screen.getByRole('combobox', {name: 'Room'});
+    const roomSelector = screen.getByRole('combobox', {
+      name: 'Переговорна',
+    });
     expect(roomSelector).toHaveValue('maple');
-    expect(screen.getByRole('option', {name: 'Maple, 4 people'})).toBeVisible();
-    expect(screen.getByRole('option', {name: 'Pine, 8 people'})).toBeVisible();
+    expect(screen.getByRole('option', {name: 'Maple, 4 місць'})).toBeVisible();
+    expect(screen.getByRole('option', {name: 'Pine, 8 місць'})).toBeVisible();
 
     await userEvent.setup().selectOptions(roomSelector, 'pine');
     expect(onRoomChange).toHaveBeenCalledWith('pine');
@@ -48,12 +72,12 @@ describe('RoomPicker', () => {
     );
 
     await userEvent.setup().type(
-      screen.getByRole('spinbutton', {name: 'Minimum capacity'}),
+      screen.getByRole('spinbutton', {name: 'Мінімальна місткість'}),
       '8',
     );
 
     expect(onMinCapacityChange).toHaveBeenLastCalledWith('8');
-    expect(screen.getByRole('option', {name: 'Maple, 4 people'})).toBeVisible();
+    expect(screen.getByRole('option', {name: 'Maple, 4 місць'})).toBeVisible();
   });
 
   it('hides its controlled filter dialog when closed', () => {
@@ -69,7 +93,34 @@ describe('RoomPicker', () => {
       />,
     );
 
-    expect(screen.queryByRole('dialog', {name: 'Room filters'}))
+    expect(screen.queryByRole('dialog', {name: 'Фільтри переговорних'}))
       .not.toBeInTheDocument();
+  });
+
+  it('contains focus, closes with Escape, and restores focus to its invoker', async () => {
+    render(<RoomFilterHarness />);
+    const user = userEvent.setup();
+    const invoker = screen.getByRole('button', {
+      name: 'Відкрити фільтри переговорних',
+    });
+
+    await user.click(invoker);
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Фільтри переговорних',
+    });
+    const roomSelector = screen.getByRole('combobox', {
+      name: 'Переговорна',
+    });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(roomSelector).toHaveFocus();
+
+    screen.getByRole('button', {name: 'Закрити'}).focus();
+    await user.tab();
+    expect(roomSelector).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(invoker).toHaveFocus();
   });
 });

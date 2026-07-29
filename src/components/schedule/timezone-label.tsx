@@ -1,5 +1,6 @@
 import {Globe2} from 'lucide-react';
 import {areTimeZonesEquivalent} from '../../lib/time/browser-zone';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 
 type TimezoneLabelProps = {
   officeCloseHour: number;
@@ -25,7 +26,7 @@ export function TimezoneLabel({
   return (
     <p className="timezone-label">
       <Globe2 aria-hidden="true" className="size-4" />
-      Office hours: {hourLabel(officeOpenHour)}–
+      {uiCopy.officeHours}: {hourLabel(officeOpenHour)}–
       {hourLabel(officeCloseHour)} {officeTimeZone}
     </p>
   );

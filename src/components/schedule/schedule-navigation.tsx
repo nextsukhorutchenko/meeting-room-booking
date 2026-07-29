@@ -3,6 +3,7 @@
 import {CalendarClock, ChevronLeft, ChevronRight} from 'lucide-react';
 import {DateTime} from 'luxon';
 import {APP_LOCALE} from '../../lib/time/browser-zone';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 
 type ScheduleNavigationProps = {
   onDayChange(value: string): void;
@@ -29,37 +30,37 @@ export function ScheduleNavigation({
   const end = start.plus({days: 6});
   const weekLabel = start.isValid ?
     `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}` :
-    'Current week';
+    uiCopy.currentWeek;
   const days = Array.from({length: 7}, (_, index) => start.plus({days: index}));
 
   return (
-    <nav aria-label="Schedule navigation" className="schedule-navigation">
+    <nav aria-label={uiCopy.scheduleNavigation} className="schedule-navigation">
       <div className="schedule-navigation-week-controls">
         <button
-          aria-label="Previous week"
+          aria-label={uiCopy.previousWeek}
           className="icon-button"
           onClick={onPreviousWeek}
-          title="Previous week"
+          title={uiCopy.previousWeek}
           type="button"
         >
           <ChevronLeft aria-hidden="true" />
         </button>
         <button className="today-button" onClick={onToday} type="button">
           <CalendarClock aria-hidden="true" className="size-4" />
-          Today
+          {uiCopy.today}
         </button>
         <button
-          aria-label="Next week"
+          aria-label={uiCopy.nextWeek}
           className="icon-button"
           onClick={onNextWeek}
-          title="Next week"
+          title={uiCopy.nextWeek}
           type="button"
         >
           <ChevronRight aria-hidden="true" />
         </button>
         <p aria-live="polite" className="week-label">{weekLabel}</p>
       </div>
-      <div aria-label="Office week dates" className="schedule-date-strip" role="list">
+      <div aria-label={uiCopy.officeWeekDates} className="schedule-date-strip" role="list">
         {days.map((day) => {
           const value = day.toFormat('yyyy-LL-dd');
           return (
@@ -84,16 +85,16 @@ export function ScheduleNavigation({
       </div>
       <div className="schedule-navigation-day-controls">
         <button
-          aria-label="Previous day"
+          aria-label={uiCopy.previousDay}
           className="icon-button"
           onClick={onPreviousDay}
-          title="Previous day"
+          title={uiCopy.previousDay}
           type="button"
         >
           <ChevronLeft aria-hidden="true" />
         </button>
         <label className="control-field day-picker-field">
-          <span>Day</span>
+          <span>{uiCopy.day}</span>
           <input
             onChange={(event) => onDayChange(event.target.value)}
             type="date"
@@ -101,10 +102,10 @@ export function ScheduleNavigation({
           />
         </label>
         <button
-          aria-label="Next day"
+          aria-label={uiCopy.nextDay}
           className="icon-button"
           onClick={onNextDay}
-          title="Next day"
+          title={uiCopy.nextDay}
           type="button"
         >
           <ChevronRight aria-hidden="true" />

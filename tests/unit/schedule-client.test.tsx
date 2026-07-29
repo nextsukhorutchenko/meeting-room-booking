@@ -181,7 +181,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     });
 
     await userEvent.setup().click(
-      screen.getByRole('button', {name: 'Next week'}),
+      screen.getByRole('button', {name: 'Наступний тиждень'}),
     );
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -324,6 +324,42 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
       .not.toBeInTheDocument();
   });
 
+  it('closes compact room filters when resizing to the desktop rail', async () => {
+    setViewportWidth(768);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {
+      name: 'Відкрити фільтри переговорних',
+    }));
+    expect(screen.getByRole('dialog', {
+      name: 'Фільтри переговорних',
+    })).toBeVisible();
+    expect(
+      document.querySelector('.schedule-workspace-layout')?.parentElement,
+    ).toHaveAttribute('inert');
+
+    await act(async () => setViewportWidth(1440));
+
+    expect(screen.queryByRole('dialog', {
+      name: 'Фільтри переговорних',
+    })).not.toBeInTheDocument();
+    expect(screen.getByRole('complementary', {
+      name: 'Вибір переговорної',
+    })).toBeVisible();
+  });
+
   it('removes stale bookings and booking controls after an auth failure', async () => {
     const failedSchedule = deferred<Response>();
 
@@ -350,7 +386,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     ).toBeGreaterThan(0);
 
     await userEvent.setup().click(
-      screen.getByRole('button', {name: 'Next week'}),
+      screen.getByRole('button', {name: 'Наступний тиждень'}),
     );
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -411,13 +447,13 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     ).toBeGreaterThan(0);
 
     const capacity = screen.getByRole('spinbutton', {
-      name: 'Minimum capacity',
+      name: 'Мінімальна місткість',
     });
     const user = userEvent.setup();
     await user.type(capacity, '9');
 
     expect(
-      await screen.findByText('No rooms match this capacity'),
+      await screen.findByText('Немає переговорних із такою місткістю'),
     ).toBeVisible();
     expect(screen.queryByText('Prior Oak booking')).not.toBeInTheDocument();
     expect(
@@ -739,7 +775,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     await user.type(screen.getByLabelText('Title'), 'Planning');
     await user.click(screen.getByRole('button', {name: 'Create booking'}));
 
-    expect(await screen.findByText('Unable to refresh availability.'))
+    expect(await screen.findByText('Не вдалося оновити доступність.'))
       .toBeVisible();
     expect(screen.getByText('Prior schedule')).toBeVisible();
     expect(screen.getByRole('button', {name: 'Create booking'})).toBeDisabled();
@@ -759,18 +795,18 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     });
 
     expect(await screen.findByText('Retry schedule')).toBeVisible();
-    expect(screen.queryByText('Unable to refresh availability.'))
+    expect(screen.queryByText('Не вдалося оновити доступність.'))
       .not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Create booking'})).toBeEnabled();
   });
 
   it.each([
     {
-      navigationLabel: 'Next day',
+      navigationLabel: 'Наступний день',
       selectedDay: '2026-08-03',
     },
     {
-      navigationLabel: 'Today',
+      navigationLabel: 'Сьогодні',
       selectedDay: '2026-08-05',
     },
   ])(
@@ -817,7 +853,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
       }));
       await user.type(screen.getByLabelText('Title'), 'Planning');
       await user.click(screen.getByRole('button', {name: 'Create booking'}));
-      expect(await screen.findByText('Unable to refresh availability.'))
+      expect(await screen.findByText('Не вдалося оновити доступність.'))
         .toBeVisible();
 
       await user.click(screen.getByRole('button', {name: 'Cancel'}));
@@ -887,18 +923,18 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     await user.click(sundaySlots[0]);
     await user.type(screen.getByLabelText('Title'), 'Planning');
     await user.click(screen.getByRole('button', {name: 'Create booking'}));
-    expect(await screen.findByText('Unable to refresh availability.'))
+    expect(await screen.findByText('Не вдалося оновити доступність.'))
       .toBeVisible();
 
     await user.click(screen.getByRole('button', {name: 'Cancel'}));
-    await user.click(screen.getByRole('button', {name: 'Next day'}));
+    await user.click(screen.getByRole('button', {name: 'Наступний день'}));
     expect(await screen.findByText('Next week schedule')).toBeVisible();
     const mondaySlots = screen.getAllByRole('button', {
       name: /Book понеділок.*11:00/i,
     });
     await user.click(mondaySlots[0]);
 
-    expect(screen.queryByText('Unable to refresh availability.'))
+    expect(screen.queryByText('Не вдалося оновити доступність.'))
       .not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Retry availability'}))
       .not.toBeInTheDocument();
@@ -942,7 +978,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
     }));
     await user.type(screen.getByLabelText('Title'), 'Planning');
     await user.click(screen.getByRole('button', {name: 'Create booking'}));
-    expect(await screen.findByText('Unable to refresh availability.'))
+    expect(await screen.findByText('Не вдалося оновити доступність.'))
       .toBeVisible();
 
     await user.click(screen.getByRole('button', {name: 'Cancel'}));
@@ -950,7 +986,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
       name: /Book вівторок.*13:00/i,
     }));
 
-    expect(screen.queryByText('Unable to refresh availability.'))
+    expect(screen.queryByText('Не вдалося оновити доступність.'))
       .not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: 'Retry availability'}))
       .not.toBeInTheDocument();
@@ -1011,7 +1047,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
       await user.click(screen.getByRole('button', {
         name: /Book вівторок.*13:00/i,
       }));
-      expect(screen.queryByText('Unable to refresh availability.'))
+      expect(screen.queryByText('Не вдалося оновити доступність.'))
         .not.toBeInTheDocument();
       expect(screen.queryByRole('button', {name: 'Retry availability'}))
         .not.toBeInTheDocument();
@@ -1031,7 +1067,7 @@ describe('ScheduleWorkspace request state', {timeout: 10_000}, () => {
         expect(await screen.findByText('Refreshed schedule')).toBeVisible();
       }
 
-      expect(screen.queryByText('Unable to refresh availability.'))
+      expect(screen.queryByText('Не вдалося оновити доступність.'))
         .not.toBeInTheDocument();
       expect(screen.queryByRole('button', {name: 'Retry availability'}))
         .not.toBeInTheDocument();

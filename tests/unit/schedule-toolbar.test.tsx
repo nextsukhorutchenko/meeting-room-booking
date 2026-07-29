@@ -28,6 +28,12 @@ describe('ScheduleNavigation locale', () => {
       />,
     );
 
+    expect(screen.getByRole('navigation', {
+      name: 'Навігація розкладом',
+    })).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Попередній тиждень'}))
+      .toBeVisible();
+    expect(screen.getByRole('button', {name: 'Сьогодні'})).toBeVisible();
     expect(screen.getByText('бер. 2 - бер. 8, 2026')).toBeVisible();
     expect(screen.getByRole('button', {
       name: 'понеділок, березень 2',

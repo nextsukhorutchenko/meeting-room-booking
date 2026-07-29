@@ -12,6 +12,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import {getBrowserTimeZone} from '../../lib/time/browser-zone';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 import {buildBookingEndTimeOptions} from '../../modules/bookings/end-time-options';
 import {
   CancelBookingDialog,
@@ -34,7 +35,7 @@ import {ScheduleNavigation} from './schedule-navigation';
 import {ScheduleViewport} from './schedule-viewport';
 import type {RoomSummary, ScheduleData} from './schedule-types';
 import {TimezoneLabel} from './timezone-label';
-import {useResponsiveMode} from './use-responsive-mode';
+import {getResponsiveMode, useResponsiveMode} from './use-responsive-mode';
 import {WeekGrid} from './week-grid';
 
 type ApiResponse<T> = {
@@ -252,7 +253,7 @@ export function ScheduleWorkspace({
         });
         const body = await response.json() as ApiResponse<RoomSummary[]>;
         if (!response.ok || !body.data) {
-          throw new Error(body.error?.message ?? 'Unable to load rooms.');
+          throw new Error(body.error?.message ?? uiCopy.unableToLoadRooms);
         }
         if (
           controller.signal.aborted ||
@@ -287,7 +288,7 @@ export function ScheduleWorkspace({
         }
         setRooms([]);
         setRoomsError(
-          error instanceof Error ? error.message : 'Unable to load rooms.',
+          error instanceof Error ? error.message : uiCopy.unableToLoadRooms,
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -338,7 +339,7 @@ export function ScheduleWorkspace({
         }
         if (!response.ok || !body.data) {
           throw new Error(
-            body.error?.message ?? 'Unable to load the schedule.',
+              body.error?.message ?? uiCopy.unableToLoadSchedule,
           );
         }
         preserveScheduleOnRefreshRef.current = false;
@@ -366,7 +367,7 @@ export function ScheduleWorkspace({
             conflictRefreshRequestRef.current = false;
             setConflictRefresh({
               status: 'error',
-              message: 'Unable to refresh availability.',
+              message: uiCopy.unableToRefreshAvailability,
             });
           }
           return;
@@ -375,7 +376,7 @@ export function ScheduleWorkspace({
         setScheduleState({
           error: error instanceof Error ?
             error.message :
-            'Unable to load the schedule.',
+            uiCopy.unableToLoadSchedule,
           key: requestKey,
           status: 'error',
         });
@@ -448,6 +449,24 @@ export function ScheduleWorkspace({
       .toFormat('yyyy-LL-dd') === selectedDay,
   ) ?? false;
   const mode = useResponsiveMode();
+  const isCompactMode = mode === 'tablet' || mode === 'mobile';
+  const isRoomFilterVisible = isCompactMode && isRoomFilterOpen;
+
+  useEffect(() => {
+    function closeRoomFilterWhenWide() {
+      const nextMode = getResponsiveMode(window.innerWidth);
+      if (nextMode === 'medium' || nextMode === 'expanded') {
+        setIsRoomFilterOpen(false);
+      }
+    }
+
+    window.addEventListener('resize', closeRoomFilterWhenWide);
+    return () => window.removeEventListener('resize', closeRoomFilterWhenWide);
+  }, []);
+
+  const closeRoomFilter = useCallback(() => {
+    setIsRoomFilterOpen(false);
+  }, []);
 
   function changeMinimumCapacity(value: string) {
     setDraftMinCapacity(value);
@@ -538,7 +557,7 @@ export function ScheduleWorkspace({
     setConflictRefresh({status: 'idle'});
     setPreservedScheduleKey(null);
     setStartSelection(null);
-    setToastMessage('Booking created');
+    setToastMessage(uiCopy.bookingCreated);
     setRefreshKey((key) => key + 1);
   }
 
@@ -548,7 +567,7 @@ export function ScheduleWorkspace({
       setPreservedScheduleKey(scheduleState.key);
     }
     setCancellation(null);
-    setToastMessage('Booking cancelled');
+    setToastMessage(uiCopy.bookingCancelled);
     setRefreshKey((key) => key + 1);
   }
 
@@ -572,39 +591,43 @@ export function ScheduleWorkspace({
   }
 
   return (
-    <section aria-label="Room schedule" className="schedule-workspace">
-      <div className="schedule-workspace-layout">
+    <section aria-label={uiCopy.roomSchedule} className="schedule-workspace">
+      <div
+        aria-hidden={isRoomFilterVisible || undefined}
+        inert={isRoomFilterVisible}
+      >
+        <div className="schedule-workspace-layout">
         {mode === 'expanded' || mode === 'medium' ? (
-          <aside aria-label="Room picker" className="schedule-room-rail">
+          <aside aria-label={uiCopy.roomPicker} className="schedule-room-rail">
             <RoomPicker
               onRoomChange={changeRoom}
               rooms={rooms}
               selectedRoomId={selectedRoomId}
             />
             <label className="control-field capacity-field">
-              <span>Minimum capacity</span>
+              <span>{uiCopy.minimumCapacity}</span>
               <input
                 min="0"
                 onChange={(event) =>
                   changeMinimumCapacity(event.target.value)}
-                placeholder="Any"
+                placeholder={uiCopy.any}
                 step="1"
                 type="number"
                 value={draftMinCapacity}
               />
             </label>
           </aside>
-        ) : (
+        ) : isCompactMode ? (
           <button
-            aria-label="Open room filters"
+            aria-label={uiCopy.openRoomFilters}
             className="room-filter-trigger icon-button"
             onClick={() => setIsRoomFilterOpen(true)}
-            title="Open room filters"
+            title={uiCopy.openRoomFilters}
             type="button"
           >
             <SlidersHorizontal aria-hidden="true" />
           </button>
-        )}
+        ) : null}
         <div className="schedule-workspace-main">
           <ScheduleNavigation
         onDayChange={changeDay}
@@ -623,15 +646,15 @@ export function ScheduleWorkspace({
             <strong>{selectedRoom.name}</strong>
             <span>
               <Building2 aria-hidden="true" />
-              Floor {selectedRoom.floor}
+              {uiCopy.floor} {selectedRoom.floor}
             </span>
             <span>
               <UsersRound aria-hidden="true" />
-              {selectedRoom.capacity} people
+              {selectedRoom.capacity} {uiCopy.places}
             </span>
           </div>
         ) : (
-          <span className="room-meta-placeholder">Select a room</span>
+          <span className="room-meta-placeholder">{uiCopy.selectRoom}</span>
         )}
         <TimezoneLabel
           officeCloseHour={officeCloseHour}
@@ -643,19 +666,19 @@ export function ScheduleWorkspace({
 
       {roomsError ? (
         <div className="schedule-message" role="alert">
-          <strong>Rooms unavailable</strong>
+          <strong>{uiCopy.roomsUnavailable}</strong>
           <span>{roomsError}</span>
         </div>
       ) : null}
       {!roomsLoading && !roomsError && rooms.length === 0 ? (
         <div className="schedule-message" role="status">
-          <strong>No rooms match this capacity</strong>
-          <span>Lower the minimum capacity to see available rooms.</span>
+          <strong>{uiCopy.noRoomsMatchCapacity}</strong>
+          <span>{uiCopy.lowerMinimumCapacity}</span>
         </div>
       ) : null}
       {scheduleError ? (
         <div className="schedule-message" role="alert">
-          <strong>Schedule unavailable</strong>
+          <strong>{uiCopy.scheduleUnavailable}</strong>
           <span>{scheduleError}</span>
         </div>
       ) : null}
@@ -665,10 +688,10 @@ export function ScheduleWorkspace({
           <p className="empty-schedule-note">
             {mode === 'expanded' || mode === 'medium' ?
               schedule?.bookings.length === 0 && !scheduleLoading ?
-                'No bookings this week' :
+                uiCopy.noBookingsThisWeek :
                 '' :
               !selectedDayHasBookings && !scheduleLoading ?
-                'No bookings this day' :
+                uiCopy.noBookingsThisDay :
                 ''}
           </p>
           <ScheduleViewport
@@ -721,35 +744,35 @@ export function ScheduleWorkspace({
 
         </div>
       </div>
+        <BookingDialog
+          conflictRefresh={conflictRefresh}
+          onClose={closeBookingDialog}
+          onConflict={refreshAfterConflict}
+          onCreated={handleCreated}
+          onRetryConflictRefresh={refreshAfterConflict}
+          selection={bookingSelection}
+        />
+        {cancellation ? (
+          <CancelBookingDialog
+            booking={cancellation}
+            onCancelled={handleCancelled}
+            onClose={() => setCancellation(null)}
+          />
+        ) : null}
+        {toastMessage ? <Toast message={toastMessage} /> : null}
+      </div>
       <RoomFilterSurface
-        isOpen={isRoomFilterOpen}
+        isOpen={isRoomFilterVisible}
         minCapacity={draftMinCapacity}
-        onClose={() => setIsRoomFilterOpen(false)}
+        onClose={closeRoomFilter}
         onMinCapacityChange={changeMinimumCapacity}
         onRoomChange={(roomId) => {
           changeRoom(roomId);
-          setIsRoomFilterOpen(false);
+          closeRoomFilter();
         }}
         rooms={rooms}
         selectedRoomId={selectedRoomId}
       />
-
-      <BookingDialog
-        conflictRefresh={conflictRefresh}
-        onClose={closeBookingDialog}
-        onConflict={refreshAfterConflict}
-        onCreated={handleCreated}
-        onRetryConflictRefresh={refreshAfterConflict}
-        selection={bookingSelection}
-      />
-      {cancellation ? (
-        <CancelBookingDialog
-          booking={cancellation}
-          onCancelled={handleCancelled}
-          onClose={() => setCancellation(null)}
-        />
-      ) : null}
-      {toastMessage ? <Toast message={toastMessage} /> : null}
     </section>
   );
 }
