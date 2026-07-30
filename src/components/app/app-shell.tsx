@@ -4,6 +4,7 @@ import {CalendarDays, ListChecks} from 'lucide-react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {useRef, type ReactElement, type ReactNode} from 'react';
+import {AuthRequiredBoundary} from '../auth/auth-required-boundary';
 import {AppHeader} from './app-header';
 import {NotificationController} from './notification-controller';
 import {
@@ -16,18 +17,30 @@ export type AppShellProps = {
   user: {name: string};
 };
 
+type AppShellContentProps = AppShellProps & {
+  pathname: string;
+};
+
 export function AppShell({children, user}: AppShellProps): ReactElement {
   const pathname = usePathname();
   return (
-    <PresentationCoordinator pathname={pathname}>
-      <NotificationController pathname={pathname}>
-        <AppShellContent user={user}>{children}</AppShellContent>
-      </NotificationController>
-    </PresentationCoordinator>
+    <AuthRequiredBoundary pathname={pathname}>
+      <PresentationCoordinator pathname={pathname}>
+        <NotificationController pathname={pathname}>
+          <AppShellContent pathname={pathname} user={user}>
+            {children}
+          </AppShellContent>
+        </NotificationController>
+      </PresentationCoordinator>
+    </AuthRequiredBoundary>
   );
 }
 
-function AppShellContent({children, user}: AppShellProps): ReactElement {
+function AppShellContent({
+  children,
+  pathname,
+  user,
+}: AppShellContentProps): ReactElement {
   const backgroundRef = useRef<HTMLDivElement>(null);
   const {registerBackground} = usePresentationCoordinator();
 
@@ -52,11 +65,19 @@ function AppShellContent({children, user}: AppShellProps): ReactElement {
         {children}
       </main>
       <nav aria-label="Нижня навігація" className="bottom-nav">
-        <Link className="bottom-nav-link" href="/schedule">
+        <Link
+          aria-current={pathname === '/schedule' ? 'page' : undefined}
+          className="bottom-nav-link"
+          href="/schedule"
+        >
           <CalendarDays aria-hidden="true" />
           <span>Розклад</span>
         </Link>
-        <Link className="bottom-nav-link" href="/my-bookings">
+        <Link
+          aria-current={pathname === '/my-bookings' ? 'page' : undefined}
+          className="bottom-nav-link"
+          href="/my-bookings"
+        >
           <ListChecks aria-hidden="true" />
           <span>Мої бронювання</span>
         </Link>

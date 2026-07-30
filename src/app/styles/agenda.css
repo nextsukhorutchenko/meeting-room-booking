@@ -134,7 +134,52 @@
 }
 
 .schedule-jump-controls {
-  display: none;
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + var(--space-1));
+  left: var(--space-0);
+  display: grid;
+  grid-template-columns:
+    minmax(var(--space-0), 1fr)
+    minmax(var(--space-0), 1fr)
+    auto;
+  align-items: end;
+  width: var(--border-default);
+  height: var(--border-default);
+  gap: var(--space-1);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.schedule-jump-controls:focus-within {
+  width: min(100%, var(--schedule-jump-panel-max-width));
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  border: var(--border-default) solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-popover);
+  white-space: normal;
+}
+
+.schedule-jump-controls select {
+  width: 100%;
+  min-width: var(--space-0);
+  min-height: var(--control-target-size);
+}
+
+.schedule-jump-button {
+  min-height: var(--control-target-size);
+  border: var(--border-default) solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  padding: var(--space-1);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 700;
 }
 
 .schedule-workspace .timezone-label {
@@ -145,7 +190,13 @@
 @media (max-width: 599px) {
   .schedule-date-strip {
     grid-template-columns: repeat(3, minmax(var(--space-0), 1fr));
-    min-height: calc(var(--space-8) + var(--space-3));
+    height: var(--timetable-row-height);
+    min-height: var(--timetable-row-height);
+  }
+
+  .schedule-date-strip > div,
+  .schedule-date-button {
+    height: 100%;
   }
 
   .schedule-date-strip > [data-mobile-date-visible="false"] {
@@ -168,31 +219,39 @@
 
 @media (max-width: 899px) {
   .schedule-jump-controls {
-    display: grid;
-    grid-template-columns: minmax(var(--space-0), 1fr) minmax(var(--space-0), 1fr) auto;
-    align-items: end;
-    gap: var(--space-1);
-  }
-
-  .schedule-jump-controls select {
-    width: 100%;
-    min-width: var(--space-0);
-    min-height: var(--control-target-size);
-  }
-
-  .schedule-jump-button {
-    min-height: var(--control-target-size);
-    border: var(--border-default) solid var(--color-border-control);
-    border-radius: var(--radius-control);
-    background: var(--color-surface);
-    padding: var(--space-1);
-    color: var(--color-text);
-    font: inherit;
-    font-weight: 700;
+    max-width: calc(100vw - (var(--space-2) * 2));
   }
 
   .day-agenda h2 {
     padding: var(--space-1) var(--space-2);
+  }
+}
+
+@media (max-width: 599px) {
+  .schedule-navigation {
+    gap: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+
+  .schedule-navigation-week-controls {
+    min-height: var(--control-target-size);
+    flex-wrap: nowrap;
+  }
+
+  .week-label {
+    display: none;
+  }
+
+  .day-agenda h2 {
+    position: absolute;
+    width: var(--visually-hidden-size);
+    height: var(--visually-hidden-size);
+    margin: var(--space-0);
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: var(--space-0);
+    padding: var(--space-0);
+    white-space: nowrap;
   }
 }
 

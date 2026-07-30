@@ -14,10 +14,12 @@ const focusableSelector = [
 export function useFocusContainment({
   active,
   container,
+  escapeDisabled = false,
   onEscape,
 }: {
   active: boolean;
   container: HTMLElement | null;
+  escapeDisabled?: boolean;
   onEscape(): void;
 }): void {
   useEffect(() => {
@@ -26,7 +28,9 @@ export function useFocusContainment({
     function containFocus(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onEscape();
+        if (!escapeDisabled) {
+          onEscape();
+        }
         return;
       }
       if (event.key !== 'Tab') return;
@@ -60,5 +64,5 @@ export function useFocusContainment({
 
     document.addEventListener('keydown', containFocus);
     return () => document.removeEventListener('keydown', containFocus);
-  }, [active, container, onEscape]);
+  }, [active, container, escapeDisabled, onEscape]);
 }

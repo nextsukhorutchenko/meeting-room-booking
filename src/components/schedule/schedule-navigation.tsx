@@ -1,12 +1,19 @@
 'use client';
 
-import {CalendarClock, ChevronLeft, ChevronRight} from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+} from 'lucide-react';
 import {DateTime} from 'luxon';
 import {useState} from 'react';
 import {formatDateShort, formatTime} from '../../lib/i18n/formatters';
 import {APP_LOCALE} from '../../lib/time/browser-zone';
 import {officeDaySlotStarts} from '../../lib/time/office-time';
 import {uiCopy} from '../../lib/i18n/ui-copy';
+import type {ResponsiveMode} from './schedule-types';
 
 export type ScheduleJumpTarget = {
   officeDay: string;
@@ -16,6 +23,7 @@ export type ScheduleJumpTarget = {
 };
 
 type ScheduleNavigationProps = {
+  mode: ResponsiveMode;
   onDayChange(value: string): void;
   onJump(target: ScheduleJumpTarget): void;
   onNextDay(): void;
@@ -32,9 +40,12 @@ type ScheduleNavigationProps = {
 };
 
 export function ScheduleNavigation({
+  mode,
   onDayChange,
   onJump,
+  onNextDay,
   onNextWeek,
+  onPreviousDay,
   onPreviousWeek,
   onToday,
   officeCloseHour,
@@ -78,15 +89,24 @@ export function ScheduleNavigation({
   const currentJumpStartsAt = slots.some((slot) => slot.startsAt === jumpStartsAt) ?
     jumpStartsAt :
     selectedSlot?.startsAt ?? '';
+  const usesDayNavigation =
+    mode === 'medium' || mode === 'tablet' || mode === 'mobile';
+  const previousLabel = usesDayNavigation ?
+    uiCopy.previousDay :
+    uiCopy.previousWeek;
+  const nextLabel = usesDayNavigation ? uiCopy.nextDay : uiCopy.nextWeek;
+  const officeToday = DateTime.now()
+    .setZone(officeTimeZone)
+    .toFormat('yyyy-LL-dd');
 
   return (
     <nav aria-label={uiCopy.scheduleNavigation} className="schedule-navigation">
       <div className="schedule-navigation-week-controls">
         <button
-          aria-label={uiCopy.previousWeek}
+          aria-label={previousLabel}
           className="icon-button"
-          onClick={onPreviousWeek}
-          title={uiCopy.previousWeek}
+          onClick={usesDayNavigation ? onPreviousDay : onPreviousWeek}
+          title={previousLabel}
           type="button"
         >
           <ChevronLeft aria-hidden="true" />
@@ -96,10 +116,10 @@ export function ScheduleNavigation({
           {uiCopy.today}
         </button>
         <button
-          aria-label={uiCopy.nextWeek}
+          aria-label={nextLabel}
           className="icon-button"
-          onClick={onNextWeek}
-          title={uiCopy.nextWeek}
+          onClick={usesDayNavigation ? onNextDay : onNextWeek}
+          title={nextLabel}
           type="button"
         >
           <ChevronRight aria-hidden="true" />
@@ -109,6 +129,16 @@ export function ScheduleNavigation({
       <div aria-label={uiCopy.officeWeekDates} className="schedule-date-strip" role="list">
         {days.map((day, index) => {
           const value = day.toFormat('yyyy-LL-dd');
+          const isSelected = value === selectedDay;
+          const isOfficeToday = value === officeToday;
+          const stateSuffix = [
+            isSelected ? 'обрано' : '',
+            isOfficeToday ? 'сьогодні' : '',
+          ].filter(Boolean).join(', ');
+          const accessibleLabel = [
+            day.toFormat('cccc, LLLL d'),
+            stateSuffix,
+          ].filter(Boolean).join(', ');
           return (
             <div
               data-mobile-date-visible={
@@ -120,18 +150,25 @@ export function ScheduleNavigation({
               role="listitem"
             >
               <button
-                aria-current={value === selectedDay ? 'date' : undefined}
-                aria-label={day.toFormat('cccc, LLLL d')}
-                className={
-                  value === selectedDay ?
-                    'schedule-date-button current-day' :
-                    'schedule-date-button'
-                }
+                aria-current={isSelected ? 'date' : undefined}
+                aria-label={accessibleLabel}
+                className={[
+                  'schedule-date-button',
+                  isSelected ? 'selected-day' : '',
+                  isOfficeToday ? 'current-day' : '',
+                ].filter(Boolean).join(' ')}
+                data-office-today={isOfficeToday ? 'true' : undefined}
                 onClick={() => onDayChange(value)}
                 type="button"
               >
                 <span>{day.toFormat('ccc')}</span>
                 <strong>{day.toFormat('d')}</strong>
+                <span aria-hidden="true" className="schedule-date-state-markers">
+                  {isOfficeToday ? (
+                    <Circle className="office-today-marker" fill="currentColor" />
+                  ) : null}
+                  {isSelected ? <Check className="selected-day-marker" /> : null}
+                </span>
               </button>
             </div>
           );

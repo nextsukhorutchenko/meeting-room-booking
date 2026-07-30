@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom/vitest';
-import {cleanup, render, screen, waitFor} from '@testing-library/react';
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {useState} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
@@ -52,7 +58,13 @@ const detailsState: BookingControllerState = {
   status: 'details',
 };
 
-function ZeroFocusableDetailsHarness() {
+const detailsContext = {
+  officeTimeZone: 'Europe/Kyiv',
+  roomName: 'Дуб',
+  userTimeZone: 'America/New_York',
+};
+
+function DetailsHarness() {
   const [open, setOpen] = useState(false);
   const {registerBackground, request} = usePresentationCoordinator();
   return (
@@ -71,7 +83,9 @@ function ZeroFocusableDetailsHarness() {
       </div>
       {open ? (
         <AdaptiveBookingSurface
+          detailsContext={detailsContext}
           mode="mobile"
+          onCancelDetails={vi.fn()}
           onClose={() => {
             request({type: 'CLOSE_BOOKING'});
             setOpen(false);
@@ -95,7 +109,9 @@ describe('AdaptiveBookingSurface', () => {
     (mode) => {
       const {container} = render(
         <AdaptiveBookingSurface
+          detailsContext={detailsContext}
           mode={mode}
+          onCancelDetails={vi.fn()}
           onClose={vi.fn()}
           onEndChange={vi.fn()}
           onRetryRefresh={vi.fn()}
@@ -118,7 +134,9 @@ describe('AdaptiveBookingSurface', () => {
   it('keeps expanded closed guidance visible and interactive descendants absent', () => {
     const {container} = render(
       <AdaptiveBookingSurface
+        detailsContext={detailsContext}
         mode="expanded"
+        onCancelDetails={vi.fn()}
         onClose={vi.fn()}
         onEndChange={vi.fn()}
         onRetryRefresh={vi.fn()}
@@ -142,7 +160,9 @@ describe('AdaptiveBookingSurface', () => {
 
   it('keeps the surface and panel nodes while opening and resizing', () => {
     const props = {
+      detailsContext,
       mode: 'tablet' as const,
+      onCancelDetails: vi.fn(),
       onClose: vi.fn(),
       onEndChange: vi.fn(),
       onRetryRefresh: vi.fn(),
@@ -170,6 +190,8 @@ describe('AdaptiveBookingSurface', () => {
 
   it('keeps the same composer node and draft while resizing', () => {
     const props = {
+      detailsContext,
+      onCancelDetails: vi.fn(),
       onClose: vi.fn(),
       onEndChange: vi.fn(),
       onRetryRefresh: vi.fn(),
@@ -191,7 +213,9 @@ describe('AdaptiveBookingSurface', () => {
   it('contains the complete compact dialog tab loop in both directions', async () => {
     render(
       <AdaptiveBookingSurface
+        detailsContext={detailsContext}
         mode="mobile"
+        onCancelDetails={vi.fn()}
         onClose={vi.fn()}
         onEndChange={vi.fn()}
         onRetryRefresh={vi.fn()}
@@ -217,10 +241,10 @@ describe('AdaptiveBookingSurface', () => {
     expect(focusable.at(-1)).toHaveFocus();
   });
 
-  it('contains and restores a coordinator-backed dialog with no focusable child', async () => {
+  it('contains complete other-booking details and restores its invoker', async () => {
     render(
       <PresentationCoordinator>
-        <ZeroFocusableDetailsHarness />
+        <DetailsHarness />
       </PresentationCoordinator>,
     );
     const user = userEvent.setup();
@@ -231,20 +255,54 @@ describe('AdaptiveBookingSurface', () => {
     const dialog = await screen.findByRole('dialog', {
       name: 'Деталі бронювання',
     });
-    expect(dialog.querySelectorAll(
-      'a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    )).toHaveLength(0);
-    expect(dialog).toHaveAttribute('tabindex', '-1');
-    await waitFor(() => expect(dialog).toHaveFocus());
-
-    await user.tab();
-    expect(dialog).toHaveFocus();
-    await user.tab({shift: true});
-    expect(dialog).toHaveFocus();
+    const details = within(dialog);
+    expect(details.getByText('Деталі без дій')).toBeVisible();
+    expect(details.getByText('Олена')).toBeVisible();
+    expect(details.getByText('Дуб')).toBeVisible();
+    expect(details.getByText(/05:00-05:30.*America\/New_York/)).toBeVisible();
+    expect(details.getByText(/12:00-12:30.*Europe\/Kyiv/)).toBeVisible();
+    expect(details.queryByRole('button', {
+      name: 'Скасувати бронювання',
+    })).not.toBeInTheDocument();
+    await waitFor(() => expect(details.getByRole('button', {
+      name: 'Закрити панель бронювання',
+    })).toHaveFocus());
     await user.keyboard('{Escape}');
 
     await waitFor(() => expect(opener).toHaveFocus());
     expect(screen.queryByRole('dialog', {name: 'Деталі бронювання'}))
       .not.toBeInTheDocument();
+  });
+
+  it('exposes Cancel only for an own booking inside non-modal details', async () => {
+    const onCancelDetails = vi.fn();
+    const ownDetails: BookingControllerState = {
+      ...detailsState,
+      booking: {...detailsState.booking, isOwn: true},
+    };
+    render(
+      <AdaptiveBookingSurface
+        detailsContext={detailsContext}
+        mode="medium"
+        onCancelDetails={onCancelDetails}
+        onClose={vi.fn()}
+        onEndChange={vi.fn()}
+        onRetryRefresh={vi.fn()}
+        onSubmit={vi.fn()}
+        onTitleChange={vi.fn()}
+        state={ownDetails}
+      />,
+    );
+
+    const region = screen.getByRole('region', {name: 'Деталі бронювання'});
+    const cancel = within(region).getByRole('button', {
+      name: 'Скасувати бронювання',
+    });
+    await userEvent.setup().click(cancel);
+
+    expect(onCancelDetails).toHaveBeenCalledWith(
+      ownDetails.booking,
+      cancel,
+    );
   });
 });

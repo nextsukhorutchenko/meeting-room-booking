@@ -64,7 +64,10 @@ test('@schedule @mobile responsive schedule geometry stays within its viewport',
     await expect(page.getByRole('table')).toHaveCount(0);
     const firstAgendaItem = agenda.getByRole('listitem').first();
     await expect(firstAgendaItem).toBeVisible();
-    expect((await firstAgendaItem.boundingBox())?.y)
+    const documentRelativeTop = await firstAgendaItem.evaluate(
+      (element) => element.getBoundingClientRect().top + window.scrollY,
+    );
+    expect(documentRelativeTop)
       .toBeLessThanOrEqual(296);
   } else {
     const table = page.getByRole('table');
@@ -120,6 +123,44 @@ test('@schedule @mobile responsive schedule geometry stays within its viewport',
       .toBeLessThanOrEqual((viewportBox?.y ?? 0) + (viewportBox?.height ?? 0));
     expect(geometry.viewportScrollHeight)
       .toBeGreaterThan(geometry.viewportClientHeight);
+  }
+});
+
+test('@schedule medium room and booking panes use exact swap geometry', async ({
+  database,
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'medium');
+  const room = await roomByName(database, 'Oak');
+  const weekStart = officeMonday(1);
+  const scheduleUrl =
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${weekStart}`;
+
+  for (const {
+    bookingWidth,
+    roomWidth,
+    viewportWidth,
+  } of [
+    {bookingWidth: 663, roomWidth: 759, viewportWidth: 1024},
+    {bookingWidth: 539, roomWidth: 635, viewportWidth: 900},
+  ]) {
+    await page.setViewportSize({height: 768, width: viewportWidth});
+    await page.goto(scheduleUrl);
+    const workspace = page.getByRole('region', {
+      name: 'Розклад переговорної',
+    });
+    await expect(workspace).toHaveAttribute('data-medium-pane', 'room');
+    const main = page.locator('.schedule-workspace-main');
+    expect((await main.boundingBox())?.width).toBe(roomWidth);
+
+    const slot = page.locator('.free-slot-button:not([disabled])').first();
+    await slot.click();
+    await expect(workspace).toHaveAttribute('data-medium-pane', 'booking');
+    expect((await main.boundingBox())?.width).toBe(bookingWidth);
+    expect(await page.evaluate(() =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+    )).toBeLessThanOrEqual(0);
   }
 });
 

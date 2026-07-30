@@ -134,6 +134,39 @@ describe('notificationReducer', () => {
     expect(next.dismissedIds.has(notification.id)).toBe(true);
   });
 
+  it('keeps a notification unseen when its toast appears', () => {
+    const delivered = notificationReducer(emptyNotificationState, {
+      items: [notification],
+      type: 'POLL_VALID',
+    });
+
+    const active = notificationReducer(delivered, {type: 'TOAST_SHOW_NEXT'});
+
+    expect(active.activeToastId).toBe(notification.id);
+    expect(active.retainedById.get(notification.id)?.seen).toBe(false);
+    expect(unseenCount(active)).toBe(1);
+  });
+
+  it('marks retained items seen and clears presentation work when center opens', () => {
+    const second = {...notification, id: 'notification-2'};
+    const delivered = notificationReducer(emptyNotificationState, {
+      items: [notification, second],
+      type: 'POLL_VALID',
+    });
+    const active = notificationReducer(delivered, {type: 'TOAST_SHOW_NEXT'});
+
+    const open = notificationReducer(active, {type: 'CENTER_OPEN'});
+
+    expect(open.centerOpen).toBe(true);
+    expect(open.activeToastId).toBeNull();
+    expect(open.toastQueue).toEqual([]);
+    expect(unseenCount(open)).toBe(0);
+    expect(notificationReducer(
+      notificationReducer(open, {type: 'CENTER_CLOSE'}),
+      {type: 'TOAST_SHOW_NEXT'},
+    ).activeToastId).toBeNull();
+  });
+
   it('updates a duplicate while open without queueing a later toast', () => {
     const delivered = notificationReducer(emptyNotificationState, {
       items: [notification],
@@ -246,6 +279,24 @@ describe('NotificationController effects', () => {
     })).toBeVisible();
   });
 
+  it('publishes an auth transition for an expired notification poll', async () => {
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+    fetchMock.mockResolvedValueOnce({
+      json: vi.fn().mockResolvedValue({
+        error: {code: 'AUTH_REQUIRED', message: 'Session expired'},
+      }),
+      ok: false,
+      status: 401,
+    } as unknown as Response);
+
+    render(createElement(NotificationHarness));
+
+    await waitFor(() => expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({type: 'roomwork:auth-required'}),
+    ));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('aborts an acknowledgement request when the controller unmounts', async () => {
     let acknowledgementSignal: AbortSignal | undefined;
     fetchMock.mockImplementation((
@@ -328,8 +379,10 @@ describe('NotificationController effects', () => {
     const view = render(createElement(NotificationHarness, {pathname: '/schedule'}));
     await screen.findByRole('status');
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', {name: 'Сповіщення, 0 нових'}));
+    await user.click(screen.getByRole('button', {name: 'Сповіщення, 1 нових'}));
     expect(screen.getByRole('region', {name: 'Сповіщення'})).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Сповіщення, 0 нових'}))
+      .toBeVisible();
 
     view.rerender(createElement(NotificationHarness, {pathname: '/my-bookings'}));
 

@@ -145,6 +145,10 @@ test('@mobile daily schedule has stable geometry and reachable controls', async 
   );
 
   await expect(page.getByRole('list', {name: /Розклад на/})).toHaveCount(1);
+  const jumpLink = page.getByRole('link', {name: 'До пошуку часу'});
+  await jumpLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#schedule-jump-day')).toBeFocused();
   const layout = await page.evaluate(() => {
     const board = document.querySelector<HTMLElement>('.day-agenda');
     const controls = Array.from(document.querySelectorAll<HTMLElement>(
@@ -153,7 +157,9 @@ test('@mobile daily schedule has stable geometry and reachable controls', async 
     const firstItem = board?.querySelector('li');
     const boardRect = board?.getBoundingClientRect();
     return {
-      firstItemTop: firstItem?.getBoundingClientRect().top ?? Infinity,
+      firstItemTop: firstItem ?
+        firstItem.getBoundingClientRect().top + window.scrollY :
+        Infinity,
       boardWithinViewport: Boolean(
         boardRect &&
         boardRect.left >= 0 &&

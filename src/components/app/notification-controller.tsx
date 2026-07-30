@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import type {DueNotification} from '../../modules/notifications/notification.service';
+import {announceAuthRequired} from '../auth/auth-required-boundary';
 import {usePresentationCoordinator} from './presentation-coordinator';
 
 const pollIntervalMilliseconds = 60_000;
@@ -110,13 +111,9 @@ export function notificationReducer(
       if (state.activeToastId || state.centerOpen) return state;
       const nextId = state.toastQueue.find((id) => state.retainedById.has(id));
       if (!nextId) return {...state, toastQueue: []};
-      const retainedById = new Map(state.retainedById);
-      const retained = retainedById.get(nextId);
-      if (retained) retainedById.set(nextId, {...retained, seen: true});
       return {
         ...state,
         activeToastId: nextId,
-        retainedById,
         toastQueue: state.toastQueue.filter((id) => id !== nextId),
       };
     }
@@ -126,11 +123,16 @@ export function notificationReducer(
         activeToastId: null,
       } : state;
     case 'CENTER_OPEN':
-      return state.centerOpen ? state : {
+      if (state.centerOpen) return state;
+      return {
         ...state,
         activeToastId: null,
         centerOpen: true,
-        toastQueue: queuedBeforeActive(state),
+        retainedById: new Map([...state.retainedById].map(([id, retained]) => [
+          id,
+          {...retained, seen: true},
+        ])),
+        toastQueue: [],
       };
     case 'CENTER_CLOSE':
       return state.centerOpen ? {...state, centerOpen: false} : state;
@@ -190,6 +192,14 @@ function notificationData(value: unknown): DueNotification[] | null {
   return Array.isArray(data) && data.every(isDueNotification) ? data : null;
 }
 
+function errorCode(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const error = (value as {error?: unknown}).error;
+  if (!error || typeof error !== 'object') return undefined;
+  const code = (error as {code?: unknown}).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
 export function NotificationController({
   children,
   pathname,
@@ -209,6 +219,15 @@ export function NotificationController({
         method: 'POST',
         signal,
       });
+      if (!response.ok) {
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          // Acknowledgement failure remains independent from presentation.
+        }
+        if (announceAuthRequired(errorCode(body))) return;
+      }
       dispatch({id, type: response.ok ? 'ACK_OK' : 'ACK_ERROR'});
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
@@ -224,7 +243,9 @@ export function NotificationController({
         method: 'GET',
         signal,
       });
-      const data = notificationData(await response.json());
+      const body = await response.json();
+      if (announceAuthRequired(errorCode(body))) return;
+      const data = notificationData(body);
       if (!response.ok || !data) return;
       dispatch({items: data, type: 'POLL_VALID'});
       await Promise.all(data.map(({id}) => acknowledge(id, signal)));

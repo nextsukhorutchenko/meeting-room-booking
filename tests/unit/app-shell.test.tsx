@@ -3,10 +3,14 @@ import {cleanup, render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
-const navigation = vi.hoisted(() => ({pathname: '/schedule'}));
+const navigation = vi.hoisted(() => ({
+  pathname: '/schedule',
+  router: {replace: vi.fn()},
+}));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
+  useRouter: () => navigation.router,
 }));
 
 vi.mock('../../src/components/app/notification-center', () => ({
@@ -40,6 +44,9 @@ function ModalProbe() {
 describe('AppShell', () => {
   beforeEach(() => {
     cleanup();
+    navigation.pathname = '/schedule';
+    navigation.router.replace.mockReset();
+    window.history.replaceState({}, '', '/');
   });
 
   afterEach(() => {
@@ -56,10 +63,39 @@ describe('AppShell', () => {
     expect(screen.getAllByRole('link', {name: 'Розклад'})).toHaveLength(2);
     expect(screen.getAllByRole('link', {name: 'Мої бронювання'})).toHaveLength(2);
     expect(screen.getByText('Бронювання переговорних')).toBeVisible();
+    const bottomNavigation = screen.getByRole('navigation', {
+      name: 'Нижня навігація',
+    });
+    expect(within(bottomNavigation).getByRole('link', {name: 'Розклад'}))
+      .toHaveAttribute('aria-current', 'page');
+    expect(within(bottomNavigation).getByRole('link', {
+      name: 'Мої бронювання',
+    })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('main', {name: 'Основний вміст'}))
       .toHaveAttribute('tabindex', '-1');
     expect(screen.getByRole('main', {name: 'Основний вміст'}))
       .toHaveTextContent('Вміст');
+  });
+
+  it('preserves pathname and search when an authenticated request expires', () => {
+    navigation.pathname = '/schedule';
+    window.history.replaceState(
+      {},
+      '',
+      '/schedule?roomId=oak&day=2026-08-04',
+    );
+    render(
+      <AppShell user={{name: 'Олена'}}>
+        <p>Вміст</p>
+      </AppShell>,
+    );
+
+    window.dispatchEvent(new Event('roomwork:auth-required'));
+
+    expect(navigation.router.replace).toHaveBeenCalledOnce();
+    expect(navigation.router.replace).toHaveBeenCalledWith(
+      '/login?returnTo=%2Fschedule%3FroomId%3Doak%26day%3D2026-08-04',
+    );
   });
 
   it.each([

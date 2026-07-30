@@ -20,6 +20,7 @@ import {
   CancellationDialog,
   type CancellationSelection,
 } from '../bookings/cancellation-dialog';
+import {announceAuthRequired} from '../auth/auth-required-boundary';
 import {usePresentationCoordinator} from '../app/presentation-coordinator';
 import {Spinner} from '../ui/spinner';
 import {Toast} from '../ui/toast';
@@ -41,7 +42,10 @@ import type {
   ScheduleData,
 } from './schedule-types';
 import {TimezoneLabel} from './timezone-label';
-import {getResponsiveMode, useResponsiveMode} from './use-responsive-mode';
+import {
+  getResponsiveMode,
+  useResponsiveMode,
+} from './use-responsive-mode';
 import {Timetable} from './timetable';
 
 type ApiResponse<T> = {
@@ -221,6 +225,26 @@ export function ScheduleWorkspace({
     activeCancellationRequestIdRef.current = null;
   }
 
+  const handleAuthRequired = useCallback((code: string | undefined) => {
+    if (!announceAuthRequired(code)) return false;
+    roomsRequestSequence.current += 1;
+    scheduleRequestSequence.current += 1;
+    conflictRefreshGenerationRef.current += 1;
+    conflictRefreshRequestRef.current = false;
+    conflictRefreshTargetRef.current = null;
+    preserveScheduleOnRefreshRef.current = false;
+    invalidateCancellationRequest();
+    setRooms([]);
+    setRoomsError('');
+    setScheduleState(null);
+    setPreservedScheduleKey(null);
+    setSelectedRoomId('');
+    setCancellation(null);
+    dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
+    request({type: 'ROUTE_NAVIGATION'});
+    return true;
+  }, [request]);
+
   const updateUrl = useCallback((
     roomId: string,
     nextWeekStart: string,
@@ -326,6 +350,7 @@ export function ScheduleWorkspace({
           signal: controller.signal,
         });
         const body = await response.json() as ApiResponse<RoomSummary[]>;
+        if (handleAuthRequired(body.error?.code)) return;
         if (!response.ok || !body.data) {
           throw new LocalizedRequestError(localizeApiError({
             code: body.error?.code,
@@ -378,7 +403,7 @@ export function ScheduleWorkspace({
     }
     void loadRooms();
     return () => controller.abort();
-  }, [appliedMinCapacity, roomsRetryKey, updateUrl]);
+  }, [appliedMinCapacity, handleAuthRequired, roomsRetryKey, updateUrl]);
 
   const activeScheduleKey = selectedRoomId ?
     `${selectedRoomId}:${weekStart}:${refreshKey}` :
@@ -429,6 +454,7 @@ export function ScheduleWorkspace({
         ) {
           return;
         }
+        if (handleAuthRequired(body.error?.code)) return;
         if (!response.ok || !body.data) {
           throw new LocalizedRequestError(localizeApiError({
             code: body.error?.code,
@@ -495,7 +521,13 @@ export function ScheduleWorkspace({
     }
     void loadSchedule();
     return () => controller.abort();
-  }, [activeScheduleKey, buildOptionsForSchedule, selectedRoomId, weekStart]);
+  }, [
+    activeScheduleKey,
+    buildOptionsForSchedule,
+    handleAuthRequired,
+    selectedRoomId,
+    weekStart,
+  ]);
 
   useEffect(() => {
     if (scheduleState?.status === 'success' && !hasSettledInitialLoad.current) {
@@ -554,6 +586,9 @@ export function ScheduleWorkspace({
   ) ?? false;
   const mode = useResponsiveMode();
   const isCompactMode = mode === 'tablet' || mode === 'mobile';
+  const isBookingSurfaceOpen = 'selection' in bookingState ||
+    bookingState.status === 'details';
+  const mediumBookingPaneOpen = mode === 'medium' && isBookingSurfaceOpen;
   const isRoomFilterVisible = isCompactMode && isRoomFilterOpen &&
     modalOwner === 'filter';
 
@@ -569,27 +604,56 @@ export function ScheduleWorkspace({
   }, [isCompactMode, roomsError, roomsLoading]);
 
   useEffect(() => {
-    function closeRoomFilterWhenWide() {
+    function reconcileFilterForViewport() {
       const nextMode = getResponsiveMode(window.innerWidth);
-      if (nextMode === 'medium' || nextMode === 'expanded') {
-        setIsRoomFilterOpen(false);
-        request({type: 'ROUTE_NAVIGATION'});
+      if (
+        nextMode === 'mobile' ||
+        nextMode === 'tablet' ||
+        !isRoomFilterOpen ||
+        modalOwner !== 'filter'
+      ) {
+        return;
       }
+      setDraftMinCapacity(appliedMinCapacity);
+      setIsRoomFilterOpen(false);
+      request({type: 'CLOSE_FILTER'});
     }
 
-    window.addEventListener('resize', closeRoomFilterWhenWide);
-    return () => window.removeEventListener('resize', closeRoomFilterWhenWide);
-  }, [request]);
+    window.addEventListener('resize', reconcileFilterForViewport);
+    return () => window.removeEventListener('resize', reconcileFilterForViewport);
+  }, [
+    appliedMinCapacity,
+    isRoomFilterOpen,
+    modalOwner,
+    request,
+  ]);
+
+  useEffect(() => {
+    if (isCompactMode && isBookingSurfaceOpen && modalOwner === 'none') {
+      request({type: 'OPEN_BOOKING'});
+    } else if (!isCompactMode && modalOwner === 'booking') {
+      request({type: 'CLOSE_BOOKING'});
+    }
+  }, [isBookingSurfaceOpen, isCompactMode, modalOwner, request]);
 
   const closeRoomFilter = useCallback(() => {
     if (request({type: 'CLOSE_FILTER'}) === 'ACCEPTED') {
+      setDraftMinCapacity(appliedMinCapacity);
       setIsRoomFilterOpen(false);
     }
-  }, [request]);
+  }, [appliedMinCapacity, request]);
 
   function changeMinimumCapacity(value: string) {
     setDraftMinCapacity(value);
-    setAppliedMinCapacity(value);
+    if (!isCompactMode) {
+      setAppliedMinCapacity(value);
+    }
+  }
+
+  function applyRoomFilter() {
+    if (request({type: 'APPLY_FILTER'}) !== 'ACCEPTED') return;
+    setAppliedMinCapacity(draftMinCapacity);
+    setIsRoomFilterOpen(false);
   }
 
   function changeRoom(roomId: string) {
@@ -686,6 +750,7 @@ export function ScheduleWorkspace({
       setPreservedScheduleKey(scheduleState.key);
     }
     setCancellation(null);
+    dispatchBooking({type: 'CLOSE'});
     setToastMessage(uiCopy.bookingCancelled);
     setRefreshKey((key) => key + 1);
   }
@@ -721,6 +786,7 @@ export function ScheduleWorkspace({
           } catch {
             // The localized fallback covers malformed error responses.
           }
+          if (handleAuthRequired(code)) return;
           setCancellation((current) => current?.booking.id === bookingId ? {
             ...current,
             error: localizeApiError({code, fallback: 'cancellation'}),
@@ -776,6 +842,7 @@ export function ScheduleWorkspace({
         );
         const body = await response.json() as ApiResponse<ScheduleData>;
         if (conflictRefreshTargetRef.current !== target) return;
+        if (handleAuthRequired(body.error?.code)) return;
         conflictRefreshRequestRef.current = false;
         if (!response.ok || !body.data) {
           dispatchBooking({
@@ -878,6 +945,7 @@ export function ScheduleWorkspace({
           method: 'POST',
         });
         const body = await response.json() as ApiResponse<ScheduleBooking>;
+        if (handleAuthRequired(body.error?.code)) return;
         if (!response.ok) {
           const code = body.error?.code;
           if (code === 'BOOKING_CONFLICT') {
@@ -943,6 +1011,7 @@ export function ScheduleWorkspace({
         `/api/rooms/${roomId}/schedule?weekStart=${capturedWeekStart}`,
       );
       const body = await response.json() as ApiResponse<ScheduleData>;
+      if (handleAuthRequired(body.error?.code)) return;
       if (
         !response.ok || !body.data || roomId !== selectedRoomIdRef.current ||
         capturedWeekStart !== weekStartRef.current
@@ -972,24 +1041,41 @@ export function ScheduleWorkspace({
     refreshAfterConflict(conflictTarget);
   }
 
-  function selectBooking(booking: ScheduleBooking, invoker?: HTMLElement) {
+  function openBookingDetails(booking: ScheduleBooking) {
+    if (isCompactMode && request({type: 'OPEN_BOOKING'}) === 'DENIED') return;
     linkedBookingIdRef.current = booking.id;
     updateUrl(selectedRoomId, weekStart, selectedDay, 'replace');
-    if (booking.isOwn) {
-      const origin = invoker ?? document.activeElement;
-      if (origin instanceof HTMLElement && request({
-        origin: {invoker: origin, kind: 'schedule'},
-        type: 'OPEN_CANCEL_DIRECT',
-      }) === 'ACCEPTED') {
-        setCancellation({
-          booking: {id: booking.id, title: booking.title},
-          error: '',
-          pending: false,
-        });
-      }
-    } else {
-      dispatchBooking({booking, type: 'OPEN_DETAILS'});
-    }
+    dispatchBooking({booking, type: 'OPEN_DETAILS'});
+  }
+
+  function openDirectCancellation(
+    booking: ScheduleBooking,
+    invoker: HTMLElement,
+  ) {
+    if (request({
+      origin: {invoker, kind: 'schedule'},
+      type: 'OPEN_CANCEL_DIRECT',
+    }) !== 'ACCEPTED') return;
+    setCancellation({
+      booking: {id: booking.id, title: booking.title},
+      error: '',
+      pending: false,
+    });
+  }
+
+  function openDetailsCancellation(
+    booking: ScheduleBooking,
+    trigger: HTMLElement,
+  ) {
+    if (request({
+      trigger,
+      type: 'OPEN_CANCEL_FROM_BOOKING',
+    }) !== 'ACCEPTED') return;
+    setCancellation({
+      booking: {id: booking.id, title: booking.title},
+      error: '',
+      pending: false,
+    });
   }
 
   function jumpTo(target: ScheduleJumpTarget) {
@@ -1002,13 +1088,38 @@ export function ScheduleWorkspace({
   }
 
   return (
-    <section aria-label={uiCopy.roomSchedule} className="schedule-workspace">
+    <section
+      aria-label={uiCopy.roomSchedule}
+      className="schedule-workspace"
+      data-booking-open={isBookingSurfaceOpen ? 'true' : 'false'}
+      data-medium-pane={
+        mode === 'medium' ? mediumBookingPaneOpen ? 'booking' : 'room' : undefined
+      }
+    >
+      <a
+        className="skip-link schedule-jump-link"
+        href="#schedule-jump-day"
+        onClick={(event) => {
+          const target = document.getElementById('schedule-jump-day');
+          if (target instanceof HTMLElement) {
+            event.preventDefault();
+            target.focus();
+          }
+        }}
+      >
+        {uiCopy.skipToTimeSearch}
+      </a>
       <div
         className="schedule-workspace-content"
       >
         <div className="schedule-workspace-layout">
         {mode === 'expanded' || mode === 'medium' ? (
-          <aside aria-label={uiCopy.roomPicker} className="schedule-room-rail">
+          <aside
+            aria-label={uiCopy.roomPicker}
+            className="schedule-room-rail"
+            hidden={mediumBookingPaneOpen}
+            inert={mediumBookingPaneOpen || undefined}
+          >
             <RoomPicker
               onRoomChange={changeRoom}
               rooms={rooms}
@@ -1028,33 +1139,10 @@ export function ScheduleWorkspace({
               />
             </label>
           </aside>
-        ) : isCompactMode ? (
-          <button
-            aria-label={uiCopy.openRoomFilters}
-            className="room-filter-trigger icon-button"
-            onClick={(event) => {
-              if (request({
-                trigger: event.currentTarget,
-                type: 'OPEN_FILTER',
-              }) === 'ACCEPTED') {
-                setIsRoomFilterOpen(true);
-              }
-            }}
-            ref={roomFilterTriggerRef}
-            title={uiCopy.openRoomFilters}
-            type="button"
-          >
-            <SlidersHorizontal aria-hidden="true" />
-          </button>
         ) : null}
         <div className="schedule-workspace-main">
-          <a
-            className="skip-link schedule-jump-link"
-            href="#schedule-jump-day"
-          >
-            {uiCopy.skipToTimeSearch}
-          </a>
           <ScheduleNavigation
+        mode={mode}
         onDayChange={changeDay}
         onJump={jumpTo}
         onNextDay={() => moveDay(1)}
@@ -1086,6 +1174,26 @@ export function ScheduleWorkspace({
         ) : (
           <span className="room-meta-placeholder">{uiCopy.selectRoom}</span>
         )}
+        {isCompactMode ? (
+          <button
+            aria-label={uiCopy.openRoomFilters}
+            className="room-filter-trigger icon-button"
+            onClick={(event) => {
+              if (request({
+                trigger: event.currentTarget,
+                type: 'OPEN_FILTER',
+              }) === 'ACCEPTED') {
+                setDraftMinCapacity(appliedMinCapacity);
+                setIsRoomFilterOpen(true);
+              }
+            }}
+            ref={roomFilterTriggerRef}
+            title={uiCopy.openRoomFilters}
+            type="button"
+          >
+            <SlidersHorizontal aria-hidden="true" />
+          </button>
+        ) : null}
         <TimezoneLabel
           officeCloseHour={officeCloseHour}
           officeOpenHour={officeOpenHour}
@@ -1167,8 +1275,8 @@ export function ScheduleWorkspace({
                 officeDay={selectedDay}
                 officeOpenHour={officeOpenHour}
                 officeTimeZone={schedule?.officeTimeZone ?? officeTimeZone}
-                onCancel={(booking, invoker) => selectBooking(booking, invoker)}
-                onOpenDetails={selectBooking}
+                onCancel={openDirectCancellation}
+                onOpenDetails={openBookingDetails}
                 onSelectSlot={selectStartSlot}
                 positionEpoch={positionEpoch}
                 room={selectedRoom}
@@ -1186,7 +1294,7 @@ export function ScheduleWorkspace({
                 officeCloseHour={officeCloseHour}
                 officeOpenHour={officeOpenHour}
                 officeTimeZone={schedule.officeTimeZone}
-                onOpenDetails={selectBooking}
+                onOpenDetails={openBookingDetails}
                 onSelectSlot={selectStartSlot}
                 room={selectedRoom}
                 slotSelectionDisabled={slotSelectionDisabled}
@@ -1214,39 +1322,50 @@ export function ScheduleWorkspace({
 
         </div>
       </div>
-        <AdaptiveBookingSurface
-          mode={mode}
-          onClose={closeBookingSurface}
-          onEndChange={(endsAt) => dispatchBooking({endsAt, type: 'END_CHANGED'})}
-          onRetryRefresh={retryConflictRefresh}
-          onSubmit={submitBooking}
-          onTitleChange={(value) => dispatchBooking({type: 'TITLE_CHANGED', value})}
-          state={bookingState}
-        />
-        <span
-          className="visually-hidden"
-          id="schedule-after"
-          tabIndex={-1}
-        >
-          {uiCopy.skipSchedule}
-        </span>
-        {cancellation && modalOwner === 'cancellation' ? (
-          <CancellationDialog
-            booking={cancellation.booking}
-            error={cancellation.error}
-            onCloseError={() => closeCancellation('CANCEL_ERROR_CLOSE')}
-            onConfirm={confirmCancellation}
-            onKeep={() => closeCancellation('KEEP_CANCEL')}
-            pending={cancellation.pending}
-          />
-        ) : null}
-        {toastMessage ? <Toast message={toastMessage} /> : null}
       </div>
+      <AdaptiveBookingSurface
+        detailsContext={{
+          officeTimeZone: schedule?.officeTimeZone ?? officeTimeZone,
+          roomName: selectedRoom?.name ?? '',
+          userTimeZone,
+        }}
+        mode={mode}
+        onCancelDetails={openDetailsCancellation}
+        onClose={closeBookingSurface}
+        onEndChange={(endsAt) => dispatchBooking({endsAt, type: 'END_CHANGED'})}
+        onRetryRefresh={retryConflictRefresh}
+        onSubmit={submitBooking}
+        onTitleChange={(value) => dispatchBooking({
+          type: 'TITLE_CHANGED',
+          value,
+        })}
+        state={bookingState}
+      />
+      <span
+        className="visually-hidden"
+        id="schedule-after"
+        tabIndex={-1}
+      >
+        {uiCopy.skipSchedule}
+      </span>
+      {cancellation && modalOwner === 'cancellation' ? (
+        <CancellationDialog
+          booking={cancellation.booking}
+          error={cancellation.error}
+          onCloseError={() => closeCancellation('CANCEL_ERROR_CLOSE')}
+          onConfirm={confirmCancellation}
+          onKeep={() => closeCancellation('KEEP_CANCEL')}
+          pending={cancellation.pending}
+        />
+      ) : null}
+      {toastMessage ? <Toast message={toastMessage} /> : null}
       <RoomFilterSurface
         isOpen={isRoomFilterVisible}
         minCapacity={draftMinCapacity}
+        onApply={applyRoomFilter}
         onClose={closeRoomFilter}
         onMinCapacityChange={changeMinimumCapacity}
+        onReset={() => setDraftMinCapacity('')}
         onRoomChange={(roomId) => {
           changeRoom(roomId);
           closeRoomFilter();

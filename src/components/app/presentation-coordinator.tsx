@@ -16,7 +16,7 @@ export type ModalOwner = 'none' | 'filter' | 'booking' | 'cancellation' |
   'notifications';
 
 export type CancellationPresentationOrigin =
-  | {kind: 'booking'; cancelTrigger: HTMLElement}
+  | {kind: 'booking'; cancelTrigger: HTMLElement; modal?: boolean}
   | {kind: 'schedule'; invoker: HTMLElement}
   | {kind: 'history'; invoker: HTMLElement};
 
@@ -213,10 +213,11 @@ export function PresentationCoordinator({
       case 'CLOSE_BOOKING':
         return close('booking', modalInvokerRef.current);
       case 'OPEN_CANCEL_FROM_BOOKING':
-        if (owner !== 'booking') return 'DENIED';
+        if (owner !== 'booking' && owner !== 'none') return 'DENIED';
         cancellationOriginRef.current = {
           cancelTrigger: command.trigger,
           kind: 'booking',
+          modal: owner === 'booking',
         };
         commitOwner('cancellation');
         return 'ACCEPTED';
@@ -232,7 +233,7 @@ export function PresentationCoordinator({
         cancellationOriginRef.current = null;
         if (origin?.kind === 'booking') {
           closeFocusRef.current = origin.cancelTrigger;
-          commitOwner('booking');
+          commitOwner(origin.modal ? 'booking' : 'none');
         } else {
           closeFocusRef.current = origin?.invoker ?? 'fallback';
           commitOwner('none');

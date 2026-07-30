@@ -27,6 +27,8 @@ export const uiCopy = {
   roomPicker: 'Вибір переговорної',
   roomFilters: 'Фільтри переговорних',
   openRoomFilters: 'Відкрити фільтри переговорних',
+  applyFilters: 'Застосувати',
+  resetFilters: 'Скинути',
   noRoomsAvailable: 'Немає доступних переговорних',
   floor: 'Поверх',
   places: 'місць',

@@ -8,8 +8,10 @@ import {RoomPicker} from './room-picker';
 type RoomFilterSurfaceProps = {
   isOpen: boolean;
   minCapacity: string;
+  onApply(): void;
   onClose(): void;
   onMinCapacityChange(value: string): void;
+  onReset(): void;
   onRoomChange(roomId: string): void;
   rooms: readonly RoomSummary[];
   selectedRoomId: string;
@@ -18,8 +20,10 @@ type RoomFilterSurfaceProps = {
 export function RoomFilterSurface({
   isOpen,
   minCapacity,
+  onApply,
   onClose,
   onMinCapacityChange,
+  onReset,
   onRoomChange,
   rooms,
   selectedRoomId,
@@ -43,6 +47,23 @@ export function RoomFilterSurface({
             value={minCapacity}
           />
         </label>
+        <div className="dialog-actions room-filter-actions">
+          <button
+            className="secondary-button"
+            disabled={!minCapacity}
+            onClick={onReset}
+            type="button"
+          >
+            {uiCopy.resetFilters}
+          </button>
+          <button
+            className="primary-button"
+            onClick={onApply}
+            type="button"
+          >
+            {uiCopy.applyFilters}
+          </button>
+        </div>
       </div>
     </Dialog>
   );

@@ -6,11 +6,15 @@
   min-width: 0;
 }
 
+.schedule-workspace {
+  --schedule-booking-pane-width: 320px;
+}
+
 @media (min-width: 900px) {
   .schedule-workspace {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) calc(var(--space-8) * 5);
     align-items: start;
+    gap: var(--space-1);
   }
 
   .schedule-workspace-content {
@@ -51,6 +55,44 @@
   color: var(--color-text-muted);
   font-size: var(--type-compact);
   line-height: var(--type-body-line-height);
+}
+
+.booking-details,
+.booking-details dl {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.booking-details dl {
+  margin: 0;
+}
+
+.booking-details dl > div {
+  display: grid;
+  gap: var(--space-0);
+  min-width: 0;
+  border-bottom: var(--border-default) solid var(--color-border);
+  padding-bottom: var(--space-1);
+}
+
+.booking-details dt {
+  color: var(--color-text-muted);
+  font-size: var(--type-meta);
+  font-weight: 700;
+}
+
+.booking-details dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--type-compact);
+  line-height: var(--type-body-line-height);
+  overflow-wrap: anywhere;
+}
+
+.booking-details .booking-actions {
+  justify-content: flex-end;
 }
 
 .booking-form {
@@ -123,14 +165,30 @@
 }
 
 @media (min-width: 1360px) {
-  .booking-surface {
-    width: calc(var(--space-8) * 5);
+  .schedule-workspace {
+    grid-template-columns:
+      minmax(0, 1fr)
+      calc(var(--schedule-booking-pane-width) + var(--border-default));
   }
 }
 
 @media (min-width: 900px) and (max-width: 1359px) {
-  .booking-surface {
-    width: calc(var(--space-8) * 5);
+  .schedule-workspace[data-booking-open="false"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-workspace[data-booking-open="true"] {
+    grid-template-columns:
+      minmax(0, 1fr)
+      calc(var(--schedule-booking-pane-width) + var(--border-default));
+  }
+
+  .schedule-workspace[data-booking-open="true"] .schedule-workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-workspace[data-booking-open="true"] .schedule-room-rail {
+    display: none;
   }
 }
 

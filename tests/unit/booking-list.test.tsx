@@ -91,6 +91,7 @@ describe('BookingList', () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -142,6 +143,22 @@ describe('BookingList', () => {
     );
     expect(screen.queryByText('History unavailable')).not.toBeInTheDocument();
     expect(screen.getByText('Історія бронювань порожня')).toBeVisible();
+  });
+
+  it('publishes an auth transition without rendering a stale history error', async () => {
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+    fetchMock.mockResolvedValue(response(undefined, 401, {
+      code: 'AUTH_REQUIRED',
+      message: 'Session expired',
+    }));
+
+    renderBookingList();
+
+    await waitFor(() => expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({type: 'roomwork:auth-required'}),
+    ));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Session expired')).not.toBeInTheDocument();
   });
 
   it('uses the Ukrainian history fallback for an unknown error payload', async () => {
@@ -396,5 +413,44 @@ describe('BookingList', () => {
       name: 'Залишити бронювання',
     })).toHaveFocus();
     expect(screen.queryByText('Cancellation failed')).not.toBeInTheDocument();
+  });
+
+  it('publishes an auth transition from cancellation without stale history', async () => {
+    const cancellable = booking('expired-cancel', {title: 'Expired cancel'});
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url.pathname === '/api/bookings/expired-cancel' &&
+          init?.method === 'DELETE') {
+        return Promise.resolve(response(undefined, 401, {
+          code: 'AUTH_REQUIRED',
+          message: 'Session expired',
+        }));
+      }
+      return Promise.resolve(response({
+        items: url.searchParams.get('scope') === 'future' ? [cancellable] : [],
+        nextCursor: null,
+      }));
+    });
+
+    renderBookingList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: 'Скасувати Expired cancel',
+    }));
+    await user.click(screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    }));
+
+    await waitFor(() => expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({type: 'roomwork:auth-required'}),
+    ));
+    expect(screen.queryByRole('dialog', {name: 'Скасувати бронювання'}))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText('Expired cancel')).not.toBeInTheDocument();
+    expect(screen.queryByText('Session expired')).not.toBeInTheDocument();
   });
 });

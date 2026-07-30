@@ -18,6 +18,7 @@ import {useFocusContainment} from './use-focus-containment';
 
 type DialogProps = {
   children: ReactNode;
+  closeDisabled?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
   label: string;
   onClose(): void;
@@ -27,6 +28,7 @@ type DialogProps = {
 
 export function Dialog({
   children,
+  closeDisabled = false,
   initialFocusRef,
   label,
   onClose,
@@ -34,6 +36,7 @@ export function Dialog({
   owner,
 }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const backdropPointerDownRef = useRef(false);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const setPanelRef = useCallback((element: HTMLDivElement | null) => {
     panelRef.current = element;
@@ -48,6 +51,7 @@ export function Dialog({
   useFocusContainment({
     active: open && (!owner || ownerActive),
     container: panel,
+    escapeDisabled: closeDisabled,
     onEscape: onClose,
   });
 
@@ -56,7 +60,25 @@ export function Dialog({
   }
 
   const dialog = (
-    <div className="dialog-backdrop">
+    <div
+      className="dialog-backdrop"
+      onPointerCancel={() => {
+        backdropPointerDownRef.current = false;
+      }}
+      onPointerDown={(event) => {
+        backdropPointerDownRef.current = event.target === event.currentTarget;
+      }}
+      onPointerUp={(event) => {
+        const shouldClose =
+          backdropPointerDownRef.current &&
+          event.target === event.currentTarget &&
+          !closeDisabled;
+        backdropPointerDownRef.current = false;
+        if (shouldClose) {
+          onClose();
+        }
+      }}
+    >
       <div
         aria-label={label}
         aria-modal={owner ? ownerActive : true}
@@ -70,6 +92,7 @@ export function Dialog({
           <button
             aria-label={uiCopy.closeDialog}
             className="icon-button"
+            disabled={closeDisabled}
             onClick={onClose}
             title={uiCopy.close}
             type="button"

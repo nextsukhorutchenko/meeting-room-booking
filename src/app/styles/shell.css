@@ -196,10 +196,17 @@
     min-height: var(--space-6);
     place-items: center;
     gap: 0;
+    border-top: var(--border-emphasis) solid transparent;
     color: var(--color-text-muted);
     font-size: var(--type-meta);
     font-weight: 600;
     text-decoration: none;
+  }
+
+  .bottom-nav-link[aria-current="page"] {
+    border-top-color: var(--color-brand);
+    background: var(--color-brand-soft);
+    color: var(--color-brand-hover);
   }
 
   .bottom-nav-link:focus-visible {

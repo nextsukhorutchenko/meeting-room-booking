@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {DateTime, Settings} from 'luxon';
@@ -159,6 +160,7 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
   afterEach(() => {
     cleanup();
     Settings.now = originalNow;
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     scrollIntoView.mockReset();
   });
@@ -187,16 +189,13 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     expect(document.activeElement).toBe(focusedBeforeJump);
   });
 
-  it('positions once when week navigation changes the office day', async () => {
+  it('positions once when compact day navigation changes the office day', async () => {
     setViewportWidth(320);
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = requestUrl(input);
       if (url === '/api/rooms') return Promise.resolve(jsonResponse({data: rooms}));
       if (url.includes('weekStart=2026-08-03')) {
         return Promise.resolve(scheduleResponse('2026-08-03', 'First week'));
-      }
-      if (url.includes('weekStart=2026-08-10')) {
-        return Promise.resolve(scheduleResponse('2026-08-10', 'Second week'));
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -205,7 +204,7 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
     scrollIntoView.mockReset();
     await userEvent.setup().click(
-      screen.getByRole('button', {name: 'Наступний тиждень'}),
+      screen.getByRole('button', {name: 'Наступний день'}),
     );
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
 
@@ -472,7 +471,7 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     expect(scheduleRequests).toBe(1);
   });
 
-  it('selects both own and other timetable bookings through the booking URL', async () => {
+  it('opens complete details for both own and other timetable bookings', async () => {
     const response = scheduleBody('2026-08-03', 'Власне бронювання');
     response.data.bookings[0] = {
       ...response.data.bookings[0],
@@ -521,6 +520,16 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     );
     expect(screen.getByRole('button', {name: /Чуже бронювання/}))
       .toHaveAttribute('data-highlighted', 'true');
+    const otherDetails = screen.getByRole('region', {
+      name: 'Деталі бронювання',
+    });
+    expect(within(otherDetails).getByText('Чуже бронювання')).toBeVisible();
+    expect(within(otherDetails).getByText('Demo Organizer')).toBeVisible();
+    expect(within(otherDetails).getByText('Oak')).toBeVisible();
+    expect(within(otherDetails).getAllByText(/Europe\/Kyiv/)).toHaveLength(2);
+    expect(within(otherDetails).queryByRole('button', {
+      name: 'Скасувати бронювання',
+    })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', {name: 'Скасувати бронювання'}))
       .not.toBeInTheDocument();
 
@@ -541,8 +550,162 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     );
     expect(screen.getByRole('button', {name: /Власне бронювання/}))
       .toHaveAttribute('data-highlighted', 'true');
+    const ownDetails = screen.getByRole('region', {
+      name: 'Деталі бронювання',
+    });
+    const cancelFromDetails = within(ownDetails).getByRole('button', {
+      name: 'Скасувати бронювання',
+    });
+    await user.click(cancelFromDetails);
     expect(await screen.findByRole('dialog', {name: 'Скасувати бронювання'}))
       .toBeVisible();
+  });
+
+  it('opens compact booking details while direct agenda Cancel stays a sibling', async () => {
+    setViewportWidth(320);
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
+    );
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Власне бронювання'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Власне бронювання/,
+    }));
+
+    const details = await screen.findByRole('dialog', {
+      name: 'Деталі бронювання',
+    });
+    expect(within(details).getByRole('button', {
+      name: 'Скасувати бронювання',
+    })).toBeVisible();
+    expect(screen.queryByRole('dialog', {name: 'Скасувати бронювання'}))
+      .not.toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', {name: 'Скасувати'}));
+
+    expect(await screen.findByRole('dialog', {name: 'Скасувати бронювання'}))
+      .toBeVisible();
+    expect(screen.queryByRole('dialog', {name: 'Деталі бронювання'}))
+      .not.toBeInTheDocument();
+  });
+
+  it('preserves one draft while reconciling booking ownership across modes', async () => {
+    setViewportWidth(1024);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Збережена чернетка');
+
+    await act(async () => setViewportWidth(768));
+
+    expect(await screen.findByRole('dialog', {name: 'Бронювання: Oak'}))
+      .toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByLabelText('Назва')).toHaveValue('Збережена чернетка');
+
+    await act(async () => setViewportWidth(1024));
+
+    expect(screen.queryByRole('dialog', {name: 'Бронювання: Oak'}))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('region', {name: 'Бронювання: Oak'})).toBeVisible();
+    expect(screen.getByLabelText('Назва')).toHaveValue('Збережена чернетка');
+  });
+
+  it('does not close an unrelated cancellation owner on compact-to-medium resize', async () => {
+    setViewportWidth(320);
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
+    );
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Власне бронювання'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await userEvent.setup().click(await screen.findByRole('button', {
+      name: 'Скасувати',
+    }));
+    expect(screen.getByRole('dialog', {name: 'Скасувати бронювання'}))
+      .toBeVisible();
+
+    await act(async () => setViewportWidth(1024));
+
+    expect(screen.getByRole('dialog', {name: 'Скасувати бронювання'}))
+      .toBeVisible();
+
+    await act(async () => setViewportWidth(320));
+
+    expect(screen.getByRole('dialog', {name: 'Скасувати бронювання'}))
+      .toBeVisible();
+  });
+
+  it('swaps the medium room pane for the booking pane', async () => {
+    setViewportWidth(1024);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const workspace = await screen.findByRole('region', {
+      name: 'Розклад переговорної',
+    });
+    const roomPane = screen.getByRole('complementary', {
+      name: 'Вибір переговорної',
+    });
+    expect(workspace).toHaveAttribute('data-medium-pane', 'room');
+    expect(roomPane).toBeVisible();
+
+    await userEvent.setup().click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+
+    expect(workspace).toHaveAttribute('data-medium-pane', 'booking');
+    expect(roomPane).not.toBeVisible();
+    const bookingPane = screen.getByRole('region', {name: 'Бронювання: Oak'});
+    expect(bookingPane).toBeVisible();
+    expect(bookingPane.closest('.booking-surface')?.parentElement)
+      .toBe(workspace);
   });
 
   it('closes compact room filters when resizing to the desktop rail', async () => {
@@ -577,8 +740,144 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     })).toBeVisible();
   });
 
+  it('puts the schedule jump link before compact controls', async () => {
+    setViewportWidth(768);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const workspace = await screen.findByRole('region', {
+      name: 'Розклад переговорної',
+    });
+    const focusable = workspace.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), ' +
+      'select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+
+    const jumpLink = screen.getByRole('link', {
+      name: 'До пошуку часу',
+    });
+    expect(focusable[0]).toBe(jumpLink);
+
+    await userEvent.setup().click(jumpLink);
+
+    expect(screen.getByLabelText('День')).toHaveFocus();
+  });
+
+  it('cancels a compact capacity draft without refetching', async () => {
+    setViewportWidth(768);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms' || url.startsWith('/api/rooms?')) {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await screen.findByText('Stable');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {
+      name: 'Відкрити фільтри переговорних',
+    }));
+    await user.type(screen.getByRole('spinbutton', {
+      name: 'Мінімальна місткість',
+    }), '9');
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', {
+      name: 'Відкрити фільтри переговорних',
+    }));
+    expect(screen.getByRole('spinbutton', {
+      name: 'Мінімальна місткість',
+    })).toHaveValue(null);
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      /^\/api\/rooms(?:\?|$)/.test(requestUrl(input)))).toHaveLength(1);
+  });
+
+  it('applies a compact capacity draft with one room fetch', async () => {
+    setViewportWidth(768);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url === '/api/rooms?minCapacity=9') {
+        return Promise.resolve(jsonResponse({data: []}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await screen.findByText('Stable');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {
+      name: 'Відкрити фільтри переговорних',
+    }));
+    await user.type(screen.getByRole('spinbutton', {
+      name: 'Мінімальна місткість',
+    }), '9');
+    await user.click(screen.getByRole('button', {name: 'Застосувати'}));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input) === '/api/rooms?minCapacity=9')).toHaveLength(1);
+    });
+    expect(screen.queryByRole('dialog', {
+      name: 'Фільтри переговорних',
+    })).not.toBeInTheDocument();
+  });
+
+  it('resets a compact capacity draft without applying it', async () => {
+    setViewportWidth(768);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms' || url.startsWith('/api/rooms?')) {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Stable'));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    await screen.findByText('Stable');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {
+      name: 'Відкрити фільтри переговорних',
+    }));
+    const capacity = screen.getByRole('spinbutton', {
+      name: 'Мінімальна місткість',
+    });
+    await user.type(capacity, '9');
+    await user.click(screen.getByRole('button', {name: 'Скинути'}));
+
+    expect(capacity).toHaveValue(null);
+    expect(screen.getByRole('dialog', {
+      name: 'Фільтри переговорних',
+    })).toBeVisible();
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      /^\/api\/rooms(?:\?|$)/.test(requestUrl(input)))).toHaveLength(1);
+  });
+
   it('removes stale bookings and booking controls after an auth failure', async () => {
     const failedSchedule = deferred<Response>();
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
 
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = requestUrl(input);
@@ -618,9 +917,12 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       }, 401));
     });
 
-    expect(await screen.findByText(
+    await waitFor(() => expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({type: 'roomwork:auth-required'}),
+    ));
+    expect(screen.queryByText(
       'Сесію завершено. Увійдіть знову, щоб продовжити.',
-    )).toBeVisible();
+    )).not.toBeInTheDocument();
     expect(screen.queryByText('Session expired')).not.toBeInTheDocument();
     expect(screen.queryByText('Previously loaded')).not.toBeInTheDocument();
     expect(
@@ -751,6 +1053,9 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     await user.click(
       screen.getByRole('button', {name: 'Скасувати бронювання'}),
     );
+    await user.click(within(await screen.findByRole('dialog', {
+      name: 'Скасувати бронювання',
+    })).getByRole('button', {name: 'Скасувати бронювання'}));
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(2);
     });
@@ -860,6 +1165,9 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       await user.click(screen.getByRole('button', {
         name: 'Скасувати бронювання',
       }));
+      await user.click(within(await screen.findByRole('dialog', {
+        name: 'Скасувати бронювання',
+      })).getByRole('button', {name: 'Скасувати бронювання'}));
       await waitFor(() => expect(deleteRequestCount).toBe(1));
 
       navigation.searchParams = new URLSearchParams(
@@ -883,6 +1191,9 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       await user.click(screen.getByRole('button', {
         name: 'Скасувати бронювання',
       }));
+      await user.click(within(await screen.findByRole('dialog', {
+        name: 'Скасувати бронювання',
+      })).getByRole('button', {name: 'Скасувати бронювання'}));
       await waitFor(() => expect(deleteRequestCount).toBe(2));
 
       await act(async () => {
@@ -972,6 +1283,9 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     await user.click(screen.getByRole('button', {
       name: 'Скасувати бронювання',
     }));
+    await user.click(within(await screen.findByRole('dialog', {
+      name: 'Скасувати бронювання',
+    })).getByRole('button', {name: 'Скасувати бронювання'}));
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(3);
     });

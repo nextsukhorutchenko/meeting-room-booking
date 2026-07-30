@@ -36,12 +36,18 @@ function RoomFilterContent() {
       <RoomFilterSurface
         isOpen={isOpen}
         minCapacity=""
+        onApply={() => {
+          if (request({type: 'APPLY_FILTER'}) === 'ACCEPTED') {
+            setIsOpen(false);
+          }
+        }}
         onClose={() => {
           if (request({type: 'CLOSE_FILTER'}) === 'ACCEPTED') {
             setIsOpen(false);
           }
         }}
         onMinCapacityChange={vi.fn()}
+        onReset={vi.fn()}
         onRoomChange={vi.fn()}
         rooms={rooms}
         selectedRoomId="maple"
@@ -78,8 +84,10 @@ describe('RoomPicker', () => {
       <RoomFilterSurface
         isOpen
         minCapacity=""
+        onApply={vi.fn()}
         onClose={vi.fn()}
         onMinCapacityChange={onMinCapacityChange}
+        onReset={vi.fn()}
         onRoomChange={vi.fn()}
         rooms={rooms}
         selectedRoomId="maple"
@@ -100,8 +108,10 @@ describe('RoomPicker', () => {
       <RoomFilterSurface
         isOpen={false}
         minCapacity=""
+        onApply={vi.fn()}
         onClose={vi.fn()}
         onMinCapacityChange={vi.fn()}
+        onReset={vi.fn()}
         onRoomChange={vi.fn()}
         rooms={[]}
         selectedRoomId=""
@@ -137,5 +147,30 @@ describe('RoomPicker', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(invoker).toHaveFocus();
+  });
+
+  it('delegates explicit Apply and Reset commands', async () => {
+    const onApply = vi.fn();
+    const onReset = vi.fn();
+    render(
+      <RoomFilterSurface
+        isOpen
+        minCapacity="8"
+        onApply={onApply}
+        onClose={vi.fn()}
+        onMinCapacityChange={vi.fn()}
+        onReset={onReset}
+        onRoomChange={vi.fn()}
+        rooms={rooms}
+        selectedRoomId="maple"
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', {name: 'Скинути'}));
+    await user.click(screen.getByRole('button', {name: 'Застосувати'}));
+
+    expect(onReset).toHaveBeenCalledOnce();
+    expect(onApply).toHaveBeenCalledOnce();
   });
 });

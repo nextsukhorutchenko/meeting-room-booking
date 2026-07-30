@@ -38,9 +38,10 @@ export function CancellationDialog({
 
   return (
     <Dialog
+      closeDisabled={pending}
       initialFocusRef={keepButtonRef}
       label={uiCopy.cancelBooking}
-      onClose={pending ? () => undefined : close}
+      onClose={close}
       open
       owner="cancellation"
     >

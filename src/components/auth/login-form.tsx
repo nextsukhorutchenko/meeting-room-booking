@@ -1,10 +1,11 @@
 'use client';
 
+import {useRouter} from 'next/navigation';
 import {useState, type FormEvent} from 'react';
 import {Alert} from '../ui/alert';
 import {Button} from '../ui/button';
 import {Field} from '../ui/field';
-import {localizeApiError} from '../../lib/i18n/ui-errors';
+import {localizeApiError, safeReturnTo} from '../../lib/i18n/ui-errors';
 
 type ErrorResponse = {
   error?: {
@@ -13,7 +14,8 @@ type ErrorResponse = {
   };
 };
 
-export function LoginForm() {
+export function LoginForm({returnTo = null}: {returnTo?: string | null}) {
+  const router = useRouter();
   const [formError, setFormError] = useState('');
   const [pending, setPending] = useState(false);
 
@@ -41,7 +43,7 @@ export function LoginForm() {
         return;
       }
 
-      window.location.assign('/schedule');
+      router.replace(safeReturnTo(returnTo));
     } catch {
       setFormError(localizeApiError({
         code: undefined,

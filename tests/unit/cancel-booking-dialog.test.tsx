@@ -49,4 +49,52 @@ describe('CancellationDialog', () => {
 
     expect(onCloseError).toHaveBeenCalledOnce();
   });
+
+  it('uses the backdrop as a dismiss command when cancellation is idle', async () => {
+    const onKeep = vi.fn();
+    render(
+      <CancellationDialog
+        booking={{id: 'booking-1', title: 'Roadmap review'}}
+        error=""
+        onCloseError={vi.fn()}
+        onConfirm={vi.fn()}
+        onKeep={onKeep}
+        pending={false}
+      />,
+    );
+
+    const backdrop = document.querySelector<HTMLElement>('.dialog-backdrop');
+    expect(backdrop).not.toBeNull();
+    await userEvent.setup().click(backdrop as HTMLElement);
+
+    expect(onKeep).toHaveBeenCalledOnce();
+  });
+
+  it('disables X, Escape, and backdrop dismissal while pending', async () => {
+    const onKeep = vi.fn();
+    render(
+      <CancellationDialog
+        booking={{id: 'booking-1', title: 'Roadmap review'}}
+        error=""
+        onCloseError={vi.fn()}
+        onConfirm={vi.fn()}
+        onKeep={onKeep}
+        pending
+      />,
+    );
+
+    const closeButton = screen.getByRole('button', {
+      name: 'Закрити діалог',
+    });
+    const backdrop = document.querySelector<HTMLElement>('.dialog-backdrop');
+    expect(closeButton).toBeDisabled();
+    expect(backdrop).not.toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(closeButton);
+    await user.keyboard('{Escape}');
+    await user.click(backdrop as HTMLElement);
+
+    expect(onKeep).not.toHaveBeenCalled();
+  });
 });

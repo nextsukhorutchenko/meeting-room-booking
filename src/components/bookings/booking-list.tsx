@@ -29,6 +29,7 @@ import {
   CancellationDialog,
   type CancellationSelection,
 } from './cancellation-dialog';
+import {announceAuthRequired} from '../auth/auth-required-boundary';
 import {
   groupBookings,
   type BookingGroup,
@@ -52,6 +53,7 @@ type ApiResponse = {
 };
 
 class LocalizedRequestError extends Error {}
+class AuthRequiredRequestError extends Error {}
 
 const pageSize = 20;
 
@@ -171,6 +173,9 @@ async function fetchPage(
       code: undefined,
       fallback: 'history',
     }));
+  }
+  if (announceAuthRequired(errorCode(body))) {
+    throw new AuthRequiredRequestError();
   }
   if (!response.ok || !isBookingPage(body.data)) {
     throw new LocalizedRequestError(localizeApiError({
@@ -386,6 +391,10 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         }
       } catch (error) {
         if (!controller.signal.aborted) {
+          if (error instanceof AuthRequiredRequestError) {
+            update(initialState());
+            return;
+          }
           update({
             ...initialState(),
             status: 'error',
@@ -449,6 +458,10 @@ export function BookingList({officeTimeZone}: BookingListProps) {
       });
     } catch (error) {
       if (mounted.current) {
+        if (error instanceof AuthRequiredRequestError) {
+          update(initialState());
+          return;
+        }
         update((current) => ({
           ...current,
           error: error instanceof LocalizedRequestError ?
@@ -479,6 +492,10 @@ export function BookingList({officeTimeZone}: BookingListProps) {
       }
     } catch (error) {
       if (mounted.current) {
+        if (error instanceof AuthRequiredRequestError) {
+          update(initialState());
+          return;
+        }
         update({
           ...initialState(),
           error: error instanceof LocalizedRequestError ?
@@ -528,6 +545,16 @@ export function BookingList({officeTimeZone}: BookingListProps) {
             code = errorCode(await response.json() as ApiResponse);
           } catch {
             // The localized fallback covers malformed error responses.
+          }
+          if (announceAuthRequired(code)) {
+            activeCancellationRequestIdRef.current = null;
+            cancellationRequestIdRef.current += 1;
+            setFuture(initialState());
+            setPast(initialState());
+            setCancellation(null);
+            setToastMessage('');
+            request({type: 'ROUTE_NAVIGATION'});
+            return;
           }
           setCancellation((current) => current?.booking.id === bookingId ? {
             ...current,
