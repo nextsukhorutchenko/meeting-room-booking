@@ -18,7 +18,7 @@ passed.
 | Design tokens | PASS | `npm run check:design-tokens -- --include-legacy`; governed CSS literals |
 | Contrast | PASS | `npm run check:contrast`; 58/58 rendered stylesheet pairs audited and measured |
 | Type and lint | PASS | `npm run typecheck`; `npm run lint` |
-| Unit suite | PASS | `npm test`; 53 files and 557/557 non-database unit and browser-backed Chromium-unit tests |
+| Unit suite | PASS | `npm test`; 53 files and 558/558 non-database unit and browser-backed Chromium-unit tests |
 | Coverage | PASS | `npm run test:coverage`; 81.51% statements, 78.97% branches, 78.16% functions, 82.40% lines |
 | Configured build | PASS | `npm run build`; local standalone output created in the worktree with an explicit Turbopack root |
 | Docker Compose config | PASS | `docker compose --env-file .env.example config --quiet` |
@@ -100,7 +100,7 @@ toolchain changes.
 | AC-032 | PASS (automated) | exact ordered 58-pair rendered contrast inventory, validated inherited/composited/currentColor contexts, bidirectional stylesheet audit, and zero governed-literal token gate |
 | AC-033 | PASS (automated) | 100-character title unit and real Chromium containment checks |
 | AC-034 | PASS (browser) | All required projects assert zero page-level horizontal overflow |
-| AC-035 | PASS | Unit 557/557, integration 106/106, E2E 141 passed with 5 intentional project-scope skips |
+| AC-035 | PASS | Unit 558/558, integration 106/106, E2E 141 passed with 5 intentional project-scope skips |
 | AC-036 | PASS (browser/unit) | Jump-control labels/options and actual keyboard order in `accessibility.spec.ts` |
 | AC-037 | PASS (automated) | whole-block trigger, no nested Cancel, details/agenda sibling tests |
 | AC-038 | PASS (automated) | default +30 minute and product-action controller tests |

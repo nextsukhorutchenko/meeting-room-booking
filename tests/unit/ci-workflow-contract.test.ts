@@ -37,6 +37,31 @@ describe('CI dependency bootstrap contract', () => {
     }
   });
 
+  it('installs Chromium in quality before unit tests', () => {
+    const workflow = readFileSync(
+      resolve('.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const qualityJob = workflow.match(
+      /(?:^|\r?\n)  quality:\r?\n([\s\S]*?)\r?\n  e2e:\r?\n/,
+    )?.[1];
+
+    expect(qualityJob).toBeDefined();
+    const normalizedQualityJob = qualityJob?.replaceAll('\r\n', '\n');
+
+    const installDependenciesOffset = normalizedQualityJob?.indexOf(
+      'run: npm ci',
+    );
+    const installChromiumOffset = normalizedQualityJob?.indexOf(
+      'name: Install Chromium\n        run: npx playwright install --with-deps chromium',
+    );
+    const unitTestsOffset = normalizedQualityJob?.indexOf('name: Unit tests');
+
+    expect(installChromiumOffset)
+      .toBeGreaterThan(installDependenciesOffset ?? -1);
+    expect(installChromiumOffset).toBeLessThan(unitTestsOffset ?? -1);
+  });
+
   it('keeps unit commands database-free and preflights database suites', () => {
     const packageJson = JSON.parse(
       readFileSync(resolve('package.json'), 'utf8'),

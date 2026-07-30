@@ -68,6 +68,9 @@ jobs:
       - name: Source hygiene
         run: npm run check:source
 
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Unit tests
         run: npm run test:unit
 
