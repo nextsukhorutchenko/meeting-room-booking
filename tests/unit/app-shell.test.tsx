@@ -9,8 +9,8 @@ vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
 }));
 
-vi.mock('../../src/components/app/notification-bell', () => ({
-  NotificationBell: () => <span>Сповіщення</span>,
+vi.mock('../../src/components/app/notification-center', () => ({
+  ConnectedNotificationCenter: () => <span>Сповіщення</span>,
 }));
 
 import {AppShell} from '../../src/components/app/app-shell';

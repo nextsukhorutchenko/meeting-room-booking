@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {useRef, type ReactElement, type ReactNode} from 'react';
 import {AppHeader} from './app-header';
+import {NotificationController} from './notification-controller';
 import {
   PresentationCoordinator,
   usePresentationCoordinator,
@@ -19,7 +20,9 @@ export function AppShell({children, user}: AppShellProps): ReactElement {
   const pathname = usePathname();
   return (
     <PresentationCoordinator pathname={pathname}>
-      <AppShellContent user={user}>{children}</AppShellContent>
+      <NotificationController pathname={pathname}>
+        <AppShellContent user={user}>{children}</AppShellContent>
+      </NotificationController>
     </PresentationCoordinator>
   );
 }

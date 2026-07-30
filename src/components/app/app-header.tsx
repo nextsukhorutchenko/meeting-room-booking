@@ -4,7 +4,7 @@ import {CalendarDays, ListChecks} from 'lucide-react';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import {LogoutButton} from '../auth/logout-button';
-import {NotificationBell} from './notification-bell';
+import {ConnectedNotificationCenter} from './notification-center';
 import {useResponsiveMode} from '../schedule/use-responsive-mode';
 
 type AppHeaderProps = {userName: string};
@@ -42,7 +42,7 @@ export function AppHeader({userName}: AppHeaderProps) {
         </nav>
         <div className="app-account">
           <span className="app-user-name">{userName}</span>
-          <NotificationBell mode={mode} />
+          <ConnectedNotificationCenter mode={mode} />
           <LogoutButton />
         </div>
       </div>

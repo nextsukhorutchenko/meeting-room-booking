@@ -47,11 +47,12 @@ test('@notifications shows one booking handoff without layout overlap', async ({
   await page.goto('/schedule');
 
   const toast = page.getByRole('status').filter({
-    hasText: `${taskPrefix}planning ends soon in Oak. Demo Guest is next.`,
+    hasText: `Зустріч ${taskPrefix}planning у кімнаті Oak скоро завершиться. ` +
+      'Наступний користувач: Demo Guest.',
   });
   await expect(toast).toBeVisible();
   await expect(
-    page.getByRole('button', {name: 'Notifications, 1 unread'}),
+    page.getByRole('button', {name: 'Сповіщення, 0 нових'}),
   ).toBeVisible();
   const layout = await page.evaluate(() => {
     const header = document.querySelector('.app-header');
