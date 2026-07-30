@@ -15,7 +15,7 @@ gates are unavailable and are not reported as passed.
 | Focused fix suites | PASS | Vitest localization, focus containment, 96.85px Chromium geometry, contrast-manifest, source-ownership, and responsive-project tests |
 | Source hygiene | PASS | `npm run check:source`; invisible controls, stale source, and stylesheet ownership |
 | Design tokens | PASS | `npm run check:design-tokens -- --include-legacy`; governed CSS literals |
-| Contrast | PASS | `npm run check:contrast`; 52/52 rendered stylesheet pairs audited and measured |
+| Contrast | PASS | `npm run check:contrast`; 58/58 rendered stylesheet pairs audited and measured |
 | Type and lint | PASS | `npm run typecheck`; `npm run lint` |
 | Unit suite | PASS | `npm test`; non-database unit and browser-backed Chromium-unit tests |
 | Configured build | PASS with warning | `npm run build` with `.env.example` runtime values; existing multiple-lockfile root warning |
@@ -25,9 +25,10 @@ gates are unavailable and are not reported as passed.
 The contrast command derives every semantic text/background and meaningful
 boundary/background combination from the stylesheets imported by
 `manifest.css`. It fails for either an unmeasured rendered combination or a
-manifest row without rendered usage. All 52 derived rows pass their unchanged
+manifest row without rendered usage. All 58 derived rows pass their unchanged
 WCAG thresholds, including info and danger text on surface, brand-hover on
-brand-soft, inherited agenda-state text, focus on canvas, and toast/status
+brand-soft, explicit inherited current-day states, validated composited
+backdrops, semantic currentColor boundaries, focus on canvas, and toast/status
 boundaries. Only `--color-border-subtle` is a decorative boundary exclusion.
 Disabled boundaries remain exempt; disabled text on both its disabled and
 surface backgrounds is measured.
@@ -67,7 +68,7 @@ surface backgrounds is measured.
 | AC-029 | PARTIAL | 44px CSS/unit contracts and keyboard-only Playwright assertions exist; browser execution Deferred |
 | AC-030 | BLOCKED (manual) | 320px/reduced-motion/forced-color automation exists; actual Chrome 200% and Windows High Contrast unavailable |
 | AC-031 | PARTIAL | complete compact focus loop and coordinator restoration unit tests pass; browser walkthrough Deferred |
-| AC-032 | PASS (automated) | exact ordered 52-pair rendered contrast inventory, bidirectional stylesheet audit, and zero governed-literal token gate |
+| AC-032 | PASS (automated) | exact ordered 58-pair rendered contrast inventory, validated inherited/composited/currentColor contexts, bidirectional stylesheet audit, and zero governed-literal token gate |
 | AC-033 | PASS (automated) | 100-character title unit and real Chromium containment checks |
 | AC-034 | DEFERRED (browser) | all-project horizontal-overflow assertions exist; DB-backed execution unavailable |
 | AC-035 | PARTIAL | complete non-database unit suite passes; DB-backed integration/E2E suites Deferred |

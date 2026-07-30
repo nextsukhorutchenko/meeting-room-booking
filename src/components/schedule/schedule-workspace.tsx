@@ -753,7 +753,7 @@ export function ScheduleWorkspace({
     conflictRefreshGenerationRef.current += 1;
     conflictRefreshRequestRef.current = false;
     conflictRefreshTargetRef.current = null;
-    if (isCompactMode) request({type: 'ROUTE_NAVIGATION'});
+    if (isCompactMode) request({type: 'CLOSE_BOOKING'});
     dispatchBooking({type: 'CLOSE'});
   }
 
@@ -1111,6 +1111,9 @@ export function ScheduleWorkspace({
           </button>
         </div>
       ) : null}
+      {roomsLoading && !scheduleLoading && schedule ? (
+        <Spinner label={uiCopy.loadingRooms} />
+      ) : null}
       {!roomsLoading && !roomsError && rooms.length === 0 ? (
         <div className="schedule-message" role="status">
           <strong>{uiCopy.noRoomsMatchCapacity}</strong>
@@ -1201,14 +1204,9 @@ export function ScheduleWorkspace({
             slotSelectionDisabled={slotSelectionDisabled}
             visibleTimeAnchor={visibleTimeAnchor}
           />
-          {scheduleLoading || roomsLoading ? (
-            <div
-              aria-label={uiCopy.loadingSchedule}
-              aria-live="polite"
-              className="schedule-loading-overlay"
-              role="status"
-            >
-              <Spinner />
+          {scheduleLoading ? (
+            <div className="schedule-loading-overlay">
+              <Spinner label={uiCopy.loadingSchedule} />
             </div>
           ) : null}
         </div>

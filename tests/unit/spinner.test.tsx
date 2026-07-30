@@ -9,8 +9,7 @@ describe('Spinner', () => {
   it('announces the default schedule loading state in Ukrainian', () => {
     render(<Spinner />);
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Завантажуємо розклад',
-    );
+    expect(screen.getByRole('status', {name: 'Завантажуємо розклад'}))
+      .toHaveAttribute('aria-live', 'polite');
   });
 });

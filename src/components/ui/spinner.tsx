@@ -7,7 +7,12 @@ type SpinnerProps = {
 
 export function Spinner({label = uiCopy.loadingSchedule}: SpinnerProps) {
   return (
-    <div className="spinner" role="status">
+    <div
+      aria-label={label}
+      aria-live="polite"
+      className="spinner"
+      role="status"
+    >
       <LoaderCircle aria-hidden="true" />
       <span>{label}</span>
     </div>

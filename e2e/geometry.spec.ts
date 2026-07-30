@@ -332,6 +332,20 @@ test('@schedule forced colors and reduced motion keep every state boundary visib
   }
 
   if (agenda) {
+    const highlightedBooking = page.locator(
+      '.day-agenda-highlighted[data-booking-id="forced-own"]',
+    );
+    await expect(highlightedBooking).toContainText('Ваше');
+    await expect(highlightedBooking).toHaveAttribute(
+      'data-booking-id',
+      'forced-own',
+    );
+    const highlightedStyles = await stateStyles(highlightedBooking);
+    expect(highlightedStyles.outlineColor).toBe(systemColors.highlight);
+    expect(highlightedStyles.outlineStyle).toBe('solid');
+    expect(highlightedStyles.outlineWidth).toBe('2px');
+    expect(highlightedStyles.borderLeftStyle).toBe('double');
+
     const selectedDate = page.locator(
       '.schedule-date-button[aria-current="date"]',
     );

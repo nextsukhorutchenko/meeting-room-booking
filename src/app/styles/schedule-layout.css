@@ -73,12 +73,14 @@
 }
 
 .room-filter-surface {
+  /* @contrast-composite-on --color-surface --color-backdrop-surface */
+  /* @contrast-composite-on --color-canvas --color-backdrop-canvas */
   position: fixed;
   z-index: 30;
   inset: var(--space-0);
   display: grid;
   align-items: end;
-  background: color-mix(in srgb, var(--color-text) 28%, transparent);
+  background: color-mix(in srgb, var(--color-text) 48%, transparent);
   padding: var(--space-2);
 }
 
@@ -238,7 +240,7 @@
   inset: var(--space-4) var(--space-0) var(--space-0);
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  background: var(--color-surface);
 }
 
 .empty-schedule-note {

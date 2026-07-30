@@ -25,6 +25,7 @@ export type PresentationCommand =
   | {type: 'APPLY_FILTER'}
   | {type: 'CLOSE_FILTER'}
   | {type: 'OPEN_BOOKING'}
+  | {type: 'CLOSE_BOOKING'}
   | {type: 'OPEN_CANCEL_FROM_BOOKING'; trigger: HTMLElement}
   | {type: 'OPEN_CANCEL_DIRECT'; origin: CancellationPresentationOrigin}
   | {type: 'KEEP_CANCEL'}
@@ -209,6 +210,8 @@ export function PresentationCoordinator({
         modalInvokerRef.current = document.activeElement as HTMLElement | null;
         commitOwner('booking');
         return 'ACCEPTED';
+      case 'CLOSE_BOOKING':
+        return close('booking', modalInvokerRef.current);
       case 'OPEN_CANCEL_FROM_BOOKING':
         if (owner !== 'booking') return 'DENIED';
         cancellationOriginRef.current = {

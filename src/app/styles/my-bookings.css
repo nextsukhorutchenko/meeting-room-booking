@@ -193,6 +193,7 @@
 }
 
 .booking-list-cancel {
+  /* @contrast-on --color-canvas */
   display: flex;
   align-self: stretch;
   align-items: center;

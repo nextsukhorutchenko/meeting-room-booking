@@ -456,8 +456,10 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     await user.click(retry);
 
     expect(screen.getByText('Збережений розклад')).toBeVisible();
-    expect(screen.getByRole('status', {name: 'Завантажуємо розклад'}))
+    expect(screen.getByRole('status', {name: 'Завантажуємо переговорні'}))
       .toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByRole('status', {name: 'Завантажуємо розклад'}))
+      .not.toBeInTheDocument();
     await act(async () => {
       recoveredRooms.resolve(jsonResponse({data: rooms}));
     });

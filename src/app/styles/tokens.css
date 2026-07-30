@@ -33,6 +33,8 @@
   --color-disabled-text: #475569;
   --color-focus: #0F766E;
   --color-focus-outer: #FFFFFF;
+  --color-backdrop-surface: #909499;
+  --color-backdrop-canvas: #8B9096;
   --color-border: var(--color-border-subtle);
   --color-accent: var(--color-brand);
   --color-accent-strong: var(--color-brand-hover);

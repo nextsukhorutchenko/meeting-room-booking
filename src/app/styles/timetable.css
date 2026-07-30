@@ -57,6 +57,7 @@
 }
 
 .timetable-current-day-marker {
+  /* @contrast-current-color --color-text --color-surface */
   display: inline-flex;
   align-items: center;
   gap: var(--timetable-status-gap);
@@ -91,6 +92,7 @@
 
 .free-slot-button,
 .booking-block {
+  /* @contrast-on --color-surface --color-current-soft */
   display: grid;
   width: 100%;
   min-height: var(--timetable-booking-min-height);
@@ -112,6 +114,7 @@
 }
 
 .free-slot-button svg {
+  /* @contrast-non-text-on --color-surface --color-current-soft */
   width: var(--timetable-icon-size);
   height: var(--timetable-icon-size);
   color: var(--color-brand);
@@ -125,6 +128,7 @@
 }
 
 .free-slot-button:disabled {
+  /* @contrast-on --color-surface --color-current-soft */
   color: var(--color-disabled-text);
 }
 

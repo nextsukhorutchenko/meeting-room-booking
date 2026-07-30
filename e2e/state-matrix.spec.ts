@@ -196,8 +196,10 @@ test('@schedule room retry preserves usable schedule state independently', async
   });
   await tabTo(page, retry);
   await page.keyboard.press('Enter');
-  const loading = page.getByRole('status', {name: 'Завантажуємо розклад'});
+  const loading = page.getByRole('status', {name: 'Завантажуємо переговорні'});
   await expect(loading).toHaveAttribute('aria-live', 'polite');
+  await expect(page.getByRole('status', {name: 'Завантажуємо розклад'}))
+    .toHaveCount(0);
   await expect(page.getByText('Збережений розклад кімнати')).toBeVisible();
   expect(roomRequests).toBe(2);
   expect(scheduleRequests).toBe(1);

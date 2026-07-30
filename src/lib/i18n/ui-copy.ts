@@ -40,6 +40,7 @@ export const uiCopy = {
   unableToLoadRooms: 'Не вдалося завантажити переговорні.',
   unableToLoadSchedule: 'Не вдалося завантажити розклад.',
   unableToRefreshAvailability: 'Не вдалося оновити доступність.',
+  loadingRooms: 'Завантажуємо переговорні',
   loadingSchedule: 'Завантажуємо розклад',
   retry: 'Повторити',
   retryRooms: 'Повторити завантаження переговорних',

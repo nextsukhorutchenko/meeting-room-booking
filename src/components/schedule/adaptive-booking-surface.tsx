@@ -67,6 +67,7 @@ export function AdaptiveBookingSurface({
         className="booking-surface-panel"
         ref={setPanelRef}
         role={modalActive ? 'dialog' : undefined}
+        tabIndex={modalActive ? -1 : undefined}
       >
         <div className="booking-surface-heading">
           <h2>{isBookingDraft(state) ? uiCopy.book : uiCopy.bookingDetails}</h2>

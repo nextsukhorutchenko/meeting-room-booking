@@ -21,6 +21,7 @@ const requiredPairs = [
   ['--color-brand-hover', '--color-brand-soft', 'normal-text', 4.5],
   ['--color-brand-hover', '--color-surface', 'normal-text', 4.5],
   ['--color-text-muted', '--color-brand-soft', 'normal-text', 4.5],
+  ['--color-text-muted', '--color-current-soft', 'normal-text', 4.5],
   ['--color-text', '--color-brand-soft', 'normal-text', 4.5],
   ['--color-surface', '--color-brand', 'normal-text', 4.5],
   ['--color-surface', '--color-brand-hover', 'normal-text', 4.5],
@@ -36,6 +37,7 @@ const requiredPairs = [
   ['--color-other-text', '--color-info-soft', 'normal-text', 4.5],
   ['--color-disabled-text', '--color-disabled-bg', 'normal-text', 4.5],
   ['--color-disabled-text', '--color-surface', 'normal-text', 4.5],
+  ['--color-disabled-text', '--color-current-soft', 'normal-text', 4.5],
   ['--color-text-muted', '--color-disabled-bg', 'normal-text', 4.5],
   ['--color-text-muted', '--color-info-soft', 'normal-text', 4.5],
   ['--color-text', '--color-info-soft', 'normal-text', 4.5],
@@ -46,6 +48,7 @@ const requiredPairs = [
   ['--color-danger', '--color-brand-soft', 'normal-text', 4.5],
   ['--color-border-control', '--color-surface', 'non-text', 3],
   ['--color-brand', '--color-brand-soft', 'non-text', 3],
+  ['--color-brand', '--color-current-soft', 'non-text', 3],
   ['--color-brand', '--color-surface', 'non-text', 3],
   ['--color-brand-hover', '--color-surface', 'non-text', 3],
   ['--color-info', '--color-info-soft', 'non-text', 3],
@@ -61,6 +64,9 @@ const requiredPairs = [
   ['--color-info', '--color-own-surface', 'non-text', 3],
   ['--color-focus', '--color-surface', 'non-text', 3],
   ['--color-focus', '--color-canvas', 'non-text', 3],
+  ['--color-text', '--color-surface', 'non-text', 3],
+  ['--color-backdrop-surface', '--color-surface', 'non-text', 3],
+  ['--color-backdrop-canvas', '--color-canvas', 'non-text', 3],
 ] as const satisfies readonly (
   readonly [
     ContrastPair['foreground'],
@@ -75,6 +81,20 @@ function tokenMap(): Map<string, string> {
     ['--black', '#000000'],
     ['--white', '#FFFFFF'],
     ['--low-contrast', '#777777'],
+  ]);
+}
+
+function semanticAuditTokens(): Map<string, string> {
+  return new Map([
+    ['--color-text', '#17202A'],
+    ['--color-text-muted', '#475569'],
+    ['--color-brand', '#0F766E'],
+    ['--color-surface', '#FFFFFF'],
+    ['--color-current-soft', '#FFF7ED'],
+    ['--color-canvas', '#F7F8FA'],
+    ['--color-backdrop-canvas', '#8B9096'],
+    ['--color-fg-alias', 'var(--color-text)'],
+    ['--color-bg-alias', 'var(--color-surface)'],
   ]);
 }
 
@@ -188,6 +208,142 @@ describe('Roomwork contrast manifest and command', () => {
     );
   });
 
+  it('audits inherited current-day slot text and icon contexts explicitly', () => {
+    const stylesheet = [{
+      content: `
+        .free-slot {
+          /* @contrast-on --color-surface --color-current-soft */
+          background: transparent;
+          color: var(--color-text-muted);
+        }
+        .free-slot svg {
+          /* @contrast-non-text-on --color-surface --color-current-soft */
+          color: var(--color-brand);
+        }
+      `,
+      path: 'current-day.css',
+    }];
+    const pairs = [
+      {background: '--color-surface', foreground: '--color-text-muted',
+        kind: 'normal-text', minimum: 4.5},
+      {background: '--color-current-soft', foreground: '--color-text-muted',
+        kind: 'normal-text', minimum: 4.5},
+      {background: '--color-surface', foreground: '--color-brand',
+        kind: 'non-text', minimum: 3},
+      {background: '--color-current-soft', foreground: '--color-brand',
+        kind: 'non-text', minimum: 3},
+    ] as const satisfies readonly ContrastPair[];
+
+    expect(auditStylesheetContrastUsage(
+      stylesheet,
+      pairs,
+      semanticAuditTokens(),
+    )).toEqual(pairs);
+  });
+
+  it('validates a composited backdrop against its effective base', () => {
+    const pair = {
+      background: '--color-canvas',
+      foreground: '--color-backdrop-canvas',
+      kind: 'non-text',
+      minimum: 3,
+    } as const satisfies ContrastPair;
+
+    expect(auditStylesheetContrastUsage([{
+      content: `
+        .backdrop {
+          /* @contrast-composite-on --color-canvas --color-backdrop-canvas */
+          background: color-mix(
+            in srgb,
+            var(--color-text) 48%,
+            transparent
+          );
+        }
+      `,
+      path: 'backdrop.css',
+    }], [pair], semanticAuditTokens())).toEqual([pair]);
+  });
+
+  it('resolves currentColor as a semantic boundary', () => {
+    const pair = {
+      background: '--color-surface',
+      foreground: '--color-text',
+      kind: 'non-text',
+      minimum: 3,
+    } as const satisfies ContrastPair;
+
+    expect(auditStylesheetContrastUsage([{
+      content: `
+        .marker {
+          /* @contrast-current-color --color-text --color-surface */
+          border: 1px solid currentColor;
+        }
+      `,
+      path: 'marker.css',
+    }], [pair], semanticAuditTokens())).toEqual([pair]);
+  });
+
+  it('rejects missing inherited and stale composited context annotations', () => {
+    expect(() => auditStylesheetContrastUsage([{
+      content: `
+        /* @contrast-default --color-surface */
+        .free-slot {
+          background: transparent;
+          color: var(--color-text-muted);
+        }
+      `,
+      path: 'missing-context.css',
+    }], [{
+      background: '--color-surface',
+      foreground: '--color-text-muted',
+      kind: 'normal-text',
+      minimum: 4.5,
+    }], semanticAuditTokens())).toThrow(
+      'transparent semantic background requires explicit contrast context',
+    );
+
+    expect(() => auditStylesheetContrastUsage([{
+      content: `
+        .status {
+          /* @contrast-composite-on --color-canvas --color-backdrop-canvas */
+          background: var(--color-surface);
+          color: var(--color-text);
+        }
+      `,
+      path: 'stale-context.css',
+    }], [{
+      background: '--color-surface',
+      foreground: '--color-text',
+      kind: 'normal-text',
+      minimum: 4.5,
+    }], semanticAuditTokens())).toThrow(
+      'Stale contrast context annotation',
+    );
+  });
+
+  it('canonicalizes aliases before manifest coverage checks', () => {
+    const aliasPair = {
+      background: '--color-bg-alias',
+      foreground: '--color-fg-alias',
+      kind: 'normal-text',
+      minimum: 4.5,
+    } as const satisfies ContrastPair;
+
+    expect(auditStylesheetContrastUsage([{
+      content: `
+        .status {
+          background: var(--color-surface);
+          color: var(--color-text);
+        }
+      `,
+      path: 'alias.css',
+    }], [aliasPair], semanticAuditTokens())).toEqual([{
+      ...aliasPair,
+      background: '--color-surface',
+      foreground: '--color-text',
+    }]);
+  });
+
   it('prints an auditable markdown table and truthful decorative exclusions', () => {
     const result = spawnSync(
       process.execPath,
@@ -212,9 +368,9 @@ describe('Roomwork contrast manifest and command', () => {
       'decorative-only exclusions: `--color-surface-subtle`',
     );
     expect(result.stdout).toContain('--color-border-subtle');
-    expect(result.stdout).toContain('52/52 pairs pass');
+    expect(result.stdout).toContain('58/58 pairs pass');
     expect(result.stdout).toContain(
-      '52/52 rendered stylesheet pairs audited',
+      '58/58 rendered stylesheet pairs audited',
     );
   });
 });

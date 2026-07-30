@@ -145,10 +145,12 @@
   }
 
   .booking-surface[data-open="true"] .booking-surface-backdrop {
+    /* @contrast-composite-on --color-surface --color-backdrop-surface */
+    /* @contrast-composite-on --color-canvas --color-backdrop-canvas */
     position: absolute;
     inset: 0;
     display: block;
-    background: color-mix(in srgb, var(--color-text) 32%, transparent);
+    background: color-mix(in srgb, var(--color-text) 48%, transparent);
   }
 
   .booking-surface[data-open="true"] .booking-surface-panel {

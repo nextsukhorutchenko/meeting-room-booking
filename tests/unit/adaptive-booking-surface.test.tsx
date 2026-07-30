@@ -1,7 +1,12 @@
 import '@testing-library/jest-dom/vitest';
-import {cleanup, render, screen} from '@testing-library/react';
+import {cleanup, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {useState} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {
+  PresentationCoordinator,
+  usePresentationCoordinator,
+} from '../../src/components/app/presentation-coordinator';
 import type {BookingControllerState} from
   '../../src/components/schedule/booking-controller';
 import {AdaptiveBookingSurface} from
@@ -33,6 +38,54 @@ const state: Extract<BookingControllerState, {selection: unknown}> = {
   status: 'editing',
   title: 'Планування',
 };
+
+const detailsState: BookingControllerState = {
+  booking: {
+    author: {id: 'other', name: 'Олена'},
+    endsAt: '2026-08-04T09:30:00.000Z',
+    id: 'details',
+    isOwn: false,
+    startsAt: '2026-08-04T09:00:00.000Z',
+    title: 'Деталі без дій',
+  },
+  selectionGeneration: 1,
+  status: 'details',
+};
+
+function ZeroFocusableDetailsHarness() {
+  const [open, setOpen] = useState(false);
+  const {registerBackground, request} = usePresentationCoordinator();
+  return (
+    <>
+      <div ref={registerBackground}>
+        <button
+          onClick={() => {
+            if (request({type: 'OPEN_BOOKING'}) === 'ACCEPTED') {
+              setOpen(true);
+            }
+          }}
+          type="button"
+        >
+          Відкрити деталі
+        </button>
+      </div>
+      {open ? (
+        <AdaptiveBookingSurface
+          mode="mobile"
+          onClose={() => {
+            request({type: 'CLOSE_BOOKING'});
+            setOpen(false);
+          }}
+          onEndChange={vi.fn()}
+          onRetryRefresh={vi.fn()}
+          onSubmit={vi.fn()}
+          onTitleChange={vi.fn()}
+          state={detailsState}
+        />
+      ) : null}
+    </>
+  );
+}
 
 afterEach(cleanup);
 
@@ -162,5 +215,36 @@ describe('AdaptiveBookingSurface', () => {
     expect(focusable[0]).toHaveFocus();
     await user.tab({shift: true});
     expect(focusable.at(-1)).toHaveFocus();
+  });
+
+  it('contains and restores a coordinator-backed dialog with no focusable child', async () => {
+    render(
+      <PresentationCoordinator>
+        <ZeroFocusableDetailsHarness />
+      </PresentationCoordinator>,
+    );
+    const user = userEvent.setup();
+    const opener = screen.getByRole('button', {name: 'Відкрити деталі'});
+
+    await user.click(opener);
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Деталі бронювання',
+    });
+    expect(dialog.querySelectorAll(
+      'a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )).toHaveLength(0);
+    expect(dialog).toHaveAttribute('tabindex', '-1');
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    await user.tab();
+    expect(dialog).toHaveFocus();
+    await user.tab({shift: true});
+    expect(dialog).toHaveFocus();
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(opener).toHaveFocus());
+    expect(screen.queryByRole('dialog', {name: 'Деталі бронювання'}))
+      .not.toBeInTheDocument();
   });
 });

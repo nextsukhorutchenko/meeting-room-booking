@@ -47,6 +47,8 @@ export const contrastPairs = [
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-text-muted', background: '--color-brand-soft',
     kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text-muted', background: '--color-current-soft',
+    kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-text', background: '--color-brand-soft',
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-surface', background: '--color-brand',
@@ -77,6 +79,8 @@ export const contrastPairs = [
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-disabled-text', background: '--color-surface',
     kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-disabled-text', background: '--color-current-soft',
+    kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-text-muted', background: '--color-disabled-bg',
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-text-muted', background: '--color-info-soft',
@@ -96,6 +100,8 @@ export const contrastPairs = [
   {foreground: '--color-border-control', background: '--color-surface',
     kind: 'non-text', minimum: 3},
   {foreground: '--color-brand', background: '--color-brand-soft',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-brand', background: '--color-current-soft',
     kind: 'non-text', minimum: 3},
   {foreground: '--color-brand', background: '--color-surface',
     kind: 'non-text', minimum: 3},
@@ -127,11 +133,18 @@ export const contrastPairs = [
     kind: 'non-text', minimum: 3},
   {foreground: '--color-focus', background: '--color-canvas',
     kind: 'non-text', minimum: 3},
+  {foreground: '--color-text', background: '--color-surface',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-backdrop-surface', background: '--color-surface',
+    kind: 'non-text', minimum: 3},
+  {foreground: '--color-backdrop-canvas', background: '--color-canvas',
+    kind: 'non-text', minimum: 3},
 ] as const satisfies readonly ContrastPair[];
 
 const sixDigitHex = /^#[0-9a-f]{6}$/i;
 const semanticToken = /var\((--color-[a-z-]+)\)/g;
 const solidSemanticToken = /^var\((--color-[a-z-]+)\)$/;
+const compositeColor = /color-mix\(\s*in\s+srgb\s*,\s*var\((--color-[a-z-]+)\)\s+([0-9.]+)%\s*,\s*transparent\s*\)/i;
 
 function pairKey(pair: ContrastPair): string {
   return `${pair.foreground}|${pair.background}|${pair.kind}|${pair.minimum}`;
@@ -166,6 +179,55 @@ function canonicalToken(
   return alias ? canonicalToken(alias, tokens, visited) : token;
 }
 
+function canonicalPair(
+  pair: ContrastPair,
+  tokens?: ReadonlyMap<string, string>,
+): ContrastPair {
+  return {
+    ...pair,
+    background: canonicalToken(pair.background, tokens),
+    foreground: canonicalToken(pair.foreground, tokens),
+  };
+}
+
+function annotationGroups(
+  comments: readonly string[],
+  annotation: string,
+): {groups: readonly (readonly string[])[]; malformed: boolean} {
+  const groups: string[][] = [];
+  let malformed = false;
+  for (const comment of comments) {
+    const marker = `${annotation} `;
+    const start = comment.indexOf(marker);
+    if (start < 0) continue;
+    const tokens = comment
+      .slice(start + marker.length)
+      .match(/--color-[a-z-]+/g) ?? [];
+    if (tokens.length !== 2) {
+      malformed = true;
+    } else {
+      groups.push(tokens);
+    }
+  }
+  return {groups, malformed};
+}
+
+function compositeHex(
+  foreground: string,
+  background: string,
+  foregroundPercent: number,
+): string {
+  const foregroundChannels = [1, 3, 5].map((offset) =>
+    Number.parseInt(foreground.slice(offset, offset + 2), 16));
+  const backgroundChannels = [1, 3, 5].map((offset) =>
+    Number.parseInt(background.slice(offset, offset + 2), 16));
+  const alpha = foregroundPercent / 100;
+  return `#${foregroundChannels.map((channel, index) =>
+    Math.round(channel * alpha + backgroundChannels[index] * (1 - alpha))
+      .toString(16)
+      .padStart(2, '0')).join('')}`.toUpperCase();
+}
+
 export function auditStylesheetContrastUsage(
   stylesheets: readonly StylesheetSource[],
   manifest: readonly ContrastPair[],
@@ -173,7 +235,11 @@ export function auditStylesheetContrastUsage(
 ): readonly ContrastPair[] {
   const usage = new Map<string, ContrastPair>();
   const issues: string[] = [];
-  const manifestKeys = new Set(manifest.map(pairKey));
+  const canonicalManifest = manifest.map((pair) => canonicalPair(pair, tokens));
+  const manifestKeys = new Set(canonicalManifest.map(pairKey));
+  if (manifestKeys.size !== canonicalManifest.length) {
+    issues.push('Duplicate canonical contrast pair in manifest');
+  }
 
   function record(
     foreground: string,
@@ -182,12 +248,12 @@ export function auditStylesheetContrastUsage(
     path: string,
     selector: string,
   ) {
-    const pair = {
+    const pair = canonicalPair({
       background: canonicalToken(background, tokens),
       foreground: canonicalToken(foreground, tokens),
       kind,
       minimum: kind === 'normal-text' ? 4.5 : 3,
-    } as const satisfies ContrastPair;
+    }, tokens);
     const key = pairKey(pair);
     usage.set(key, pair);
     if (!manifestKeys.has(key)) {
@@ -227,6 +293,20 @@ export function auditStylesheetContrastUsage(
         comments,
         '@contrast-boundary-with',
       );
+      const nonTextBackgrounds = annotationTokens(
+        comments,
+        '@contrast-non-text-on',
+      );
+      const compositeContexts = annotationGroups(
+        comments,
+        '@contrast-composite-on',
+      );
+      const currentColorContexts = annotationGroups(
+        comments,
+        '@contrast-current-color',
+      );
+      const decorativeBackground = comments.some((comment) =>
+        comment.includes('@contrast-decorative-background'));
       const decorativeBoundaries = new Set([
         '--color-border-subtle',
         ...annotationTokens(comments, '@contrast-decorative'),
@@ -240,49 +320,243 @@ export function auditStylesheetContrastUsage(
       const foregrounds = declarations
         .filter((declaration) => declaration.prop === 'color')
         .flatMap((declaration) => tokensIn(declaration.value));
-      const backgrounds = declarations
+      const backgroundDeclarations = declarations
         .filter((declaration) =>
           declaration.prop === 'background' ||
-          declaration.prop === 'background-color')
+          declaration.prop === 'background-color');
+      const backgrounds = backgroundDeclarations
         .flatMap((declaration) => {
           const match = declaration.value.trim().match(solidSemanticToken);
           return match ? [match[1]] : [];
         });
-      const boundaries = declarations
+      const transparentBackground = backgroundDeclarations.some(
+        (declaration) => declaration.value.trim() === 'transparent',
+      );
+      const composites = backgroundDeclarations.flatMap((declaration) => {
+        const match = declaration.value.match(compositeColor);
+        return match ? [{
+          foreground: match[1],
+          percentage: Number.parseFloat(match[2]),
+        }] : [];
+      });
+      const colorMixCount = backgroundDeclarations.filter((declaration) =>
+        declaration.value.includes('color-mix(')).length;
+      const boundaryDeclarations = declarations
         .filter((declaration) =>
           (
             declaration.prop.startsWith('border') &&
             !/(radius|width|style)$/.test(declaration.prop)
           ) ||
           declaration.prop === 'outline' ||
-          declaration.prop === 'outline-color')
+          declaration.prop === 'outline-color');
+      const boundaries = boundaryDeclarations
         .flatMap((declaration) => tokensIn(declaration.value));
+      const currentColorBoundary = boundaryDeclarations.some((declaration) =>
+        /\bcurrentColor\b/i.test(declaration.value));
 
+      if (compositeContexts.malformed || currentColorContexts.malformed) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} has malformed contrast ` +
+          'context annotation',
+        );
+      }
+      if (colorMixCount !== composites.length) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} has unsupported color-mix ` +
+          'syntax; use the audited semantic-token/transparent form',
+        );
+      }
+      if (composites.length > 0 && compositeContexts.groups.length === 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} color-mix backdrop requires ` +
+          'explicit @contrast-composite-on context',
+        );
+      }
+      if (composites.length === 0 && compositeContexts.groups.length > 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} Stale contrast context ` +
+          'annotation for a missing color-mix backdrop',
+        );
+      }
+      if (currentColorBoundary && currentColorContexts.groups.length === 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} currentColor boundary requires ` +
+          'explicit @contrast-current-color context',
+        );
+      }
+      if (!currentColorBoundary && currentColorContexts.groups.length > 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} Stale contrast context ` +
+          'annotation for a missing currentColor boundary',
+        );
+      }
+      if (
+        transparentBackground &&
+        annotatedBackgrounds.length === 0 &&
+        !decorativeBackground
+      ) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} transparent semantic ` +
+          'background requires explicit contrast context',
+        );
+      }
+      if (
+        transparentBackground &&
+        foregrounds.length === 0 &&
+        annotatedForegrounds.length === 0 &&
+        !decorativeBackground
+      ) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} transparent inherited ` +
+          'foreground requires explicit @contrast-with context',
+        );
+      }
+      if (nonTextBackgrounds.length > 0 && foregrounds.length === 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} Stale contrast context ` +
+          'annotation without a semantic foreground',
+        );
+      }
+      if (
+        annotatedBackgrounds.length > 0 &&
+        backgrounds.length > 0 &&
+        !transparentBackground
+      ) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} Stale contrast context ` +
+          'annotation beside an explicit semantic background',
+        );
+      }
+      if (
+        annotatedForegrounds.length > 0 &&
+        backgrounds.length === 0 &&
+        !transparentBackground
+      ) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} Stale contrast context ` +
+          'annotation without a semantic background',
+        );
+      }
+      if (annotatedBoundaries.length > 0 && backgrounds.length === 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} Stale contrast boundary ` +
+          'annotation without a semantic background',
+        );
+      }
+
+      for (const composite of composites) {
+        if (
+          !Number.isFinite(composite.percentage) ||
+          composite.percentage < 0 ||
+          composite.percentage > 100
+        ) {
+          issues.push(
+            `${stylesheet.path}:${rule.selector} has invalid color-mix ` +
+            'percentage',
+          );
+          continue;
+        }
+        for (const [base, effective] of compositeContexts.groups) {
+          if (tokens) {
+            const foregroundToken = canonicalToken(
+              composite.foreground,
+              tokens,
+            );
+            const baseToken = canonicalToken(base, tokens);
+            const effectiveToken = canonicalToken(effective, tokens);
+            const foregroundValue = tokens.get(foregroundToken);
+            const baseValue = tokens.get(baseToken);
+            const effectiveValue = tokens.get(effectiveToken);
+            if (
+              !foregroundValue || !baseValue || !effectiveValue ||
+              !sixDigitHex.test(foregroundValue) ||
+              !sixDigitHex.test(baseValue) ||
+              !sixDigitHex.test(effectiveValue)
+            ) {
+              issues.push(
+                `${stylesheet.path}:${rule.selector} composite context ` +
+                'requires six-digit semantic token values',
+              );
+            } else {
+              const expected = compositeHex(
+                foregroundValue,
+                baseValue,
+                composite.percentage,
+              );
+              if (expected !== effectiveValue.toUpperCase()) {
+                issues.push(
+                  `${stylesheet.path}:${rule.selector} composite token ` +
+                  `${effectiveToken} must resolve to ${expected}`,
+                );
+              }
+            }
+          }
+          record(
+            effective,
+            base,
+            'non-text',
+            stylesheet.path,
+            rule.selector,
+          );
+        }
+      }
+      for (const [foreground, background] of currentColorContexts.groups) {
+        record(
+          foreground,
+          background,
+          'non-text',
+          stylesheet.path,
+          rule.selector,
+        );
+      }
+
+      const inheritedBackgrounds = transparentBackground ?
+        annotatedBackgrounds :
+        [];
       const textBackgrounds = backgrounds.length > 0 ?
         backgrounds :
-        annotatedBackgrounds.length > 0 ?
+        inheritedBackgrounds.length > 0 ?
+          inheritedBackgrounds :
+          annotatedBackgrounds.length > 0 ?
           annotatedBackgrounds :
           defaultBackgrounds;
-      if (foregrounds.length > 0 && textBackgrounds.length === 0) {
+      if (
+        foregrounds.length > 0 &&
+        nonTextBackgrounds.length === 0 &&
+        textBackgrounds.length === 0
+      ) {
         issues.push(
           `${stylesheet.path}:${rule.selector} has no semantic background ` +
           'context; add an adjacent @contrast-on annotation',
         );
       }
       for (const foreground of foregrounds) {
-        for (const background of textBackgrounds) {
+        for (const background of nonTextBackgrounds.length > 0 ?
+          nonTextBackgrounds :
+          textBackgrounds) {
           record(
             foreground,
             background,
-            'normal-text',
+            nonTextBackgrounds.length > 0 ? 'non-text' : 'normal-text',
             stylesheet.path,
             rule.selector,
           );
         }
       }
 
-      const decorativeBackground = comments.some((comment) =>
-        comment.includes('@contrast-decorative-background'));
+      if (transparentBackground && foregrounds.length === 0) {
+        for (const foreground of annotatedForegrounds) {
+          for (const background of annotatedBackgrounds) {
+            record(
+              foreground,
+              background,
+              'normal-text',
+              stylesheet.path,
+              rule.selector,
+            );
+          }
+        }
+      }
       if (
         backgrounds.length > 0 &&
         foregrounds.length === 0 &&
@@ -358,7 +632,7 @@ export function auditStylesheetContrastUsage(
     });
   }
 
-  for (const pair of manifest) {
+  for (const pair of canonicalManifest) {
     if (!usage.has(pairKey(pair))) {
       issues.push(
         `Manifest pair has no rendered stylesheet usage: ${pair.foreground} ` +
@@ -456,9 +730,9 @@ function readManifestStylesheets(path: string): readonly StylesheetSource[] {
 function validatePairManifest(pairs: readonly ContrastPair[]): void {
   const keys = pairs.map((pair) =>
     `${pair.foreground}|${pair.background}|${pair.kind}|${pair.minimum}`);
-  if (keys.length !== 52) {
+  if (keys.length !== 58) {
     throw new Error(
-      `Missing contrast pair: expected 52 required pairs, received ${keys.length}`,
+      `Missing contrast pair: expected 58 required pairs, received ${keys.length}`,
     );
   }
   if (new Set(keys).size !== keys.length) {

@@ -88,6 +88,7 @@ export function NotificationCenter({
       className={modalActive ? 'notification-sheet' : 'notification-popover'}
       ref={setSurface}
       role={modalActive ? 'dialog' : 'region'}
+      tabIndex={modalActive ? -1 : undefined}
     >
       <div className="notification-center-heading">
         <h2>Сповіщення</h2>

@@ -44,6 +44,8 @@
 .day-agenda-slot-button,
 .day-agenda-details,
 .day-agenda-cancel {
+  /* @contrast-on --color-surface --color-info-soft --color-own-surface */
+  /* @contrast-with --color-text --color-danger */
   min-height: var(--space-6);
   border: var(--space-0);
   border-radius: var(--space-0);

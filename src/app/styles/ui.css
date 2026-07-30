@@ -95,6 +95,8 @@
 }
 
 .dialog-backdrop {
+  /* @contrast-composite-on --color-surface --color-backdrop-surface */
+  /* @contrast-composite-on --color-canvas --color-backdrop-canvas */
   position: fixed;
   z-index: 50;
   inset: 0;
