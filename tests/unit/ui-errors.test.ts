@@ -59,6 +59,46 @@ describe('Ukrainian API error localization', () => {
   });
 
   it.each([
+    [
+      'C0 NUL',
+      '/schedule?query=%00',
+      '/schedule?query=%2500',
+    ],
+    [
+      'C0 horizontal tab',
+      '/schedule?query=%09',
+      '/schedule?query=%2509',
+    ],
+    [
+      'C0 line feed',
+      '/schedule?query=%0A',
+      '/schedule?query=%250A',
+    ],
+    [
+      'C0 unit separator',
+      '/my-bookings?query=%1F',
+      '/my-bookings?query=%251F',
+    ],
+    [
+      'DEL',
+      '/my-bookings?query=%7F',
+      '/my-bookings?query=%257F',
+    ],
+    [
+      'mixed text and C0',
+      '/schedule?label=quiet%20room%0Asecond',
+      '/schedule?label=quiet%20room%250Asecond',
+    ],
+  ])(
+    'rejects once-decoded %s but preserves its double-encoded form',
+    (_label, encodedControl, doubleEncoded) => {
+      expect(safeReturnTo(encodedControl)).toBe('/schedule');
+      expect(safeReturnTo(doubleEncoded)).toBe(doubleEncoded);
+      expect(safeReturnTo(safeReturnTo(doubleEncoded))).toBe(doubleEncoded);
+    },
+  );
+
+  it.each([
     'https://example.com',
     '//example.com',
     'javascript:alert(1)',

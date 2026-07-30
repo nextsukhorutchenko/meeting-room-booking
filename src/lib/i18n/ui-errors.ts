@@ -111,6 +111,7 @@ export function localizeApiError(input: {
 
 const fallbackReturnTo = '/schedule';
 const unsafeCharacter = /[\u0000-\u001F\u007F\\#]/;
+const unsafeDecodedSearchCharacter = /[\u0000-\u001F\u007F]/;
 const dotSegment = /(^|\/)\.{1,2}(?=\/|$)/;
 const allowedReturnPathnames = new Set(['/schedule', '/my-bookings']);
 
@@ -130,15 +131,17 @@ export function safeReturnTo(value: string | null): string {
     value.slice(0, searchIndex);
   const encodedSearch = searchIndex === -1 ? '' : value.slice(searchIndex);
   let pathname: string;
+  let decodedSearch: string;
   try {
     pathname = decodeURIComponent(encodedPathname);
-    decodeURIComponent(encodedSearch);
+    decodedSearch = decodeURIComponent(encodedSearch);
   } catch {
     return fallbackReturnTo;
   }
 
   if (
     unsafeCharacter.test(pathname) ||
+    unsafeDecodedSearchCharacter.test(decodedSearch) ||
     pathname.startsWith('//') ||
     !pathname.startsWith('/')
   ) {
