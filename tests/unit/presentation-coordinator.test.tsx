@@ -58,7 +58,13 @@ function CoordinatorHarness(): ReactElement {
         <Dialog
           label="Скасувати бронювання"
           onClose={() => {
-            request({type: 'KEEP_CANCEL'});
+            request({
+              bookingRestore: {
+                cancelTrigger: bookingCancelRef.current,
+                modal: true,
+              },
+              type: 'KEEP_CANCEL',
+            });
             setCancellationOpen(false);
           }}
           open
@@ -66,7 +72,13 @@ function CoordinatorHarness(): ReactElement {
         >
           <button
             onClick={() => {
-              request({type: 'KEEP_CANCEL'});
+              request({
+                bookingRestore: {
+                  cancelTrigger: bookingCancelRef.current,
+                  modal: true,
+                },
+                type: 'KEEP_CANCEL',
+              });
               setCancellationOpen(false);
             }}
             type="button"

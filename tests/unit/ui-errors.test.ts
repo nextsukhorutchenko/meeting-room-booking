@@ -48,26 +48,41 @@ describe('Ukrainian API error localization', () => {
     );
   });
 
-  it('preserves only allowlisted same-origin return URLs and query strings', () => {
-    expect(safeReturnTo('/schedule?roomId=r1&day=2026-07-29')).toBe(
-      '/schedule?roomId=r1&day=2026-07-29',
-    );
-    expect(safeReturnTo('/my-bookings?scope=future')).toBe(
-      '/my-bookings?scope=future',
-    );
-    expect(safeReturnTo('https://example.com')).toBe('/schedule');
-    expect(safeReturnTo('//example.com')).toBe('/schedule');
-    expect(safeReturnTo('/schedule-evil')).toBe('/schedule');
-    expect(safeReturnTo('\\schedule')).toBe('/schedule');
-    expect(safeReturnTo('/schedule%2Fother')).toBe('/schedule');
-    expect(safeReturnTo('/schedule%5Cother')).toBe('/schedule');
-    expect(safeReturnTo('/schedule%')).toBe('/schedule');
-    expect(safeReturnTo('/schedule#details')).toBe('/schedule');
-    expect(safeReturnTo('/schedule/./my-bookings')).toBe('/schedule');
-    expect(safeReturnTo('/schedule/../my-bookings')).toBe('/schedule');
-    expect(safeReturnTo('/schedule/%2e/my-bookings')).toBe('/schedule');
-    expect(safeReturnTo('/schedule/%2e%2e/my-bookings')).toBe('/schedule');
-    expect(safeReturnTo('/my-bookings/%2E%2E/schedule')).toBe('/schedule');
+  it.each([
+    '/schedule?roomId=r1&query=quiet%26sunny',
+    '/my-bookings?scope=future&label=100%25',
+    '/schedule?label=%D0%A2%D0%B8%D1%85%D0%B0%20%D0%BA%D1%96%D0%BC%D0%BD%D0%B0%D1%82%D0%B0',
+    '/schedule?label=Тиха кімната',
+  ])('preserves the exact encoded search and is idempotent for %s', (value) => {
+    expect(safeReturnTo(value)).toBe(value);
+    expect(safeReturnTo(safeReturnTo(value))).toBe(value);
+  });
+
+  it.each([
+    'https://example.com',
+    '//example.com',
+    'javascript:alert(1)',
+    '/schedule-evil',
+    '\\schedule',
+    '/schedule%2Fother',
+    '/schedule%5Cother',
+    '/schedule#details',
+    '/schedule/./my-bookings',
+    '/schedule/../my-bookings',
+    '/schedule/%2e/my-bookings',
+    '/schedule/%2e%2e/my-bookings',
+    '/my-bookings/%2E%2E/schedule',
+  ])('rejects unsafe return destination %s', (value) => {
+    expect(safeReturnTo(value)).toBe('/schedule');
+  });
+
+  it.each([
+    '/schedule%',
+    '/schedule?query=%',
+    '/schedule?query=%2',
+    '/schedule?query=%E0%A4%A',
+  ])('rejects malformed escapes in %s', (value) => {
+    expect(safeReturnTo(value)).toBe('/schedule');
   });
 });
 

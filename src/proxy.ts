@@ -1,6 +1,6 @@
 import {NextResponse, type NextRequest} from 'next/server';
-import {authReturnToHeader} from './src/lib/auth/return-routing';
-import {safeReturnTo} from './src/lib/i18n/ui-errors';
+import {authReturnToHeader} from './lib/auth/return-routing';
+import {safeReturnTo} from './lib/i18n/ui-errors';
 
 export function proxy(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);

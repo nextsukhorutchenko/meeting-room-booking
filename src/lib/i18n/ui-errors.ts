@@ -112,48 +112,41 @@ export function localizeApiError(input: {
 const fallbackReturnTo = '/schedule';
 const unsafeCharacter = /[\u0000-\u001F\u007F\\#]/;
 const dotSegment = /(^|\/)\.{1,2}(?=\/|$)/;
-
-function currentOrigin(): string {
-  return typeof window === 'undefined' ?
-    'https://roomwork.invalid' :
-    window.location.origin;
-}
+const allowedReturnPathnames = new Set(['/schedule', '/my-bookings']);
 
 export function safeReturnTo(value: string | null): string {
-  if (!value || unsafeCharacter.test(value) || value.startsWith('//')) {
+  if (
+    !value ||
+    unsafeCharacter.test(value) ||
+    !value.startsWith('/') ||
+    value.startsWith('//')
+  ) {
     return fallbackReturnTo;
   }
 
-  let decoded: string;
+  const searchIndex = value.indexOf('?');
+  const encodedPathname = searchIndex === -1 ?
+    value :
+    value.slice(0, searchIndex);
+  const encodedSearch = searchIndex === -1 ? '' : value.slice(searchIndex);
+  let pathname: string;
   try {
-    decoded = decodeURIComponent(value);
+    pathname = decodeURIComponent(encodedPathname);
+    decodeURIComponent(encodedSearch);
   } catch {
     return fallbackReturnTo;
   }
 
   if (
-    unsafeCharacter.test(decoded) ||
-    decoded.startsWith('//') ||
-    !decoded.startsWith('/')
+    unsafeCharacter.test(pathname) ||
+    pathname.startsWith('//') ||
+    !pathname.startsWith('/')
   ) {
     return fallbackReturnTo;
   }
-  if (dotSegment.test(decoded)) {
+  if (dotSegment.test(pathname) || !allowedReturnPathnames.has(pathname)) {
     return fallbackReturnTo;
   }
 
-  try {
-    const origin = currentOrigin();
-    const url = new URL(decoded, origin);
-    if (
-      url.origin !== origin ||
-      (url.pathname !== '/schedule' && url.pathname !== '/my-bookings')
-    ) {
-      return fallbackReturnTo;
-    }
-
-    return `${url.pathname}${url.search}`;
-  } catch {
-    return fallbackReturnTo;
-  }
+  return `${pathname}${encodedSearch}`;
 }

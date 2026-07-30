@@ -16,9 +16,14 @@ export type ModalOwner = 'none' | 'filter' | 'booking' | 'cancellation' |
   'notifications';
 
 export type CancellationPresentationOrigin =
-  | {kind: 'booking'; cancelTrigger: HTMLElement; modal?: boolean}
+  | {kind: 'booking'; cancelTrigger: HTMLElement}
   | {kind: 'schedule'; invoker: HTMLElement}
   | {kind: 'history'; invoker: HTMLElement};
+
+type BookingCancellationRestore = {
+  cancelTrigger: HTMLElement | null;
+  modal: boolean;
+};
 
 export type PresentationCommand =
   | {type: 'OPEN_FILTER'; trigger: HTMLElement}
@@ -28,8 +33,8 @@ export type PresentationCommand =
   | {type: 'CLOSE_BOOKING'}
   | {type: 'OPEN_CANCEL_FROM_BOOKING'; trigger: HTMLElement}
   | {type: 'OPEN_CANCEL_DIRECT'; origin: CancellationPresentationOrigin}
-  | {type: 'KEEP_CANCEL'}
-  | {type: 'CANCEL_ERROR_CLOSE'}
+  | {type: 'KEEP_CANCEL'; bookingRestore?: BookingCancellationRestore}
+  | {type: 'CANCEL_ERROR_CLOSE'; bookingRestore?: BookingCancellationRestore}
   | {type: 'CANCEL_SUCCESS'}
   | {type: 'OPEN_NOTIFICATIONS'; bell: HTMLElement}
   | {type: 'CLOSE_NOTIFICATIONS'}
@@ -217,7 +222,6 @@ export function PresentationCoordinator({
         cancellationOriginRef.current = {
           cancelTrigger: command.trigger,
           kind: 'booking',
-          modal: owner === 'booking',
         };
         commitOwner('cancellation');
         return 'ACCEPTED';
@@ -232,8 +236,11 @@ export function PresentationCoordinator({
         const origin = cancellationOriginRef.current;
         cancellationOriginRef.current = null;
         if (origin?.kind === 'booking') {
-          closeFocusRef.current = origin.cancelTrigger;
-          commitOwner(origin.modal ? 'booking' : 'none');
+          const restore = command.bookingRestore;
+          closeFocusRef.current = restore ?
+            restore.cancelTrigger ?? 'fallback' :
+            origin.cancelTrigger;
+          commitOwner(restore?.modal ? 'booking' : 'none');
         } else {
           closeFocusRef.current = origin?.invoker ?? 'fallback';
           commitOwner('none');

@@ -9,10 +9,15 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {DateTime, Settings} from 'luxon';
+import {useEffect} from 'react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ScheduleWorkspace} from
   '../../src/components/schedule/schedule-workspace';
-import {PresentationCoordinator} from '../../src/components/app/presentation-coordinator';
+import {
+  PresentationCoordinator,
+  usePresentationCoordinator,
+  type ModalOwner,
+} from '../../src/components/app/presentation-coordinator';
 
 const navigation = vi.hoisted(() => ({
   router: {push: vi.fn(), replace: vi.fn()},
@@ -124,9 +129,20 @@ function setViewportWidth(width: number) {
   window.dispatchEvent(new Event('resize'));
 }
 
-function renderScheduleClient() {
+function OwnerTrace({owners}: {owners: ModalOwner[]}) {
+  const {modalOwner} = usePresentationCoordinator();
+
+  useEffect(() => {
+    owners.push(modalOwner);
+  }, [modalOwner, owners]);
+
+  return null;
+}
+
+function renderScheduleClient(ownerTrace?: ModalOwner[]) {
   return render(
     <PresentationCoordinator>
+      {ownerTrace ? <OwnerTrace owners={ownerTrace} /> : null}
       <ScheduleWorkspace
         officeCloseHour={19}
         officeOpenHour={9}
@@ -561,6 +577,78 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       .toBeVisible();
   });
 
+  it.each([
+    [1024, 'Закрити'],
+    [1440, 'Закрити панель бронювання'],
+  ])(
+    'restores the side-pane booking invoker at %ipx after %s',
+    async (width, closeName) => {
+      setViewportWidth(width);
+      fetchMock.mockImplementation((input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url === '/api/rooms') {
+          return Promise.resolve(jsonResponse({data: rooms}));
+        }
+        if (url.includes('/api/rooms/oak/schedule')) {
+          return Promise.resolve(
+            scheduleResponse('2026-08-03', 'Focus booking'),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      renderScheduleClient();
+      const user = userEvent.setup();
+      const invoker = await screen.findByRole('button', {
+        name: /Focus booking/,
+      });
+      await user.click(invoker);
+      const details = screen.getByRole('region', {
+        name: 'Деталі бронювання',
+      });
+
+      await user.click(within(details).getByRole('button', {
+        name: closeName,
+      }));
+
+      await waitFor(() => expect(invoker).toHaveFocus());
+    },
+  );
+
+  it('closes side-pane details safely when its invoker disconnected', async () => {
+    setViewportWidth(1024);
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Detached invoker'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    const invoker = await screen.findByRole('button', {
+      name: /Detached invoker/,
+    });
+    await user.click(invoker);
+    const close = within(screen.getByRole('region', {
+      name: 'Деталі бронювання',
+    })).getByRole('button', {name: 'Закрити панель бронювання'});
+    invoker.remove();
+
+    await user.click(close);
+
+    expect(invoker.isConnected).toBe(false);
+    expect(screen.queryByRole('button', {
+      name: 'Закрити панель бронювання',
+    })).not.toBeInTheDocument();
+  });
+
   it('opens compact booking details while direct agenda Cancel stays a sibling', async () => {
     setViewportWidth(320);
     navigation.searchParams = new URLSearchParams(
@@ -671,6 +759,112 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
 
     expect(screen.getByRole('dialog', {name: 'Скасувати бронювання'}))
       .toBeVisible();
+  });
+
+  it('restores booking cancellation atomically after compact-to-medium resize', async () => {
+    setViewportWidth(320);
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
+    );
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Resize keep'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const owners: ModalOwner[] = [];
+
+    renderScheduleClient(owners);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {name: /Resize keep/}));
+    await user.click(within(screen.getByRole('dialog', {
+      name: 'Деталі бронювання',
+    })).getByRole('button', {name: 'Скасувати бронювання'}));
+    await act(async () => setViewportWidth(1024));
+    const ownerStart = owners.length;
+
+    await user.click(within(screen.getByRole('dialog', {
+      name: 'Скасувати бронювання',
+    })).getByRole('button', {name: 'Залишити бронювання'}));
+
+    const details = await screen.findByRole('region', {
+      name: 'Деталі бронювання',
+    });
+    const currentCancel = within(details).getByRole('button', {
+      name: 'Скасувати бронювання',
+    });
+    await waitFor(() => expect(currentCancel).toHaveFocus());
+    expect(owners.slice(ownerStart)).toEqual(['none']);
+    expect(details.closest('.booking-surface')).not.toHaveAttribute('inert');
+    expect(details.closest('.booking-surface'))
+      .not.toHaveAttribute('data-suspended');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('restores booking cancellation atomically after medium-to-compact resize', async () => {
+    setViewportWidth(1024);
+    let deleteRequests = 0;
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Resize error'),
+        );
+      }
+      if (url === '/api/bookings/resize-error' && init?.method === 'DELETE') {
+        deleteRequests += 1;
+        return Promise.resolve(jsonResponse({
+          error: {code: 'UNKNOWN'},
+        }, 500));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const owners: ModalOwner[] = [];
+
+    renderScheduleClient(owners);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {name: /Resize error/}));
+    await user.click(within(screen.getByRole('region', {
+      name: 'Деталі бронювання',
+    })).getByRole('button', {name: 'Скасувати бронювання'}));
+    const cancellationDialog = screen.getByRole('dialog', {
+      name: 'Скасувати бронювання',
+    });
+    await user.click(within(cancellationDialog).getByRole('button', {
+      name: 'Скасувати бронювання',
+    }));
+    expect(await within(cancellationDialog).findByRole('alert')).toBeVisible();
+    await act(async () => setViewportWidth(320));
+    const ownerStart = owners.length;
+
+    await user.click(within(cancellationDialog).getByRole('button', {
+      name: 'Закрити діалог',
+    }));
+
+    const details = await screen.findByRole('dialog', {
+      name: 'Деталі бронювання',
+    });
+    const currentCancel = within(details).getByRole('button', {
+      name: 'Скасувати бронювання',
+    });
+    await waitFor(() => expect(currentCancel).toHaveFocus());
+    expect(owners.slice(ownerStart)).toEqual(['booking']);
+    expect(details.closest('.booking-surface')).not.toHaveAttribute('inert');
+    expect(details.closest('.booking-surface'))
+      .not.toHaveAttribute('data-suspended');
+    expect(deleteRequests).toBe(1);
   });
 
   it('swaps the medium room pane for the booking pane', async () => {

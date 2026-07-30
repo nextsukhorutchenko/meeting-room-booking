@@ -2,7 +2,7 @@
 
 import {X} from 'lucide-react';
 import {createPortal} from 'react-dom';
-import {useCallback, useState} from 'react';
+import {useCallback, useState, type RefObject} from 'react';
 import {
   usePresentationCoordinator,
   usePresentationCoordinatorAvailable,
@@ -21,6 +21,7 @@ type AdaptiveBookingSurfaceProps = Omit<BookingComposerProps, 'state'> & {
     roomName: string;
     userTimeZone: string;
   };
+  detailsCancelButtonRef?: RefObject<HTMLButtonElement | null>;
   mode: ResponsiveMode;
   onCancelDetails(booking: ScheduleBooking, trigger: HTMLElement): void;
   state: BookingControllerState;
@@ -34,11 +35,13 @@ function isBookingDraft(
 
 function BookingDetails({
   booking,
+  cancelButtonRef,
   context,
   onCancel,
   onClose,
 }: {
   booking: ScheduleBooking;
+  cancelButtonRef?: RefObject<HTMLButtonElement | null>;
   context: AdaptiveBookingSurfaceProps['detailsContext'];
   onCancel(trigger: HTMLElement): void;
   onClose(): void;
@@ -90,6 +93,7 @@ function BookingDetails({
           <button
             className="destructive-button"
             onClick={(event) => onCancel(event.currentTarget)}
+            ref={cancelButtonRef}
             type="button"
           >
             {uiCopy.cancelBooking}
@@ -101,6 +105,7 @@ function BookingDetails({
 }
 
 export function AdaptiveBookingSurface({
+  detailsCancelButtonRef,
   detailsContext,
   mode,
   onCancelDetails,
@@ -182,6 +187,7 @@ export function AdaptiveBookingSurface({
         ) : state.status === 'details' ? (
           <BookingDetails
             booking={state.booking}
+            cancelButtonRef={detailsCancelButtonRef}
             context={detailsContext}
             onCancel={(trigger) => onCancelDetails(state.booking, trigger)}
             onClose={onClose}

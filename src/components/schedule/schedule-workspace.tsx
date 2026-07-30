@@ -209,6 +209,9 @@ export function ScheduleWorkspace({
   const roomFilterTriggerRef = useRef<HTMLButtonElement>(null);
   const roomRetryButtonRef = useRef<HTMLButtonElement>(null);
   const restoreRoomRetryFocusRef = useRef(false);
+  const bookingDetailsCancelButtonRef = useRef<HTMLButtonElement>(null);
+  const bookingDetailsInvokerRef = useRef<HTMLElement | null>(null);
+  const restoreBookingDetailsFocusRef = useRef(false);
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
   const conflictRefreshRequestRef = useRef(false);
@@ -281,6 +284,21 @@ export function ScheduleWorkspace({
   useEffect(() => {
     bookingStateRef.current = bookingState;
   }, [bookingState]);
+
+  useEffect(() => {
+    if (
+      bookingState.status !== 'closed' ||
+      !restoreBookingDetailsFocusRef.current
+    ) {
+      return;
+    }
+    restoreBookingDetailsFocusRef.current = false;
+    const invoker = bookingDetailsInvokerRef.current;
+    bookingDetailsInvokerRef.current = null;
+    if (invoker?.isConnected) {
+      invoker.focus();
+    }
+  }, [bookingState.status]);
 
   useEffect(() => {
     if (positionedDayRef.current === selectedDay) return;
@@ -757,7 +775,13 @@ export function ScheduleWorkspace({
 
   function closeCancellation(command: 'KEEP_CANCEL' | 'CANCEL_ERROR_CLOSE') {
     if (cancellation?.pending) return;
-    if (request({type: command}) === 'ACCEPTED') {
+    if (request({
+      bookingRestore: {
+        cancelTrigger: bookingDetailsCancelButtonRef.current,
+        modal: isCompactMode,
+      },
+      type: command,
+    }) === 'ACCEPTED') {
       setCancellation(null);
     }
   }
@@ -819,6 +843,9 @@ export function ScheduleWorkspace({
     conflictRefreshGenerationRef.current += 1;
     conflictRefreshRequestRef.current = false;
     conflictRefreshTargetRef.current = null;
+    if (!isCompactMode && bookingStateRef.current.status === 'details') {
+      restoreBookingDetailsFocusRef.current = true;
+    }
     if (isCompactMode) request({type: 'CLOSE_BOOKING'});
     dispatchBooking({type: 'CLOSE'});
   }
@@ -1041,8 +1068,12 @@ export function ScheduleWorkspace({
     refreshAfterConflict(conflictTarget);
   }
 
-  function openBookingDetails(booking: ScheduleBooking) {
+  function openBookingDetails(
+    booking: ScheduleBooking,
+    invoker: HTMLElement,
+  ) {
     if (isCompactMode && request({type: 'OPEN_BOOKING'}) === 'DENIED') return;
+    bookingDetailsInvokerRef.current = invoker;
     linkedBookingIdRef.current = booking.id;
     updateUrl(selectedRoomId, weekStart, selectedDay, 'replace');
     dispatchBooking({booking, type: 'OPEN_DETAILS'});
@@ -1324,6 +1355,7 @@ export function ScheduleWorkspace({
       </div>
       </div>
       <AdaptiveBookingSurface
+        detailsCancelButtonRef={bookingDetailsCancelButtonRef}
         detailsContext={{
           officeTimeZone: schedule?.officeTimeZone ?? officeTimeZone,
           roomName: selectedRoom?.name ?? '',
