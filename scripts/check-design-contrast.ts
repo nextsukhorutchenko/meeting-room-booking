@@ -145,6 +145,9 @@ const sixDigitHex = /^#[0-9a-f]{6}$/i;
 const semanticToken = /var\((--color-[a-z-]+)\)/g;
 const solidSemanticToken = /^var\((--color-[a-z-]+)\)$/;
 const compositeColor = /color-mix\(\s*in\s+srgb\s*,\s*var\((--color-[a-z-]+)\)\s+([0-9.]+)%\s*,\s*transparent\s*\)/i;
+const currentColor = /\bcurrentcolor\b/i;
+const currentColorAnnotation =
+  /@contrast-(?:inherited-)?current-color\b/i;
 
 function pairKey(pair: ContrastPair): string {
   return `${pair.foreground}|${pair.background}|${pair.kind}|${pair.minimum}`;
@@ -266,6 +269,17 @@ export function auditStylesheetContrastUsage(
 
   for (const stylesheet of stylesheets) {
     const root = postcss.parse(stylesheet.content, {from: stylesheet.path});
+    root.walkComments((comment) => {
+      if (!currentColorAnnotation.test(comment.text)) return;
+      const parent = comment.parent;
+      const owner = parent?.type === 'rule' && 'selector' in parent ?
+        String(parent.selector) :
+        '<stylesheet>';
+      issues.push(
+        `${stylesheet.path}:${owner} uses an obsolete currentColor contrast ` +
+        'annotation; remove it and use an explicit semantic token',
+      );
+    });
     const rootComments = root.nodes
       .filter((node) => node.type === 'comment')
       .map((node) => node.text);
@@ -301,14 +315,6 @@ export function auditStylesheetContrastUsage(
         comments,
         '@contrast-composite-on',
       );
-      const currentColorContexts = annotationGroups(
-        comments,
-        '@contrast-current-color',
-      );
-      const inheritedCurrentColorContexts = annotationGroups(
-        comments,
-        '@contrast-inherited-current-color',
-      );
       const decorativeBackground = comments.some((comment) =>
         comment.includes('@contrast-decorative-background'));
       const decorativeBoundaries = new Set([
@@ -325,20 +331,6 @@ export function auditStylesheetContrastUsage(
         .filter((declaration) => declaration.prop === 'color');
       const foregrounds = colorDeclarations
         .flatMap((declaration) => tokensIn(declaration.value));
-      const importantColorDeclarations = colorDeclarations
-        .filter((declaration) => declaration.important);
-      const effectiveColorDeclarations =
-        importantColorDeclarations.length > 0 ?
-          importantColorDeclarations :
-          colorDeclarations;
-      const effectiveColorDeclaration =
-        effectiveColorDeclarations[effectiveColorDeclarations.length - 1];
-      const directColor = effectiveColorDeclaration?.value
-        .trim()
-        .match(solidSemanticToken)?.[1];
-      const canonicalDirectColor = directColor ?
-        canonicalToken(directColor, tokens) :
-        undefined;
       const backgroundDeclarations = declarations
         .filter((declaration) =>
           declaration.prop === 'background' ||
@@ -363,21 +355,43 @@ export function auditStylesheetContrastUsage(
       const boundaryDeclarations = declarations
         .filter((declaration) =>
           (
-            declaration.prop.startsWith('border') &&
-            !/(radius|width|style)$/.test(declaration.prop)
+            declaration.prop.toLowerCase().startsWith('border') &&
+            !/(radius|width|style)$/.test(declaration.prop.toLowerCase())
           ) ||
-          declaration.prop === 'outline' ||
-          declaration.prop === 'outline-color');
+          declaration.prop.toLowerCase() === 'outline' ||
+          declaration.prop.toLowerCase() === 'outline-color');
       const boundaries = boundaryDeclarations
         .flatMap((declaration) => tokensIn(declaration.value));
-      const currentColorBoundary = boundaryDeclarations.some((declaration) =>
-        /\bcurrentColor\b/i.test(declaration.value));
+      const currentColorBoundaries = boundaryDeclarations.filter(
+        (declaration) => currentColor.test(declaration.value),
+      );
+      if (currentColorBoundaries.length > 0) {
+        issues.push(
+          `${stylesheet.path}:${rule.selector} uses currentColor for a ` +
+          'meaningful border/outline; use an explicit semantic token',
+        );
+      }
+      for (const declaration of declarations) {
+        if (
+          !currentColor.test(declaration.value) ||
+          currentColorBoundaries.includes(declaration)
+        ) {
+          continue;
+        }
+        const property = declaration.prop.toLowerCase();
+        if (
+          decorativeBackground &&
+          (property === 'background' || property === 'background-color')
+        ) {
+          continue;
+        }
+        issues.push(
+          `${stylesheet.path}:${rule.selector} uses currentColor without an ` +
+          'explicit decorative exclusion; use an explicit semantic token',
+        );
+      }
 
-      if (
-        compositeContexts.malformed ||
-        currentColorContexts.malformed ||
-        inheritedCurrentColorContexts.malformed
-      ) {
+      if (compositeContexts.malformed) {
         issues.push(
           `${stylesheet.path}:${rule.selector} has malformed contrast ` +
           'context annotation',
@@ -399,108 +413,6 @@ export function auditStylesheetContrastUsage(
         issues.push(
           `${stylesheet.path}:${rule.selector} Stale contrast context ` +
           'annotation for a missing color-mix backdrop',
-        );
-      }
-      const compositeBackgrounds = compositeContexts.groups.map(
-        ([, effective]) => effective,
-      );
-      const currentColorBackgrounds = new Set((
-        compositeBackgrounds.length > 0 ?
-          compositeBackgrounds :
-          backgrounds.length > 0 ?
-            backgrounds :
-            nonTextBackgrounds.length > 0 ?
-              nonTextBackgrounds :
-              annotatedBackgrounds.length > 0 ?
-                annotatedBackgrounds :
-                defaultBackgrounds
-      ).map((token) => canonicalToken(token, tokens)));
-      const inheritedCurrentColorForegrounds = new Set((
-        annotatedForegrounds.length > 0 ?
-          annotatedForegrounds :
-          defaultForegrounds
-      ).map((token) => canonicalToken(token, tokens)));
-
-      if (currentColorBoundary && canonicalDirectColor) {
-        if (inheritedCurrentColorContexts.groups.length > 0) {
-          throw new Error(
-            `${stylesheet.path}:${rule.selector} ` +
-            '@contrast-inherited-current-color is stale because the rule ' +
-            'has a direct semantic color',
-          );
-        }
-        if (currentColorContexts.groups.length === 0) {
-          issues.push(
-            `${stylesheet.path}:${rule.selector} currentColor boundary ` +
-            'requires explicit @contrast-current-color context',
-          );
-        }
-        for (const [foreground, background] of
-          currentColorContexts.groups) {
-          const canonicalForeground = canonicalToken(foreground, tokens);
-          const canonicalBackground = canonicalToken(background, tokens);
-          if (canonicalForeground !== canonicalDirectColor) {
-            throw new Error(
-              `${stylesheet.path}:${rule.selector} ` +
-              `@contrast-current-color foreground ${canonicalForeground} ` +
-              `does not match direct color ${canonicalDirectColor}`,
-            );
-          }
-          if (!currentColorBackgrounds.has(canonicalBackground)) {
-            throw new Error(
-              `${stylesheet.path}:${rule.selector} ` +
-              `@contrast-current-color background ${canonicalBackground} ` +
-              'is not an auditable context for this rule',
-            );
-          }
-        }
-      } else if (currentColorBoundary) {
-        if (currentColorContexts.groups.length > 0) {
-          throw new Error(
-            `${stylesheet.path}:${rule.selector} ` +
-            '@contrast-current-color requires a direct semantic color; use ' +
-            '@contrast-inherited-current-color for inherited currentColor',
-          );
-        }
-        if (inheritedCurrentColorContexts.groups.length === 0) {
-          issues.push(
-            `${stylesheet.path}:${rule.selector} inherited currentColor ` +
-            'boundary requires explicit ' +
-            '@contrast-inherited-current-color context',
-          );
-        }
-        for (const [foreground, background] of
-          inheritedCurrentColorContexts.groups) {
-          const canonicalForeground = canonicalToken(foreground, tokens);
-          const canonicalBackground = canonicalToken(background, tokens);
-          if (!inheritedCurrentColorForegrounds.has(canonicalForeground)) {
-            throw new Error(
-              `${stylesheet.path}:${rule.selector} ` +
-              '@contrast-inherited-current-color foreground ' +
-              `${canonicalForeground} is not an auditable inherited ` +
-              'context for this rule',
-            );
-          }
-          if (!currentColorBackgrounds.has(canonicalBackground)) {
-            throw new Error(
-              `${stylesheet.path}:${rule.selector} ` +
-              '@contrast-inherited-current-color background ' +
-              `${canonicalBackground} is not an auditable context for ` +
-              'this rule',
-            );
-          }
-        }
-      }
-      if (
-        !currentColorBoundary &&
-        (
-          currentColorContexts.groups.length > 0 ||
-          inheritedCurrentColorContexts.groups.length > 0
-        )
-      ) {
-        issues.push(
-          `${stylesheet.path}:${rule.selector} Stale contrast context ` +
-          'annotation for a missing currentColor boundary',
         );
       }
       if (
@@ -613,19 +525,6 @@ export function auditStylesheetContrastUsage(
           );
         }
       }
-      const auditedCurrentColorContexts = canonicalDirectColor ?
-        currentColorContexts.groups :
-        inheritedCurrentColorContexts.groups;
-      for (const [foreground, background] of auditedCurrentColorContexts) {
-        record(
-          foreground,
-          background,
-          'non-text',
-          stylesheet.path,
-          rule.selector,
-        );
-      }
-
       const inheritedBackgrounds = transparentBackground ?
         annotatedBackgrounds :
         [];

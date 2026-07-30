@@ -266,242 +266,129 @@ describe('Roomwork contrast manifest and command', () => {
     }], [pair], semanticAuditTokens())).toEqual([pair]);
   });
 
-  it('rejects a spoofed currentColor foreground claim', () => {
-    const pairs = [
-      {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'non-text',
-        minimum: 3,
-      },
-      {
-        background: '--color-surface',
-        foreground: '--color-danger',
-        kind: 'normal-text',
-        minimum: 4.5,
-      },
-    ] as const satisfies readonly ContrastPair[];
-
+  it.each([
+    ['lowercase currentcolor', `
+      /* @contrast-default --color-surface */
+      /* @contrast-default-foreground --color-text */
+      .marker {
+        /* @contrast-inherited-current-color --color-text --color-surface */
+        border-color: currentcolor;
+      }
+    `],
+    ['uppercase CURRENTCOLOR', `
+      /* @contrast-default --color-surface */
+      /* @contrast-default-foreground --color-text */
+      .marker {
+        /* @contrast-inherited-current-color --color-text --color-surface */
+        outline: 1px solid CURRENTCOLOR;
+      }
+    `],
+    ['mixed-case currentColor', `
+      /* @contrast-default --color-surface */
+      /* @contrast-default-foreground --color-text */
+      .marker {
+        /* @contrast-inherited-current-color --color-text --color-surface */
+        border: 1px solid CurrentColor;
+      }
+    `],
+    ['whitespace-var provenance bypass', `
+      /* @contrast-default --color-surface */
+      /* @contrast-default-foreground --color-text */
+      .marker {
+        /* @contrast-inherited-current-color --color-text --color-surface */
+        color: var( --color-danger );
+        border-color: currentColor;
+      }
+    `],
+    ['direct-color provenance bypass', `
+      /* @contrast-default --color-surface */
+      /* @contrast-default-foreground --color-text */
+      .marker {
+        /* @contrast-inherited-current-color --color-text --color-surface */
+        color: #b42318;
+        border-color: currentColor;
+      }
+    `],
+    ['important background provenance bypass', `
+      /* @contrast-default --color-surface */
+      .marker {
+        /* @contrast-current-color --color-text --color-surface */
+        background: var(--color-canvas) !important;
+        background: var(--color-surface);
+        color: var(--color-text);
+        border-color: currentColor;
+      }
+    `],
+    ['later same-selector override', `
+      /* @contrast-default --color-surface */
+      .marker {
+        /* @contrast-current-color --color-text --color-surface */
+        color: var(--color-text);
+        border-color: currentColor;
+      }
+      .marker {
+        color: var(--color-danger);
+      }
+    `],
+    ['later pseudo-selector override', `
+      /* @contrast-default --color-surface */
+      .marker::before {
+        /* @contrast-current-color --color-text --color-surface */
+        color: var(--color-text);
+        border-color: currentColor;
+      }
+      .marker::before {
+        color: var(--color-danger);
+      }
+    `],
+  ])('rejects %s at meaningful boundaries', (_name, content) => {
     expect(() => auditStylesheetContrastUsage([{
-      content: `
-        /* @contrast-default --color-surface */
-        .marker {
-          /* @contrast-current-color --color-text --color-surface */
-          color: var(--color-danger);
-          border-color: currentColor;
-        }
-      `,
-      path: 'spoofed-current-color.css',
-    }], pairs, semanticAuditTokens())).toThrow(
-      '@contrast-current-color foreground --color-text does not match ' +
-      'direct color --color-danger',
+      content,
+      path: 'implicit-current-color.css',
+    }], [], semanticAuditTokens())).toThrow(
+      'uses currentColor for a meaningful border/outline; use an explicit ' +
+      'semantic token',
     );
   });
 
-  it('validates currentColor against the effective important direct color',
-    () => {
-      const pairs = [
-        {
-          background: '--color-surface',
-          foreground: '--color-text',
-          kind: 'non-text',
-          minimum: 3,
-        },
-        {
-          background: '--color-surface',
-          foreground: '--color-danger',
-          kind: 'normal-text',
-          minimum: 4.5,
-        },
-        {
-          background: '--color-surface',
-          foreground: '--color-text',
-          kind: 'normal-text',
-          minimum: 4.5,
-        },
-      ] as const satisfies readonly ContrastPair[];
+  it.each([
+    '@contrast-current-color --color-text --color-surface',
+    '@contrast-inherited-current-color --color-text --color-surface',
+  ])('rejects obsolete or stale %s annotations', (annotation) => {
+    expect(() => auditStylesheetContrastUsage([{
+      content: `
+        .marker {
+          /* ${annotation} */
+          display: block;
+        }
+      `,
+      path: 'obsolete-current-color-annotation.css',
+    }], [], semanticAuditTokens())).toThrow(
+      'uses an obsolete currentColor contrast annotation; remove it and use ' +
+      'an explicit semantic token',
+    );
+  });
 
-      expect(() => auditStylesheetContrastUsage([{
-        content: `
-          /* @contrast-default --color-surface */
-          .marker {
-            /* @contrast-current-color --color-text --color-surface */
-            color: var(--color-danger) !important;
-            color: var(--color-text);
-            border-color: currentColor;
-          }
-        `,
-        path: 'important-current-color.css',
-      }], pairs, semanticAuditTokens())).toThrow(
-        '@contrast-current-color foreground --color-text does not match ' +
-        'direct color --color-danger',
-      );
-    });
+  it('rejects nongoverned currentColor without a decorative exclusion', () => {
+    expect(() => auditStylesheetContrastUsage([{
+      content: '.decoration { box-shadow: 0 0 1px currentColor; }',
+      path: 'nongoverned-current-color.css',
+    }], [], semanticAuditTokens())).toThrow(
+      'uses currentColor without an explicit decorative exclusion; use an ' +
+      'explicit semantic token',
+    );
+  });
 
-  it('canonicalizes direct and annotated currentColor aliases', () => {
-    const pairs = [
-      {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'non-text',
-        minimum: 3,
-      },
-      {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'normal-text',
-        minimum: 4.5,
-      },
-    ] as const satisfies readonly ContrastPair[];
-
+  it('preserves explicitly decorative currentColor backgrounds', () => {
     expect(auditStylesheetContrastUsage([{
       content: `
-        /* @contrast-default --color-bg-alias */
-        .marker {
-          /* @contrast-current-color --color-text --color-surface */
-          color: var(--color-fg-alias);
-          border-color: currentColor;
+        .decoration {
+          /* @contrast-decorative-background */
+          background: currentColor;
         }
       `,
-      path: 'aliased-current-color.css',
-    }], pairs, semanticAuditTokens())).toEqual(pairs);
-  });
-
-  it('rejects a currentColor mismatch hidden behind aliases', () => {
-    const pairs = [
-      {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'non-text',
-        minimum: 3,
-      },
-      {
-        background: '--color-surface',
-        foreground: '--color-danger',
-        kind: 'normal-text',
-        minimum: 4.5,
-      },
-    ] as const satisfies readonly ContrastPair[];
-
-    expect(() => auditStylesheetContrastUsage([{
-      content: `
-        /* @contrast-default --color-bg-alias */
-        .marker {
-          /* @contrast-current-color --color-fg-alias --color-surface */
-          color: var(--color-danger-alias);
-          border-color: currentColor;
-        }
-      `,
-      path: 'alias-mismatch-current-color.css',
-    }], pairs, semanticAuditTokens())).toThrow(
-      '@contrast-current-color foreground --color-text does not match ' +
-      'direct color --color-danger',
-    );
-  });
-
-  it('requires explicit inherited currentColor context without direct color',
-    () => {
-      const pair = {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'non-text',
-        minimum: 3,
-      } as const satisfies ContrastPair;
-
-      expect(() => auditStylesheetContrastUsage([{
-        content: `
-          /* @contrast-default --color-surface */
-          /* @contrast-default-foreground --color-text */
-          .marker {
-            /* @contrast-current-color --color-text --color-surface */
-            border-color: currentColor;
-          }
-        `,
-        path: 'missing-direct-current-color.css',
-      }], [pair], semanticAuditTokens())).toThrow(
-        'requires a direct semantic color; use ' +
-        '@contrast-inherited-current-color for inherited currentColor',
-      );
-    });
-
-  it('validates explicit inherited currentColor against inherited context',
-    () => {
-      const pair = {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'non-text',
-        minimum: 3,
-      } as const satisfies ContrastPair;
-
-      expect(auditStylesheetContrastUsage([{
-        content: `
-          /* @contrast-default --color-bg-alias */
-          /* @contrast-default-foreground --color-fg-alias */
-          .marker {
-            /* @contrast-inherited-current-color --color-text --color-surface */
-            border-color: currentColor;
-          }
-        `,
-        path: 'inherited-current-color.css',
-      }], [pair], semanticAuditTokens())).toEqual([pair]);
-    });
-
-  it('rejects a currentColor background disconnected from its context', () => {
-    const pairs = [
-      {
-        background: '--color-canvas',
-        foreground: '--color-text',
-        kind: 'non-text',
-        minimum: 3,
-      },
-      {
-        background: '--color-surface',
-        foreground: '--color-text',
-        kind: 'normal-text',
-        minimum: 4.5,
-      },
-    ] as const satisfies readonly ContrastPair[];
-
-    expect(() => auditStylesheetContrastUsage([{
-      content: `
-        /* @contrast-default --color-surface */
-        .marker {
-          /* @contrast-current-color --color-text --color-canvas */
-          color: var(--color-text);
-          border-color: currentColor;
-        }
-      `,
-      path: 'disconnected-current-color.css',
-    }], pairs, semanticAuditTokens())).toThrow(
-      '@contrast-current-color background --color-canvas is not an ' +
-      'auditable context for this rule',
-    );
-  });
-
-  it('resolves currentColor as a semantic boundary', () => {
-    const pairs = [{
-      background: '--color-surface',
-      foreground: '--color-text',
-      kind: 'non-text',
-      minimum: 3,
-    }, {
-      background: '--color-surface',
-      foreground: '--color-text',
-      kind: 'normal-text',
-      minimum: 4.5,
-    }] as const satisfies readonly ContrastPair[];
-
-    expect(auditStylesheetContrastUsage([{
-      content: `
-        /* @contrast-default --color-surface */
-        .marker {
-          /* @contrast-current-color --color-text --color-surface */
-          color: var(--color-text);
-          border: 1px solid currentColor;
-        }
-      `,
-      path: 'marker.css',
-    }], pairs, semanticAuditTokens())).toEqual(pairs);
+      path: 'decorative-current-color.css',
+    }], [], semanticAuditTokens())).toEqual([]);
   });
 
   it('rejects missing inherited and stale composited context annotations', () => {
@@ -565,7 +452,8 @@ describe('Roomwork contrast manifest and command', () => {
     }]);
   });
 
-  it('prints an auditable markdown table and truthful decorative exclusions', () => {
+  it('audits production with zero implicit currentColor and prints evidence',
+    () => {
     const result = spawnSync(
       process.execPath,
       [

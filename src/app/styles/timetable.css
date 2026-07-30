@@ -57,12 +57,11 @@
 }
 
 .timetable-current-day-marker {
-  /* @contrast-inherited-current-color --color-text --color-surface */
   display: inline-flex;
   align-items: center;
   gap: var(--timetable-status-gap);
   margin-top: var(--timetable-booking-gap);
-  border: var(--border-default) solid currentColor;
+  border: var(--border-default) solid var(--color-text);
   padding: var(--space-0) var(--timetable-inline-gap);
   font-size: var(--type-meta);
   font-weight: 700;
