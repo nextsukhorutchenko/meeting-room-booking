@@ -201,6 +201,10 @@ export function ScheduleWorkspace({
   const weekStartRef = useRef(weekStart);
   const selectedDayRef = useRef(selectedDay);
   const roomsRequestSequence = useRef(0);
+  const roomPickerRef = useRef<HTMLSelectElement>(null);
+  const roomFilterTriggerRef = useRef<HTMLButtonElement>(null);
+  const roomRetryButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreRoomRetryFocusRef = useRef(false);
   const scheduleRequestSequence = useRef(0);
   const preserveScheduleOnRefreshRef = useRef(false);
   const conflictRefreshRequestRef = useRef(false);
@@ -552,6 +556,17 @@ export function ScheduleWorkspace({
   const isCompactMode = mode === 'tablet' || mode === 'mobile';
   const isRoomFilterVisible = isCompactMode && isRoomFilterOpen &&
     modalOwner === 'filter';
+
+  useEffect(() => {
+    if (roomsLoading || !restoreRoomRetryFocusRef.current) return;
+    const target = roomsError ?
+      roomRetryButtonRef.current :
+      isCompactMode ?
+        roomFilterTriggerRef.current :
+        roomPickerRef.current;
+    target?.focus();
+    restoreRoomRetryFocusRef.current = false;
+  }, [isCompactMode, roomsError, roomsLoading]);
 
   useEffect(() => {
     function closeRoomFilterWhenWide() {
@@ -997,6 +1012,7 @@ export function ScheduleWorkspace({
             <RoomPicker
               onRoomChange={changeRoom}
               rooms={rooms}
+              selectRef={roomPickerRef}
               selectedRoomId={selectedRoomId}
             />
             <label className="control-field capacity-field">
@@ -1024,6 +1040,7 @@ export function ScheduleWorkspace({
                 setIsRoomFilterOpen(true);
               }
             }}
+            ref={roomFilterTriggerRef}
             title={uiCopy.openRoomFilters}
             type="button"
           >
@@ -1078,12 +1095,16 @@ export function ScheduleWorkspace({
       </div>
 
       {roomsError ? (
-        <div className="schedule-message" role="alert">
+        <div aria-live="assertive" className="schedule-message" role="alert">
           <strong>{uiCopy.roomsUnavailable}</strong>
           <span>{roomsError}</span>
           <button
             className="secondary-button"
-            onClick={() => setRoomsRetryKey((key) => key + 1)}
+            onClick={() => {
+              restoreRoomRetryFocusRef.current = true;
+              setRoomsRetryKey((key) => key + 1);
+            }}
+            ref={roomRetryButtonRef}
             type="button"
           >
             {uiCopy.retryRooms}

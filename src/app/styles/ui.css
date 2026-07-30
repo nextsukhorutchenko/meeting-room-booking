@@ -1,3 +1,6 @@
+/* @contrast-default --color-surface */
+/* @contrast-default-foreground --color-text */
+
 .control-field {
   display: grid;
   gap: var(--space-1);
@@ -73,6 +76,7 @@
 }
 
 .destructive-button:hover {
+  /* @contrast-with --color-surface */
   border-color: var(--color-conflict-text);
   background: var(--color-conflict-text);
 }
@@ -124,6 +128,7 @@
 }
 
 .dialog-alert {
+  /* @contrast-with --color-danger */
   margin: 0;
   border-left: var(--border-emphasis) solid var(--color-danger);
   background: var(--color-danger-soft);

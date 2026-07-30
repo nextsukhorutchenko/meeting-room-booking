@@ -1,3 +1,6 @@
+/* @contrast-default --color-surface */
+/* @contrast-default-foreground --color-text */
+
 .day-agenda {
   min-width: var(--space-0);
   background: var(--color-surface);
@@ -67,28 +70,35 @@
 
 .day-agenda-free .day-agenda-slot-button:hover,
 .day-agenda-free .day-agenda-slot-button:focus-visible {
+  /* @contrast-with --color-text */
+  /* @contrast-boundary-with --color-brand */
   background: var(--color-brand-soft);
 }
 
 .day-agenda-past {
+  /* @contrast-with --color-text-muted --color-disabled-text */
   background: var(--color-disabled-bg);
 }
 
 .day-agenda-past .day-agenda-slot-button {
+  /* @contrast-on --color-disabled-bg */
   color: var(--color-disabled-text);
 }
 
 .day-agenda-busy {
+  /* @contrast-with --color-text-muted --color-text --color-danger */
   border-left: var(--border-emphasis) solid var(--color-other-border);
   background: var(--color-info-soft);
 }
 
 .day-agenda-own {
+  /* @contrast-with --color-text-muted --color-text --color-danger */
   border-left-color: var(--color-own-border);
   background: var(--color-own-surface);
 }
 
 .day-agenda-highlighted {
+  /* @contrast-on --color-info-soft --color-own-surface */
   outline: var(--border-emphasis) solid var(--color-current);
   outline-offset: var(--space-0);
 }
@@ -105,6 +115,7 @@
 .day-agenda-details:focus-visible,
 .day-agenda-cancel:hover,
 .day-agenda-cancel:focus-visible {
+  /* @contrast-with --color-text --color-danger */
   background: var(--color-brand-soft);
 }
 

@@ -152,6 +152,66 @@ test('@schedule first load, empty, retry and malformed states are atomic', async
   await expect(page.getByRole('list', {name: /Розклад на/})).toHaveCount(0);
 });
 
+test('@schedule room retry preserves usable schedule state independently', async ({
+  page,
+}) => {
+  let roomRequests = 0;
+  let scheduleRequests = 0;
+  let releaseRooms: (() => void) | undefined;
+  const roomsGate = new Promise<void>((resolve) => {
+    releaseRooms = resolve;
+  });
+  await page.route('**/api/notifications', (route) =>
+    fulfill(route, {data: []}));
+  await page.route('**/api/rooms', async (route) => {
+    roomRequests += 1;
+    if (roomRequests === 1) {
+      await fulfill(route, {
+        error: {code: 'SERVICE_UNAVAILABLE', message: 'Rooms unavailable'},
+      }, 503);
+      return;
+    }
+    await roomsGate;
+    await fulfill(route, {data: [room]});
+  });
+  await page.route(`**/api/rooms/${room.id}/schedule?*`, (route) => {
+    scheduleRequests += 1;
+    return fulfill(
+      route,
+      schedule(initialWeek, [booking('Збережений розклад кімнати')]),
+    );
+  });
+
+  await page.goto(scheduleUrl());
+  const alert = page.getByRole('alert');
+  await expect(alert).toHaveAttribute('aria-live', 'assertive');
+  await expect(alert).toContainText(
+    'Сервіс тимчасово недоступний. Спробуйте ще раз.',
+  );
+  await expect(page.getByText('Rooms unavailable')).toHaveCount(0);
+  await expect(page.getByText('Збережений розклад кімнати')).toBeVisible();
+
+  const retry = page.getByRole('button', {
+    name: 'Повторити завантаження переговорних',
+  });
+  await tabTo(page, retry);
+  await page.keyboard.press('Enter');
+  const loading = page.getByRole('status', {name: 'Завантажуємо розклад'});
+  await expect(loading).toHaveAttribute('aria-live', 'polite');
+  await expect(page.getByText('Збережений розклад кімнати')).toBeVisible();
+  expect(roomRequests).toBe(2);
+  expect(scheduleRequests).toBe(1);
+
+  releaseRooms?.();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('button', {
+    name: 'Відкрити фільтри переговорних',
+  })).toBeFocused();
+  await expect(page.getByText('Збережений розклад кімнати')).toBeVisible();
+  expect(roomRequests).toBe(2);
+  expect(scheduleRequests).toBe(1);
+});
+
 test('@schedule preserved refresh retains data and announces progress', async ({
   page,
 }) => {
@@ -313,6 +373,58 @@ test('@notifications empty state owns the mobile modal without a toast', async (
   })).toBeFocused();
   await expect(page.locator('.notification-toast')).toHaveCount(0);
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+});
+
+test('@notifications mobile modal contains focus and restores its bell', async ({
+  page,
+}) => {
+  await page.route('**/api/rooms', (route) =>
+    fulfill(route, {data: [room]}));
+  await page.route(`**/api/rooms/${room.id}/schedule?*`, (route) =>
+    fulfill(route, schedule(initialWeek)));
+  await page.route('**/api/notifications', (route) =>
+    route.request().method() === 'POST' ?
+      route.fulfill({status: 204}) :
+      fulfill(route, {
+        data: [{
+          currentTitle: 'Планування',
+          endsAt: `${selectedDay}T10:00:00+03:00`,
+          id: 'notification-focus',
+          nextAuthorName: 'Олена',
+          roomName: room.name,
+        }],
+      }));
+  await page.goto(scheduleUrl());
+
+  const bell = page.getByRole('button', {name: /Сповіщення, \d+ нових/});
+  await tabTo(page, bell);
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', {name: 'Сповіщення'});
+  const close = dialog.getByRole('button', {name: 'Закрити сповіщення'});
+  const dismiss = dialog.getByRole('button', {
+    name: 'Відхилити сповіщення',
+  });
+  await expect(close).toBeFocused();
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+  await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
+  await expect(page.locator('.app-shell')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
+
+  await page.keyboard.press('Tab');
+  await expect(dismiss).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dismiss).toBeFocused();
+  await page.keyboard.press('Escape');
+
+  await expect(dialog).toHaveCount(0);
+  await expect(bell).toBeFocused();
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert', '');
+  await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
 });
 
 test('@booking history loading, error and retry remain section-independent', async ({

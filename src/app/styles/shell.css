@@ -1,3 +1,6 @@
+/* @contrast-default --color-surface */
+/* @contrast-default-foreground --color-text */
+
 .app-shell {
   display: grid;
   min-height: 100dvh;

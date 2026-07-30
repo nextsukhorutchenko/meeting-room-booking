@@ -1,3 +1,6 @@
+/* @contrast-default --color-surface */
+/* @contrast-default-foreground --color-text */
+
 .auth-shell {
   display: grid;
   min-height: 100dvh;
@@ -101,6 +104,7 @@
 
 .auth-form button:hover,
 .auth-primary-link:hover {
+  /* @contrast-with --color-surface */
   border-color: var(--color-brand-hover);
   background: var(--color-brand-hover);
 }

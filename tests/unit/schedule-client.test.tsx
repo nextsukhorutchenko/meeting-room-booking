@@ -412,6 +412,64 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       .not.toBeInTheDocument();
   });
 
+  it('retries only rooms while preserving schedule data and restores focus', async () => {
+    let roomRequests = 0;
+    let scheduleRequests = 0;
+    const recoveredRooms = deferred<Response>();
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        roomRequests += 1;
+        return roomRequests === 1 ?
+          Promise.resolve(
+            jsonResponse({
+              error: {
+                code: 'SERVICE_UNAVAILABLE',
+                message: 'Rooms unavailable',
+              },
+            }, 503),
+          ) :
+          recoveredRooms.promise;
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequests += 1;
+        return Promise.resolve(
+          scheduleResponse('2026-08-03', 'Збережений розклад'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    expect(await screen.findByText('Збережений розклад')).toBeVisible();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveAttribute('aria-live', 'assertive');
+    expect(alert).toHaveTextContent(
+      'Сервіс тимчасово недоступний. Спробуйте ще раз.',
+    );
+    expect(screen.queryByText('Rooms unavailable')).not.toBeInTheDocument();
+
+    const retry = screen.getByRole('button', {
+      name: 'Повторити завантаження переговорних',
+    });
+    const user = userEvent.setup();
+    await user.click(retry);
+
+    expect(screen.getByText('Збережений розклад')).toBeVisible();
+    expect(screen.getByRole('status', {name: 'Завантажуємо розклад'}))
+      .toHaveAttribute('aria-live', 'polite');
+    await act(async () => {
+      recoveredRooms.resolve(jsonResponse({data: rooms}));
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Переговорні недоступні'))
+        .not.toBeInTheDocument();
+      expect(screen.getByLabelText('Переговорна')).toHaveFocus();
+    });
+    expect(roomRequests).toBe(2);
+    expect(scheduleRequests).toBe(1);
+  });
+
   it('selects both own and other timetable bookings through the booking URL', async () => {
     const response = scheduleBody('2026-08-03', 'Власне бронювання');
     response.data.bookings[0] = {

@@ -4,7 +4,6 @@ import {X} from 'lucide-react';
 import {createPortal} from 'react-dom';
 import {
   useCallback,
-  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -15,6 +14,7 @@ import {
   type ModalOwner,
 } from '../app/presentation-coordinator';
 import {uiCopy} from '../../lib/i18n/ui-copy';
+import {useFocusContainment} from './use-focus-containment';
 
 type DialogProps = {
   children: ReactNode;
@@ -24,14 +24,6 @@ type DialogProps = {
   open: boolean;
   owner?: Exclude<ModalOwner, 'none'>;
 };
-
-const focusableSelector = [
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
 
 export function Dialog({
   children,
@@ -53,54 +45,11 @@ export function Dialog({
     initialFocusRef,
   );
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const panel = panelRef.current;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab' || !panel) {
-        return;
-      }
-
-      const focusable = Array.from(
-        panel.querySelectorAll<HTMLElement>(focusableSelector),
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        panel.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const activeElement = document.activeElement as HTMLElement | null;
-      if (focusable.length === 1) {
-        event.preventDefault();
-        first.focus();
-      } else if (!activeElement || !focusable.includes(activeElement)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      } else if (event.shiftKey && activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [initialFocusRef, onClose, open]);
+  useFocusContainment({
+    active: open && (!owner || ownerActive),
+    container: panel,
+    onEscape: onClose,
+  });
 
   if (!open) {
     return null;

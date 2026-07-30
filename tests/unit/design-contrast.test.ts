@@ -2,6 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {
+  auditStylesheetContrastUsage,
   calculateContrastTable,
   contrastPairs,
   type ContrastPair,
@@ -17,33 +18,49 @@ const requiredPairs = [
   ['--color-text-subtle', '--color-canvas', 'normal-text', 4.5],
   ['--color-brand', '--color-surface', 'normal-text', 4.5],
   ['--color-brand', '--color-canvas', 'normal-text', 4.5],
+  ['--color-brand-hover', '--color-brand-soft', 'normal-text', 4.5],
+  ['--color-brand-hover', '--color-surface', 'normal-text', 4.5],
+  ['--color-text-muted', '--color-brand-soft', 'normal-text', 4.5],
+  ['--color-text', '--color-brand-soft', 'normal-text', 4.5],
   ['--color-surface', '--color-brand', 'normal-text', 4.5],
   ['--color-surface', '--color-brand-hover', 'normal-text', 4.5],
-  ['--color-surface', '--color-brand-pressed', 'normal-text', 4.5],
-  ['--color-selected-text', '--color-brand-soft', 'normal-text', 4.5],
-  ['--color-info', '--color-info-soft', 'normal-text', 4.5],
+  ['--color-surface', '--color-conflict-text', 'normal-text', 4.5],
+  ['--color-info', '--color-surface', 'normal-text', 4.5],
   ['--color-success', '--color-success-soft', 'normal-text', 4.5],
-  ['--color-warning', '--color-warning-soft', 'normal-text', 4.5],
+  ['--color-success', '--color-surface', 'normal-text', 4.5],
+  ['--color-warning', '--color-surface', 'normal-text', 4.5],
   ['--color-danger', '--color-danger-soft', 'normal-text', 4.5],
+  ['--color-danger', '--color-surface', 'normal-text', 4.5],
   ['--color-surface', '--color-danger', 'normal-text', 4.5],
-  ['--color-conflict-text', '--color-danger-soft', 'normal-text', 4.5],
   ['--color-own-text', '--color-own-surface', 'normal-text', 4.5],
   ['--color-other-text', '--color-info-soft', 'normal-text', 4.5],
-  ['--color-current', '--color-current-soft', 'normal-text', 4.5],
   ['--color-disabled-text', '--color-disabled-bg', 'normal-text', 4.5],
+  ['--color-disabled-text', '--color-surface', 'normal-text', 4.5],
+  ['--color-text-muted', '--color-disabled-bg', 'normal-text', 4.5],
+  ['--color-text-muted', '--color-info-soft', 'normal-text', 4.5],
+  ['--color-text', '--color-info-soft', 'normal-text', 4.5],
+  ['--color-danger', '--color-info-soft', 'normal-text', 4.5],
+  ['--color-text-muted', '--color-own-surface', 'normal-text', 4.5],
+  ['--color-text', '--color-own-surface', 'normal-text', 4.5],
+  ['--color-danger', '--color-own-surface', 'normal-text', 4.5],
+  ['--color-danger', '--color-brand-soft', 'normal-text', 4.5],
   ['--color-border-control', '--color-surface', 'non-text', 3],
-  ['--color-border-strong', '--color-surface', 'non-text', 3],
   ['--color-brand', '--color-brand-soft', 'non-text', 3],
+  ['--color-brand', '--color-surface', 'non-text', 3],
+  ['--color-brand-hover', '--color-surface', 'non-text', 3],
   ['--color-info', '--color-info-soft', 'non-text', 3],
-  ['--color-success', '--color-success-soft', 'non-text', 3],
-  ['--color-warning', '--color-warning-soft', 'non-text', 3],
   ['--color-danger', '--color-danger-soft', 'non-text', 3],
-  ['--color-conflict-text', '--color-danger-soft', 'non-text', 3],
+  ['--color-danger', '--color-surface', 'non-text', 3],
+  ['--color-surface', '--color-danger', 'non-text', 3],
+  ['--color-conflict-text', '--color-surface', 'non-text', 3],
   ['--color-own-border', '--color-own-surface', 'non-text', 3],
+  ['--color-own-border', '--color-success-soft', 'non-text', 3],
   ['--color-other-border', '--color-info-soft', 'non-text', 3],
-  ['--color-current', '--color-current-soft', 'non-text', 3],
+  ['--color-current', '--color-info-soft', 'non-text', 3],
+  ['--color-current', '--color-own-surface', 'non-text', 3],
+  ['--color-info', '--color-own-surface', 'non-text', 3],
   ['--color-focus', '--color-surface', 'non-text', 3],
-  ['--color-focus-outer', '--color-focus', 'non-text', 3],
+  ['--color-focus', '--color-canvas', 'non-text', 3],
 ] as const satisfies readonly (
   readonly [
     ContrastPair['foreground'],
@@ -121,6 +138,56 @@ describe('Roomwork contrast manifest and command', () => {
     ])).toEqual(requiredPairs);
   });
 
+  it('derives real stylesheet pairs and rejects missing manifest coverage', () => {
+    const stylesheet = [{
+      content: `
+        .status {
+          background: var(--color-surface);
+          border: 1px solid var(--color-danger);
+          color: var(--color-info);
+        }
+      `,
+      path: 'fixture.css',
+    }];
+    const fixturePairs = [
+      {
+        background: '--color-surface',
+        foreground: '--color-info',
+        kind: 'normal-text',
+        minimum: 4.5,
+      },
+      {
+        background: '--color-surface',
+        foreground: '--color-danger',
+        kind: 'non-text',
+        minimum: 3,
+      },
+    ] as const satisfies readonly ContrastPair[];
+
+    expect(auditStylesheetContrastUsage(stylesheet, fixturePairs))
+      .toEqual(fixturePairs);
+    expect(() => auditStylesheetContrastUsage(stylesheet, []))
+      .toThrow('Unmeasured stylesheet contrast pair');
+    expect(() => auditStylesheetContrastUsage(stylesheet, [
+      ...fixturePairs,
+      {
+        background: '--color-surface',
+        foreground: '--color-warning',
+        kind: 'normal-text',
+        minimum: 4.5,
+      },
+    ])).toThrow('Manifest pair has no rendered stylesheet usage');
+  });
+
+  it('rejects semantic color usage without an auditable background context', () => {
+    expect(() => auditStylesheetContrastUsage([{
+      content: '.status { color: var(--color-info); }',
+      path: 'fixture.css',
+    }], contrastPairs)).toThrow(
+      'fixture.css:.status has no semantic background context',
+    );
+  });
+
   it('prints an auditable markdown table and truthful decorative exclusions', () => {
     const result = spawnSync(
       process.execPath,
@@ -145,6 +212,9 @@ describe('Roomwork contrast manifest and command', () => {
       'decorative-only exclusions: `--color-surface-subtle`',
     );
     expect(result.stdout).toContain('--color-border-subtle');
-    expect(result.stdout).toContain('36/36 pairs pass');
+    expect(result.stdout).toContain('52/52 pairs pass');
+    expect(result.stdout).toContain(
+      '52/52 rendered stylesheet pairs audited',
+    );
   });
 });

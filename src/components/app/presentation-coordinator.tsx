@@ -86,7 +86,11 @@ function fallbackFocus(): void {
 function setBackgroundModalState(element: HTMLElement, modalOpen: boolean): void {
   element.inert = modalOpen;
   element.toggleAttribute('inert', modalOpen);
-  element.toggleAttribute('aria-hidden', modalOpen);
+  if (modalOpen) {
+    element.setAttribute('aria-hidden', 'true');
+  } else {
+    element.removeAttribute('aria-hidden');
+  }
 }
 
 export function usePresentationCoordinator(): PresentationContextValue {

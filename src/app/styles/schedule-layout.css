@@ -1,3 +1,6 @@
+/* @contrast-default --color-canvas */
+/* @contrast-default-foreground --color-text */
+
 .schedule-page {
   --schedule-page-max-width: 90rem;
 
@@ -163,6 +166,7 @@
 }
 
 .schedule-date-button.current-day {
+  /* @contrast-with --color-text-muted --color-text */
   border-color: var(--color-brand);
   background: var(--color-brand-soft);
 }

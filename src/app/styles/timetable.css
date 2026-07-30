@@ -1,3 +1,6 @@
+/* @contrast-default --color-surface */
+/* @contrast-default-foreground --color-text */
+
 .timetable {
   width: 100%;
   min-width: var(--timetable-min-width);
@@ -82,6 +85,7 @@
 }
 
 .timetable-cell-current-day {
+  /* @contrast-decorative-background */
   background: var(--color-current-soft);
 }
 
@@ -134,7 +138,12 @@
 
 .booking-block:hover,
 .booking-block:focus-visible {
+  /* @contrast-on --color-info-soft --color-own-surface */
   border-color: var(--color-info);
+}
+
+.booking-block:focus-visible {
+  /* @contrast-on --color-surface */
   outline: var(--border-emphasis) solid var(--color-focus);
   outline-offset: var(--space-0);
 }
@@ -147,6 +156,7 @@
 }
 
 .booking-block.booking-highlighted {
+  /* @contrast-on --color-info-soft --color-own-surface */
   outline: var(--border-emphasis) solid var(--color-current);
   outline-offset: var(--space-0);
 }
@@ -214,5 +224,9 @@
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
+  }
+
+  .booking-block.booking-highlighted {
+    outline-color: Highlight;
   }
 }

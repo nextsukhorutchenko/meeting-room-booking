@@ -13,6 +13,7 @@ import {
   usePresentationCoordinatorAvailable,
   usePresentationSurface,
 } from './presentation-coordinator';
+import {useFocusContainment} from '../ui/use-focus-containment';
 
 export type NotificationCenterProps = {
   mode: ResponsiveMode;
@@ -74,6 +75,11 @@ export function NotificationCenter({
       onOpenChange(true);
     }
   }
+  useFocusContainment({
+    active: modalActive,
+    container: surface,
+    onEscape: closeCenter,
+  });
 
   const center = showCenter ? (
     <section
