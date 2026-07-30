@@ -88,6 +88,7 @@ const CROSS_CUTTING_PREFIXES = [
   'prisma/',
   'scripts/',
   'specs/',
+  'src/app/styles/',
   'tests/',
 ];
 

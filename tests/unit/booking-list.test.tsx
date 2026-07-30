@@ -138,6 +138,37 @@ describe('BookingList', () => {
     expect(screen.getByText('Історія бронювань порожня')).toBeVisible();
   });
 
+  it('retries only the failed initial history section', async () => {
+    let futureCalls = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const scope = requestUrl(input).searchParams.get('scope');
+      if (scope === 'future') {
+        futureCalls += 1;
+        return Promise.resolve(
+          futureCalls === 1 ?
+            response(undefined, 503) :
+            response({items: [booking('future-recovered')], nextCursor: null}),
+        );
+      }
+      return Promise.resolve(response({items: [], nextCursor: null}));
+    });
+
+    renderBookingList();
+    const future = screen.getByRole('region', {name: 'Майбутні'});
+    expect(await within(future).findByRole('alert')).toBeVisible();
+
+    await userEvent.setup().click(within(future).getByRole('button', {
+      name: 'Повторити майбутні',
+    }));
+
+    expect(await within(future).findByText('Booking future-recovered'))
+      .toBeVisible();
+    expect(within(future).queryByRole('alert')).not.toBeInTheDocument();
+    expect(futureCalls).toBe(2);
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      requestUrl(input).searchParams.get('scope') === 'past')).toHaveLength(1);
+  });
+
   it('appends the next past page in cursor order without duplicate rows', async () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = requestUrl(input);
@@ -282,7 +313,7 @@ describe('BookingList', () => {
     await user.click(
       await screen.findByRole('button', {name: 'Скасувати Cancel me'}),
     );
-    const dialog = screen.getByRole('dialog', {name: 'Cancel booking'});
+    const dialog = screen.getByRole('dialog', {name: 'Скасувати бронювання'});
     const link = screen.getByRole('link', {
       name: 'Відкрити Cancel me у розкладі',
     });
@@ -291,7 +322,9 @@ describe('BookingList', () => {
     expect(dialog).not.toContainElement(link);
     expect(row).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+    await user.click(screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    }));
     await waitFor(() => {
       expect(screen.queryByText('Cancel me')).not.toBeInTheDocument();
     });

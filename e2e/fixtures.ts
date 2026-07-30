@@ -17,6 +17,7 @@ export const DEMO_USER = {
 export const TASK_9_BOOKING_PREFIX = 'task-9-e2e-';
 export const TASK_10_BOOKING_PREFIX = 'task-10-e2e-';
 export const TASK_11_BOOKING_PREFIX = 'task-11-e2e-';
+export const TASK_11_ROOM_PREFIX = 'task-11-room-';
 export const TASK_12_BOOKING_PREFIX = 'task-12-e2e-';
 export const TASK_14_BOOKING_PREFIX = 'task-14-e2e-';
 
@@ -73,6 +74,12 @@ export async function clearTaskBookings(
   });
 }
 
+async function clearTaskRooms(database: PrismaClient): Promise<void> {
+  await database.room.deleteMany({
+    where: {name: {startsWith: TASK_11_ROOM_PREFIX}},
+  });
+}
+
 type Fixtures = {
   database: PrismaClient;
 };
@@ -81,8 +88,10 @@ export const test = base.extend<Fixtures>({
   database: async ({}, run) => {
     const database = createE2eDatabase();
     await clearTaskBookings(database);
+    await clearTaskRooms(database);
     await run(database);
     await clearTaskBookings(database);
+    await clearTaskRooms(database);
     await database.$disconnect();
   },
 });

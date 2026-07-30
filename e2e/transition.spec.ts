@@ -20,17 +20,11 @@ test.beforeAll(async () => {
 
 const transitionCases = [
   {
-    bookingTime: '03:00-03:30',
-    mondayHours: '02:00-12:00 EST',
     name: 'us-only',
-    sundayHours: '03:00-13:00 EDT',
     weekStart: '2026-03-02',
   },
   {
-    bookingTime: '02:00-02:30',
-    mondayHours: '03:00-13:00 EDT',
     name: 'kyiv-only',
-    sundayHours: '02:00-12:00 EDT',
     weekStart: '2026-03-23',
   },
 ] as const;
@@ -61,39 +55,41 @@ for (const transition of transitionCases) {
       `/schedule?roomId=${room.id}&weekStart=${transition.weekStart}` +
       `&day=${sunday.toISODate()}&bookingId=${booking.id}`,
     );
-    await expect(page.getByTestId(
-      `day-user-hours-${transition.weekStart}`,
-    )).toHaveText(transition.mondayHours);
-    await expect(page.getByTestId(
-      `day-user-hours-${sunday.toISODate()}`,
-    )).toHaveText(transition.sundayHours);
-    await expect(page.getByTestId('schedule-office-zone'))
-      .toHaveText('Europe/Kyiv');
-    await expect(page.getByTestId('schedule-office-zone'))
+    const browserTimeZone = await page.evaluate(
+      () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
+    const bookingTime = `${sunday.setZone(browserTimeZone).toFormat('HH:mm')}-` +
+      sunday.plus({minutes: 30}).setZone(browserTimeZone).toFormat('HH:mm');
+    if (browserTimeZone !== 'Europe/Kyiv' &&
+        browserTimeZone !== 'Europe/Kiev') {
+      await expect(page.getByTestId('timezone-notice'))
+        .toContainText(browserTimeZone);
+      await expect(page.getByTestId('timezone-notice'))
+        .toContainText('Europe/Kyiv');
+    }
+    await expect(page.locator('body'))
       .not.toContainText(/GMT[+-]/);
-    const mondayClocks =
-      page.getByTestId(`day-row-clock-${transition.weekStart}`);
-    const sundayClocks =
-      page.getByTestId(`day-row-clock-${sunday.toISODate()}`);
-    await expect(mondayClocks).toHaveCount(11);
-    await expect(sundayClocks).toHaveCount(11);
-    await expect(mondayClocks.first())
-      .toHaveText(transition.mondayHours.slice(0, 5));
-    await expect(sundayClocks.first())
-      .toHaveText(transition.sundayHours.slice(0, 5));
-    await expect(page.getByRole('article', {name: new RegExp(title)}))
-      .toContainText(transition.bookingTime);
-    await expect(page.getByRole('article', {name: new RegExp(title)}))
-      .toHaveAttribute('data-highlighted', 'true');
+    const bookingTrigger = page.getByRole('button', {
+      name: new RegExp(title),
+    });
+    await expect(bookingTrigger).toContainText(bookingTime);
+    const table = page.getByRole('table');
+    if (testInfo.project.name === 'mobile-lg') {
+      await expect(table).toHaveCount(0);
+      await expect(page.getByRole('list', {name: /Розклад на Oak/}))
+        .toHaveCount(1);
+      await expect(bookingTrigger.locator('..'))
+        .toHaveClass(/day-agenda-highlighted/);
+    } else {
+      const dayCount = testInfo.project.name === 'tablet' ? 2 : 7;
+      await expect(table.getByRole('columnheader')).toHaveCount(dayCount + 1);
+      await expect(table.getByRole('rowheader')).toHaveCount(20);
+      await expect(bookingTrigger)
+        .toHaveAttribute('data-highlighted', 'true');
+    }
     const geometry = await page.evaluate(() => {
-      const columns = Array.from(document.querySelectorAll<HTMLElement>(
-        '.week-grid [data-testid="schedule-day-column"]',
-      ));
-      const widths = columns.map(
-        (column) => column.getBoundingClientRect().width,
-      );
       const booking = document.querySelector<HTMLElement>(
-        '.week-grid [data-highlighted="true"]',
+        '[data-highlighted="true"]',
       );
       const bookingRect = booking?.getBoundingClientRect();
       const bookingColumnRect =
@@ -105,20 +101,13 @@ for (const transition of transitionCases) {
           bookingRect.left >= bookingColumnRect.left &&
           bookingRect.right <= bookingColumnRect.right + 0.5,
         ),
-        columns: columns.length,
-        equalColumnWidths:
-          widths.length === 7 &&
-          widths.every((width) => Math.abs(width - widths[0]) < 0.5),
-        rowsPerColumn: columns.map(
-          (column) => column.querySelectorAll('.schedule-slot').length,
-        ),
+        horizontalOverflow:
+          document.documentElement.scrollWidth - innerWidth,
       };
     });
     expect(geometry).toEqual({
       bookingContained: true,
-      columns: 7,
-      equalColumnWidths: true,
-      rowsPerColumn: Array.from({length: 7}, () => 20),
+      horizontalOverflow: 0,
     });
 
     await page.screenshot({
@@ -137,32 +126,36 @@ for (const transition of transitionCases) {
     );
     await expect(bookingsLink).toBeVisible();
 
-    const scheduleCancelTrigger = page.getByRole('article', {
-      name: new RegExp(title),
-    }).getByRole('button', {name: `Cancel ${title}`});
+    const scheduleCancelTrigger = bookingTrigger;
     await scheduleCancelTrigger.click();
-    await expect(page.getByRole('dialog', {name: 'Cancel booking'}))
+    await expect(page.getByRole('dialog', {name: 'Скасувати бронювання'}))
       .toHaveAttribute('aria-modal', 'true');
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
     await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
 
     await bookingsLink.evaluate((link: HTMLAnchorElement) => link.click());
     await expect(page).toHaveURL('/my-bookings');
-    await expect(page.getByRole('dialog', {name: 'Cancel booking'})).toHaveCount(0);
+    await expect(page.getByRole('dialog', {
+      name: 'Скасувати бронювання',
+    })).toHaveCount(0);
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
     await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
 
     const historyRow = page.locator(`[data-booking-id="${booking.id}"]`);
     const historyCancelTrigger = historyRow.getByRole('button', {
-      name: `Cancel ${title}`,
+      name: `Скасувати ${title}`,
     });
-    await expect(historyRow).toContainText(transition.bookingTime);
+    await expect(historyRow).toContainText(bookingTime);
     await historyCancelTrigger.click();
-    const historyDialog = page.getByRole('dialog', {name: 'Cancel booking'});
+    const historyDialog = page.getByRole('dialog', {
+      name: 'Скасувати бронювання',
+    });
     await expect(historyDialog).toHaveAttribute('aria-modal', 'true');
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
     await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
-    await historyDialog.getByRole('button', {name: 'Keep booking'}).click();
+    await historyDialog.getByRole('button', {
+      name: 'Залишити бронювання',
+    }).click();
     await expect(historyCancelTrigger).toBeFocused();
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
     await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');

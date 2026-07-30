@@ -27,11 +27,11 @@ export function TimezoneLabel({
     <p className="timezone-label timezone-notice" data-testid="timezone-notice">
       <Globe2 aria-hidden="true" className="size-4" />
       <span className="timezone-notice-content">
+        <span>{uiCopy.yourTime}: {userTimeZone}</span>
         <span>
           {uiCopy.officeHours}: {hourLabel(officeOpenHour)}–
-          {hourLabel(officeCloseHour)}
+          {hourLabel(officeCloseHour)} {officeTimeZone}
         </span>
-        <span>{officeTimeZone}</span>
       </span>
     </p>
   );

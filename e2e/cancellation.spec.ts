@@ -40,48 +40,48 @@ test('@booking @critical own booking exposes Cancel and confirmation is required
     },
   });
 
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
-  const block = page.getByRole('article', {name: new RegExp(title)});
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
+  const block = page.getByRole('button', {name: new RegExp(title)});
   await expect(block).toBeVisible();
-  const cancelTrigger = block.getByRole('button', {name: `Cancel ${title}`});
+  const cancelTrigger = block;
   await cancelTrigger.click();
 
-  const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
+  const dialog = page.getByRole('dialog', {name: 'Скасувати бронювання'});
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute('aria-modal', 'true');
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
   await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
   await expect(page.locator('.app-shell')).toHaveAttribute('aria-hidden', 'true');
-  await expect(dialog.getByRole('button', {name: 'Keep booking'}))
+  await expect(dialog.getByRole('button', {name: 'Залишити бронювання'}))
     .toBeFocused();
   await expect(database.booking.findUniqueOrThrow({where: {id: booking.id}}))
     .resolves.toMatchObject({cancelledAt: null});
 
   const layout = await page.evaluate(() => {
-    const block = document.querySelector('.booking-block');
+    const block = document.querySelector(
+      '.booking-block, .day-agenda-details',
+    );
     const dialog = document.querySelector('.dialog-panel');
-    const title = block?.querySelector('strong');
-    const metadata = block?.querySelector('.booking-block-meta');
-    const cancel = block?.querySelector('.booking-cancel-button');
     const actions = dialog?.querySelector('.dialog-actions');
     const blockRect = block?.getBoundingClientRect();
     const dialogRect = dialog?.getBoundingClientRect();
-    const titleRect = title?.getBoundingClientRect();
-    const metadataRect = metadata?.getBoundingClientRect();
-    const cancelRect = cancel?.getBoundingClientRect();
+    const contentRects = block ?
+      Array.from(block.children).map((child) =>
+        child.getBoundingClientRect()) :
+      [];
     const actionsRect = actions?.getBoundingClientRect();
     return {
       blockContentContained: Boolean(
         blockRect &&
-        titleRect &&
-        metadataRect &&
-        cancelRect &&
-        titleRect.top >= blockRect.top &&
-        metadataRect.bottom <= blockRect.bottom + 0.5 &&
-        cancelRect.top >= blockRect.top &&
-        cancelRect.right <= blockRect.right + 0.5 &&
-        titleRect.right <= cancelRect.left + 0.5 &&
-        metadataRect.right <= cancelRect.left + 0.5,
+        contentRects.length > 0 &&
+        contentRects.every((rect) =>
+          rect.left >= blockRect.left &&
+          rect.right <= blockRect.right + 0.5 &&
+          rect.top >= blockRect.top &&
+          rect.bottom <= blockRect.bottom + 0.5),
       ),
       dialogContained: Boolean(
         dialogRect &&
@@ -100,20 +100,20 @@ test('@booking @critical own booking exposes Cancel and confirmation is required
       horizontalOverflow:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth,
-      cancelHeight: cancelRect?.height ?? 0,
-      cancelWidth: cancelRect?.width ?? 0,
+      triggerHeight: blockRect?.height ?? 0,
+      triggerWidth: blockRect?.width ?? 0,
     };
   });
   expect(layout).toEqual({
     blockContentContained: true,
-    cancelHeight: expect.any(Number),
-    cancelWidth: expect.any(Number),
+    triggerHeight: expect.any(Number),
+    triggerWidth: expect.any(Number),
     dialogContained: true,
     dialogActionsContained: true,
     horizontalOverflow: 0,
   });
-  expect(layout.cancelHeight).toBeGreaterThanOrEqual(40);
-  expect(layout.cancelWidth).toBeGreaterThanOrEqual(40);
+  expect(layout.triggerHeight).toBeGreaterThanOrEqual(44);
+  expect(layout.triggerWidth).toBeGreaterThanOrEqual(44);
   await page.screenshot({
     path: resolve(artifactsDirectory, 'cancel-confirmation.png'),
   });
@@ -124,7 +124,7 @@ test('@booking @critical own booking exposes Cancel and confirmation is required
   await expect(page.locator('.app-shell')).not.toHaveAttribute('inert');
 
   await cancelTrigger.click();
-  await dialog.getByRole('button', {name: 'Keep booking'}).click();
+  await dialog.getByRole('button', {name: 'Залишити бронювання'}).click();
   await expect(dialog).toBeHidden();
   await expect(cancelTrigger).toBeFocused();
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
@@ -155,7 +155,10 @@ test('@booking cancellation error closes to its exact trigger', async ({
     },
   });
 
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
   await page.route(`**/api/bookings/${booking.id}`, async (route) => {
     if (route.request().method() === 'DELETE') {
       await route.fulfill({
@@ -168,14 +171,13 @@ test('@booking cancellation error closes to its exact trigger', async ({
     await route.continue();
   });
 
-  const trigger = page.getByRole('article', {name: new RegExp(title)})
-    .getByRole('button', {name: `Cancel ${title}`});
+  const trigger = page.getByRole('button', {name: new RegExp(title)});
   await trigger.click();
-  const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
-  await dialog.getByRole('button', {name: 'Cancel booking'}).click();
+  const dialog = page.getByRole('dialog', {name: 'Скасувати бронювання'});
+  await dialog.getByRole('button', {name: 'Скасувати бронювання'}).click();
   await expect(dialog.getByRole('alert')).toHaveText('Unable to cancel booking.');
 
-  await dialog.getByRole('button', {name: 'Close dialog'}).click();
+  await dialog.getByRole('button', {name: 'Закрити діалог'}).click();
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
@@ -203,10 +205,16 @@ test("@booking other user's booking has no cancellation command", async ({
     },
   });
 
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
-  const block = page.getByRole('article', {name: new RegExp(title)});
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
+  const block = page.getByRole('button', {name: new RegExp(title)});
   await expect(block).toBeVisible();
-  await expect(block.getByRole('button', {name: /Cancel/i})).toHaveCount(0);
+  await block.click();
+  await expect(page.getByRole('dialog', {
+    name: 'Скасувати бронювання',
+  })).toHaveCount(0);
 });
 
 test('@booking max-length unbroken cancellation title stays contained', async ({
@@ -231,12 +239,15 @@ test('@booking max-length unbroken cancellation title stays contained', async ({
     },
   });
 
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
-  const block = page.getByRole('article', {name: new RegExp(title)});
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
+  const block = page.getByRole('button', {name: new RegExp(title)});
   await expect(block).toBeVisible();
-  await block.getByRole('button', {name: `Cancel ${title}`}).click();
+  await block.click();
 
-  const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
+  const dialog = page.getByRole('dialog', {name: 'Скасувати бронювання'});
   const layout = await dialog.evaluate((dialogElement) => {
     const panel = dialogElement as HTMLElement;
     const copy = panel.querySelector<HTMLElement>('.cancellation-dialog-copy');
@@ -302,10 +313,13 @@ test('@booking success removes block, shows toast, and persists cancellation', a
     },
   });
 
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
-  const block = page.getByRole('article', {name: new RegExp(title)});
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
+  const block = page.getByRole('button', {name: new RegExp(title)});
   await expect(block).toBeVisible();
-  await block.getByRole('button', {name: `Cancel ${title}`}).click();
+  await block.click();
 
   const cancellationResponse = page.waitForResponse((response) =>
     response.url().endsWith(`/api/bookings/${booking.id}`) &&
@@ -319,16 +333,17 @@ test('@booking success removes block, shows toast, and persists cancellation', a
       response.status() === 200;
   });
   await page
-    .getByRole('dialog', {name: 'Cancel booking'})
-    .getByRole('button', {name: 'Cancel booking'})
+    .getByRole('dialog', {name: 'Скасувати бронювання'})
+    .getByRole('button', {name: 'Скасувати бронювання'})
     .click();
   await cancellationResponse;
   await refreshedSchedule;
 
-  await expect(page.getByRole('dialog', {name: 'Cancel booking'})).toBeHidden();
+  await expect(page.getByRole('dialog', {name: 'Скасувати бронювання'}))
+    .toBeHidden();
   await expect(block).toHaveCount(0);
   await expect(
-    page.getByRole('status').filter({hasText: 'Booking cancelled'}),
+    page.getByRole('status').filter({hasText: 'Бронювання скасовано'}),
   ).toBeVisible();
   await expect.poll(async () => {
     const persisted = await database.booking.findUnique({

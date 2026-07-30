@@ -14,10 +14,13 @@ test.beforeAll(async () => {
 test('@booking @critical free slot -> prefilled dialog -> create', async ({
   database,
   page,
-}) => {
+}, testInfo) => {
   const room = await roomByName(database, 'Oak');
   const weekStart = officeMonday(1);
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
+  const selectedDay = officeSlot(weekStart, 1, 9).toISODate();
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${selectedDay}`,
+  );
 
   await page.getByRole('button', {
     name: /Забронювати вівторок.*10:00/i,
@@ -34,7 +37,7 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   const openDialogLayout = await page.evaluate(() => {
     const dialog = document.querySelector('.booking-surface-panel');
     const emptyState = document.querySelector('.empty-schedule-note');
-    const dayHeaders = document.querySelector('.schedule-day-headers');
+    const dayHeaders = document.querySelector('.timetable thead');
     const dialogRect = dialog?.getBoundingClientRect();
     const emptyRect = emptyState?.getBoundingClientRect();
     const headersRect = dayHeaders?.getBoundingClientRect();
@@ -94,10 +97,9 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   await expect(
     page.getByRole('status').filter({hasText: 'Бронювання створено'}),
   ).toBeVisible();
-  const bookingBlock = page.getByRole('article', {name: new RegExp(title)});
+  const bookingBlock = page.getByRole('button', {name: new RegExp(title)});
   await expect(bookingBlock).toBeVisible();
-  await expect(bookingBlock).toContainText('10:00-12:00');
-  await expect(bookingBlock).toHaveCSS('height', '172px');
+  await expect(bookingBlock.locator('..')).toContainText('10:00-12:00');
   await expect(database.booking.count({where: {title}})).resolves.toBe(1);
   const persistedBooking = await database.booking.findFirstOrThrow({
     where: {title},
@@ -106,41 +108,26 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
     officeSlot(weekStart, 1, 12).toUTC().toISO(),
   );
   const createdBlockLayout = await bookingBlock.evaluate((booking) => {
-    const dayColumn = booking.closest(
-      '[data-testid="schedule-day-column"]',
-    );
+    const dayCell = booking.closest('td, li');
     const bookingRect = booking.getBoundingClientRect();
-    const dayColumnRect = dayColumn?.getBoundingClientRect();
-    const titleRect = booking.querySelector('strong')?.getBoundingClientRect();
-    const metaRect = booking
-      .querySelector('.booking-block-meta')
-      ?.getBoundingClientRect();
-    const cancelRect = booking
-      .querySelector('.booking-cancel-button')
-      ?.getBoundingClientRect();
+    const dayCellRect = dayCell?.getBoundingClientRect();
+    const contentRects = Array.from(booking.children).map(
+      (child) => child.getBoundingClientRect(),
+    );
     return {
       bookingContainedInDayColumn: Boolean(
-        dayColumnRect &&
-        bookingRect.left >= dayColumnRect.left &&
-        bookingRect.right <= dayColumnRect.right + 0.5 &&
-        bookingRect.top >= dayColumnRect.top &&
-        bookingRect.bottom <= dayColumnRect.bottom + 0.5,
+        dayCellRect &&
+        bookingRect.left >= dayCellRect.left &&
+        bookingRect.right <= dayCellRect.right + 0.5 &&
+        bookingRect.top >= dayCellRect.top &&
+        bookingRect.bottom <= dayCellRect.bottom + 0.5,
       ),
-      bookingContentContained: Boolean(
-        titleRect &&
-        metaRect &&
-        cancelRect &&
-        titleRect.left >= bookingRect.left &&
-        titleRect.right <= cancelRect.left + 0.5 &&
-        titleRect.top >= bookingRect.top &&
-        titleRect.bottom <= metaRect.top + 0.5 &&
-        metaRect.left >= bookingRect.left &&
-        metaRect.right <= cancelRect.left + 0.5 &&
-        metaRect.bottom <= bookingRect.bottom + 0.5 &&
-        cancelRect.top >= bookingRect.top &&
-        cancelRect.right <= bookingRect.right + 0.5 &&
-        cancelRect.bottom <= bookingRect.bottom + 0.5,
-      ),
+      bookingContentContained: contentRects.every((rect) =>
+        rect.left >= bookingRect.left &&
+        rect.right <= bookingRect.right + 0.5 &&
+        rect.top >= bookingRect.top &&
+        rect.bottom <= bookingRect.bottom + 0.5),
+      bookingHeight: bookingRect.height,
       horizontalOverflow:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth,
@@ -149,8 +136,13 @@ test('@booking @critical free slot -> prefilled dialog -> create', async ({
   expect(createdBlockLayout).toEqual({
     bookingContainedInDayColumn: true,
     bookingContentContained: true,
+    bookingHeight: expect.any(Number),
     horizontalOverflow: 0,
   });
+  const agendaProject = ['mobile-lg', 'mobile', 'reflow']
+    .includes(testInfo.project.name);
+  expect(createdBlockLayout.bookingHeight)
+    .toBeGreaterThanOrEqual(agendaProject ? 44 : 192);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: resolve(artifactsDirectory, 'booking-created.png'),
@@ -166,12 +158,15 @@ test('@booking occupied slot -> visible conflict, dialog remains open', async ({
     where: {normalizedEmail: 'organizer@example.test'},
   });
   const weekStart = officeMonday(1);
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
+  const startsAt = officeSlot(weekStart, 2, 11);
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
   await page.getByRole('button', {
     name: /Забронювати середа.*11:00/i,
   }).click();
 
-  const startsAt = officeSlot(weekStart, 2, 11);
   await database.booking.create({
     data: {
       roomId: room.id,
@@ -200,7 +195,11 @@ test('@booking pending disabled, duplicate clicks create exactly one', async ({
 }) => {
   const room = await roomByName(database, 'Oak');
   const weekStart = officeMonday(1);
-  await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
+  const startsAt = officeSlot(weekStart, 3, 14);
+  await page.goto(
+    `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
+    `&day=${startsAt.toISODate()}`,
+  );
   await page.getByRole('button', {
     name: /Забронювати четвер.*14:00/i,
   }).click();

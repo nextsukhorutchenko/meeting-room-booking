@@ -182,3 +182,42 @@
     min-width: 0;
   }
 }
+
+@media (forced-colors: active) {
+  .control-field input,
+  .control-field select,
+  .icon-button,
+  .secondary-button,
+  .destructive-button {
+    border-color: ButtonText;
+    background: Canvas;
+    color: ButtonText;
+  }
+
+  :where(
+    .control-field input,
+    .control-field select,
+    .icon-button,
+    .secondary-button,
+    .destructive-button
+  ):disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .control-field input[aria-invalid="true"],
+  .dialog-alert {
+    border: var(--border-emphasis) dashed Highlight;
+  }
+
+  .dialog-backdrop {
+    background: Canvas;
+  }
+
+  .dialog-panel {
+    border: var(--border-emphasis) solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

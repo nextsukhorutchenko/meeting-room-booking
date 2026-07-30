@@ -45,7 +45,7 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
     `&day=${day.toISODate()}`,
   );
-  await expect(page.getByLabel('Day', {exact: true})).toBeHidden();
+  await expect(page.getByLabel('День', {exact: true})).toBeVisible();
   const browserTimeZone = await page.evaluate(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
@@ -62,9 +62,9 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     .toFormat('HH:mm');
   const booking = page.getByRole('button', {name: new RegExp(title)});
   await expect(booking).toContainText(`${expectedStart}-${expectedEnd}`);
-  await expect(page.getByTestId('schedule-office-zone'))
-    .toHaveText('Europe/Kyiv');
-  await expect(page.getByTestId('schedule-office-zone'))
+  await expect(page.getByTestId('timezone-notice'))
+    .toContainText('Europe/Kyiv');
+  await expect(page.getByTestId('timezone-notice'))
     .not.toContainText(/GMT[+-]/);
 
   const nextSlot = day.plus({hours: 1});
@@ -103,12 +103,12 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
   await page.getByRole('button', {
     name: new RegExp(`Забронювати.*${nextSlotLabel}`, 'i'),
   }).click();
-  const dialog = page.getByRole('dialog', {name: 'Book Oak'});
+  const dialog = page.getByRole('dialog', {name: 'Бронювання: Oak'});
   await expect(dialog).toContainText(
     `${nextSlotLabel}-${nextSlotEndLabel}`,
   );
-  await dialog.getByLabel('Title').fill(createdTitle);
-  await dialog.getByRole('button', {name: 'Create booking'}).click();
+  await dialog.getByLabel('Назва').fill(createdTitle);
+  await dialog.getByRole('button', {name: 'Забронювати'}).click();
   await expect(createPayload).resolves.toEqual({
     endsAt: expectedEndsAt,
     roomId: room.id,
@@ -133,7 +133,7 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     ),
   });
 
-  await page.getByRole('link', {name: 'My Bookings'}).click();
+  await page.getByRole('link', {name: 'Мої бронювання'}).click();
   const row = page.locator(`[data-booking-id]`, {hasText: title});
   await expect(row).toContainText(`${expectedStart}-${expectedEnd}`);
   const createdRow =
@@ -162,7 +162,7 @@ test('@timezone office-hours label follows browser/office zone difference', asyn
   );
 
   const officeHours = page.getByText(
-    'Office hours: 09:00–19:00 Europe/Kyiv',
+    'Години офісу: 09:00–19:00 Europe/Kyiv',
     {exact: true},
   );
   if (testInfo.project.name === 'desktop-new-york') {

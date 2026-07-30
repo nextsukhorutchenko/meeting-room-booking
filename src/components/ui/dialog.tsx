@@ -14,6 +14,7 @@ import {
   usePresentationSurface,
   type ModalOwner,
 } from '../app/presentation-coordinator';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 
 type DialogProps = {
   children: ReactNode;
@@ -118,10 +119,10 @@ export function Dialog({
         <div className="dialog-heading">
           <h2>{label}</h2>
           <button
-            aria-label="Close dialog"
+            aria-label={uiCopy.closeDialog}
             className="icon-button"
             onClick={onClose}
-            title="Close"
+            title={uiCopy.close}
             type="button"
           >
             <X aria-hidden="true" />

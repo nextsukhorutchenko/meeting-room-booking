@@ -9,35 +9,53 @@ const authStatePath = 'test-results/.auth/demo-user.json';
 
 const responsiveProjectMatches = {
   expanded: [
+    '**/accessibility.spec.ts',
     '**/booking.spec.ts',
     '**/cancellation.spec.ts',
+    '**/geometry.spec.ts',
     '**/my-bookings.spec.ts',
     '**/notifications.spec.ts',
     '**/schedule.spec.ts',
     '**/transition.spec.ts',
   ],
-  medium: ['**/booking.spec.ts', '**/schedule.spec.ts'],
+  medium: [
+    '**/accessibility.spec.ts',
+    '**/booking.spec.ts',
+    '**/geometry.spec.ts',
+    '**/schedule.spec.ts',
+  ],
   tablet: [
+    '**/accessibility.spec.ts',
     '**/booking.spec.ts',
     '**/cancellation.spec.ts',
+    '**/geometry.spec.ts',
     '**/schedule.spec.ts',
     '**/transition.spec.ts',
   ],
   'mobile-lg': [
+    '**/accessibility.spec.ts',
     '**/booking.spec.ts',
     '**/cancellation.spec.ts',
+    '**/geometry.spec.ts',
     '**/mobile.spec.ts',
     '**/my-bookings.spec.ts',
     '**/notifications.spec.ts',
     '**/transition.spec.ts',
   ],
   mobile: [
+    '**/accessibility.spec.ts',
     '**/booking.spec.ts',
     '**/cancellation.spec.ts',
+    '**/geometry.spec.ts',
     '**/mobile.spec.ts',
     '**/my-bookings.spec.ts',
   ],
-  reflow: ['**/booking.spec.ts', '**/mobile.spec.ts'],
+  reflow: [
+    '**/accessibility.spec.ts',
+    '**/booking.spec.ts',
+    '**/geometry.spec.ts',
+    '**/mobile.spec.ts',
+  ],
 } as const;
 
 export interface ExploratoryConfigOptions {

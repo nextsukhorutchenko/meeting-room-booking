@@ -69,7 +69,7 @@ test('weekly schedule remains visually legible', async ({
 
   await loginAsDemoUser(page);
   await page.goto(`/schedule?roomId=${room.id}&weekStart=${weekStart}`);
-  await expect(page.getByRole('grid', {name: 'Weekly room schedule'}))
+  await expect(page.getByRole('table', {name: /Розклад переговорної Oak/}))
     .toBeVisible();
   const agent = await agentForPage(page);
 

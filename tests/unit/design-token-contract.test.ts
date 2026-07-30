@@ -1,3 +1,5 @@
+import {readFileSync, readdirSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {findDesignTokenViolations} from '../../scripts/check-design-tokens';
 
@@ -96,5 +98,51 @@ describe('findDesignTokenViolations', () => {
     `;
 
     expect(findDesignTokenViolations({css, file: 'allowed.css'})).toEqual([]);
+  });
+
+  it('keeps the complete global style manifest in its approved order', () => {
+    expect(readFileSync('src/app/styles/manifest.css', 'utf8')
+      .match(/^@import [^;]+;$/gm)).toEqual([
+      '@import "../globals.css";',
+      '@import "./tokens.css";',
+      '@import "./base.css";',
+      '@import "./ui.css";',
+      '@import "./shell.css";',
+      '@import "./auth.css";',
+      '@import "./schedule-layout.css";',
+      '@import "./timetable.css";',
+      '@import "./agenda.css";',
+      '@import "./booking-surface.css";',
+      '@import "./notifications.css";',
+      '@import "./my-bookings.css";',
+    ]);
+  });
+
+  it('has no governed literals in manifest-owned or legacy styles', () => {
+    const styleFiles = readdirSync('src/app/styles')
+      .filter((file) => file.endsWith('.css') && file !== 'tokens.css')
+      .map((file) => resolve('src/app/styles', file))
+      .concat(resolve('src/app/globals.css'));
+
+    expect(styleFiles.flatMap((file) => findDesignTokenViolations({
+      css: readFileSync(file, 'utf8'),
+      file,
+    }))).toEqual([]);
+  });
+
+  it('limits raw focus geometry to the approved forced-color declarations', () => {
+    const styles = readdirSync('src/app/styles')
+      .filter((file) => file.endsWith('.css') && file !== 'tokens.css')
+      .map((file) => readFileSync(resolve('src/app/styles', file), 'utf8'))
+      .concat(readFileSync('src/app/globals.css', 'utf8'))
+      .join('\n');
+    const rawFocusGeometry = styles.match(
+      /outline-(?:width|offset)\s*:\s*2px\s*;/g,
+    ) ?? [];
+
+    expect(rawFocusGeometry).toEqual([
+      'outline-width: 2px;',
+      'outline-offset: 2px;',
+    ]);
   });
 });

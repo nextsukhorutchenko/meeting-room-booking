@@ -30,9 +30,16 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
   const title = `${TASK_12_BOOKING_PREFIX}mobile-flow`;
 
   await page.goto('/schedule');
-  await page.getByRole('combobox', {name: 'Room'})
-    .selectOption({label: 'Pine, 8 people'});
-  await page.getByLabel('Day', {exact: true})
+  await page.getByRole('button', {
+    name: 'Відкрити фільтри переговорних',
+  }).click();
+  const roomFilters = page.getByRole('dialog', {
+    name: 'Фільтри переговорних',
+  });
+  await roomFilters.getByRole('combobox', {name: 'Переговорна'})
+    .selectOption({label: 'Pine, 8 місць'});
+  await roomFilters.getByRole('button', {name: 'Закрити діалог'}).click();
+  await page.getByLabel('День', {exact: true})
     .selectOption(selectedDay.toISODate() ?? '');
   await expect(page).toHaveURL(new RegExp(
     `roomId=${room.id}.*weekStart=${weekStart}.*day=` +
@@ -42,18 +49,16 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
   await page.getByRole('button', {
     name: /Забронювати.*10:00/i,
   }).click();
-  const dialog = page.getByRole('dialog', {name: 'Book Pine'});
+  const dialog = page.getByRole('dialog', {name: 'Бронювання: Pine'});
   await expect(dialog.getByText('10:00-10:30', {exact: false})).toBeVisible();
-  await dialog.getByLabel('End time').selectOption({
-    label: '12:00 (2 hours)',
-  });
+  await dialog.getByLabel('Час завершення').selectOption({index: 3});
   await expect(dialog.getByText('10:00-12:00', {exact: false})).toBeVisible();
-  await dialog.getByLabel('Title').fill(title);
+  await dialog.getByLabel('Назва').fill(title);
   const createRequest = page.waitForRequest((request) =>
     request.url().endsWith('/api/bookings') &&
     request.method() === 'POST',
   );
-  await dialog.getByRole('button', {name: 'Create booking'}).click();
+  await dialog.getByRole('button', {name: 'Забронювати'}).click();
   const createPayload = (await createRequest).postDataJSON() as {
     endsAt: string;
     startsAt: string;
@@ -116,9 +121,9 @@ test('@mobile @critical creates and cancels a booking in the daily workflow', as
   const row = page.locator(`[data-booking-id="${booking.id}"]`);
   await row.getByRole('button', {name: 'Скасувати'}).click();
   const cancellationDialog =
-    page.getByRole('dialog', {name: 'Cancel booking'});
+    page.getByRole('dialog', {name: 'Скасувати бронювання'});
   await cancellationDialog
-    .getByRole('button', {name: 'Cancel booking'})
+    .getByRole('button', {name: 'Скасувати бронювання'})
     .click();
 
   await expect(page.locator(`[data-booking-id="${booking.id}"]`)).toHaveCount(0);
@@ -217,11 +222,18 @@ test('@mobile room week and day URL state restores through back navigation', asy
   );
   await expect(page.locator(`[data-booking-id="${highlightedId}"]`))
     .toHaveClass(/day-agenda-highlighted/);
-  await page.getByRole('combobox', {name: 'Room'})
-    .selectOption({label: 'Pine, 8 people'});
+  await page.getByRole('button', {
+    name: 'Відкрити фільтри переговорних',
+  }).click();
+  const roomFilters = page.getByRole('dialog', {
+    name: 'Фільтри переговорних',
+  });
+  await roomFilters.getByRole('combobox', {name: 'Переговорна'})
+    .selectOption({label: 'Pine, 8 місць'});
+  await roomFilters.getByRole('button', {name: 'Закрити діалог'}).click();
   await expect(page).toHaveURL(new RegExp(`roomId=${pine.id}`));
 
-  await page.getByLabel('Day', {exact: true}).selectOption(secondDay);
+  await page.getByLabel('День', {exact: true}).selectOption(secondDay);
   await expect(page).toHaveURL(new RegExp(`day=${secondDay}`));
 
   await page.getByRole('button', {name: 'Наступний тиждень'}).click();
@@ -230,38 +242,35 @@ test('@mobile room week and day URL state restores through back navigation', asy
   ));
 
   await page.goBack();
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(secondDay);
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(secondDay);
   await expect(page).toHaveURL(new RegExp(
     `roomId=${pine.id}.*weekStart=${firstWeek}.*day=${secondDay}`,
   ));
 
   await page.goBack();
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(firstDay);
-  await expect(page.getByRole('combobox', {name: 'Room'}))
-    .toHaveValue(pine.id);
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(firstDay);
+  await expect(page.locator('.room-meta strong')).toHaveText('Pine');
 
   await page.goBack();
-  await expect(page.getByRole('combobox', {name: 'Room'}))
-    .toHaveValue(oak.id);
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(firstDay);
+  await expect(page.locator('.room-meta strong')).toHaveText('Oak');
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(firstDay);
   await expect(page).toHaveURL(new RegExp(`bookingId=${highlightedId}`));
   await expect(page.locator(`[data-booking-id="${highlightedId}"]`))
     .toHaveClass(/day-agenda-highlighted/);
 
   await page.goForward();
-  await expect(page.getByRole('combobox', {name: 'Room'}))
-    .toHaveValue(pine.id);
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(firstDay);
+  await expect(page.locator('.room-meta strong')).toHaveText('Pine');
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(firstDay);
   await expect(page).not.toHaveURL(/bookingId=/);
 
   await page.goForward();
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(secondDay);
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(secondDay);
   await expect(page).toHaveURL(new RegExp(
     `roomId=${pine.id}.*weekStart=${firstWeek}.*day=${secondDay}`,
   ));
 
   await page.goForward();
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(secondWeek);
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(secondWeek);
   await expect(page).toHaveURL(new RegExp(
     `roomId=${pine.id}.*weekStart=${secondWeek}.*day=${secondWeek}`,
   ));
@@ -326,7 +335,7 @@ test('@mobile popstate rejects a delayed old room/week response', async ({
     `/schedule?roomId=${oak.id}&weekStart=${firstWeek}&day=${firstWeek}`,
   );
   await expect(page.getByRole('list', {name: /Розклад на/})).toHaveCount(1);
-  await page.getByLabel('Day', {exact: true}).selectOption(secondDay);
+  await page.getByLabel('День', {exact: true}).selectOption(secondDay);
   await expect(page).toHaveURL(new RegExp(
     `roomId=${oak.id}.*weekStart=${firstWeek}.*day=${secondDay}`,
   ));
@@ -340,7 +349,7 @@ test('@mobile popstate rejects a delayed old room/week response', async ({
   await expect(page).toHaveURL(new RegExp(
     `roomId=${oak.id}.*weekStart=${firstWeek}.*day=${secondDay}`,
   ));
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(secondDay);
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(secondDay);
 
   releaseStaleResponse?.();
   await staleRouteSettled;

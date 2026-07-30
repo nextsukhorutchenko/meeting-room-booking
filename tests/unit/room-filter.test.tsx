@@ -128,9 +128,9 @@ describe('RoomPicker', () => {
       name: 'Переговорна',
     });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(screen.getByRole('button', {name: 'Close dialog'})).toHaveFocus();
+    expect(screen.getByRole('button', {name: 'Закрити діалог'})).toHaveFocus();
 
-    screen.getByRole('button', {name: 'Close dialog'}).focus();
+    screen.getByRole('button', {name: 'Закрити діалог'}).focus();
     await user.tab();
     expect(roomSelector).toHaveFocus();
 

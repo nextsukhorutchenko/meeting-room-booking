@@ -1,6 +1,7 @@
 'use client';
 
 import type {ReactNode} from 'react';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 import type {ResponsiveMode, VisibleDayCount} from './schedule-types';
 
 export type ScheduleViewportProps = {
@@ -47,7 +48,7 @@ export function ScheduleViewport({
     return (
       <div
         aria-busy="true"
-        aria-label="Loading schedule view"
+        aria-label={uiCopy.loadingSchedule}
         className="schedule-viewport schedule-viewport-skeleton"
         role="status"
       />

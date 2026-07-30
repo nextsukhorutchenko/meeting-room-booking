@@ -17,8 +17,8 @@
 
 .notification-bell {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: var(--control-target-size);
+  height: var(--control-target-size);
   flex: none;
   padding: 0;
 }
@@ -43,14 +43,14 @@
 
 .notification-indicator {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: var(--notification-indicator-inset);
+  right: var(--notification-indicator-inset);
   display: grid;
   min-width: var(--space-2);
   height: var(--space-2);
   place-items: center;
   border: var(--border-emphasis) solid var(--color-surface);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-danger);
   color: var(--color-surface);
   font-size: var(--type-meta);
@@ -61,7 +61,10 @@
 .notification-popover,
 .notification-sheet {
   z-index: 40;
-  width: min(calc(100vw - var(--space-4)), 368px);
+  width: min(
+    calc(100vw - var(--space-4)),
+    var(--notification-max-inline-size)
+  );
   max-height: calc(100vh - var(--space-7));
   overflow-y: auto;
   border: var(--border-default) solid var(--color-border);
@@ -82,7 +85,7 @@
   bottom: var(--space-2);
   left: var(--space-2);
   width: auto;
-  max-height: min(70vh, 560px);
+  max-height: min(70vh, var(--notification-sheet-max-height));
   margin: 0 auto;
   box-shadow: var(--shadow-modal);
 }
@@ -137,9 +140,9 @@
 }
 
 .notification-dismiss {
-  width: var(--space-5);
-  min-width: var(--space-5);
-  height: var(--space-5);
+  width: var(--control-target-size);
+  min-width: var(--control-target-size);
+  height: var(--control-target-size);
   padding: 0;
 }
 
@@ -148,7 +151,10 @@
   z-index: 40;
   top: calc(var(--space-7) + var(--space-2));
   right: var(--space-2);
-  width: min(calc(100vw - var(--space-4)), 368px);
+  width: min(
+    calc(100vw - var(--space-4)),
+    var(--notification-max-inline-size)
+  );
 }
 
 .notification-toast {
@@ -169,5 +175,22 @@
 @media (max-width: 48rem) {
   .notification-toast-region {
     top: calc(var(--space-8) + var(--space-2));
+  }
+}
+
+@media (forced-colors: active) {
+  .notification-bell,
+  .notification-dismiss,
+  .notification-popover,
+  .notification-sheet,
+  .notification-toast {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+
+  .notification-sheet {
+    border-width: var(--border-emphasis);
   }
 }

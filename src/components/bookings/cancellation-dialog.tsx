@@ -3,6 +3,7 @@
 import {CalendarX2, LoaderCircle} from 'lucide-react';
 import {useRef, type FormEvent} from 'react';
 import {Dialog} from '../ui/dialog';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 
 export type CancellationDialogProps = {
   booking: {id: string; title: string};
@@ -34,15 +35,15 @@ export function CancellationDialog({
   return (
     <Dialog
       initialFocusRef={keepButtonRef}
-      label="Cancel booking"
+      label={uiCopy.cancelBooking}
       onClose={pending ? () => undefined : close}
       open
       owner="cancellation"
     >
       <form aria-busy={pending || undefined} className="booking-form" onSubmit={submit}>
         <p className="cancellation-dialog-copy">
-          Cancel <strong>{booking.title}</strong>? The time will become
-          available for someone else.
+          Скасувати <strong>{booking.title}</strong>? Цей час знову стане
+          доступним для інших.
         </p>
         {error ? <p className="dialog-alert" role="alert">{error}</p> : null}
         <div className="dialog-actions">
@@ -53,11 +54,11 @@ export function CancellationDialog({
             ref={keepButtonRef}
             type="button"
           >
-            Keep booking
+            {uiCopy.keepBooking}
           </button>
           <button className="destructive-button" disabled={pending} type="submit">
             {pending ? <LoaderCircle aria-hidden="true" className="cancellation-spinner" /> : <CalendarX2 aria-hidden="true" />}
-            Cancel booking
+            {uiCopy.cancelBooking}
           </button>
         </div>
       </form>

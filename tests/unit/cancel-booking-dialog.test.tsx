@@ -23,7 +23,7 @@ describe('CancellationDialog', () => {
     );
 
     await userEvent.setup().click(screen.getByRole('button', {
-      name: 'Cancel booking',
+      name: 'Скасувати бронювання',
     }));
 
     expect(onConfirm).toHaveBeenCalledOnce();
@@ -44,7 +44,7 @@ describe('CancellationDialog', () => {
     );
 
     await userEvent.setup().click(screen.getByRole('button', {
-      name: 'Close dialog',
+      name: 'Закрити діалог',
     }));
 
     expect(onCloseError).toHaveBeenCalledOnce();

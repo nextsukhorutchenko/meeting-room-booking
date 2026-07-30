@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {generate, parse, walk, type Rule} from 'css-tree';
 import {describe, expect, it, vi} from 'vitest';
 import {
   findForbiddenControls,
@@ -136,5 +137,61 @@ describe('tracked source inventory', () => {
       {path: 'src/utf16.ts', error: 'UNSUPPORTED_TEXT_ENCODING'},
       {path: 'src/malformed.ts', error: 'UNSUPPORTED_TEXT_ENCODING'},
     ]);
+  });
+});
+
+function selectorsIn(path: string): Set<string> {
+  const selectors = new Set<string>();
+  const ast = parse(readFileSync(path, 'utf8'), {
+    context: 'stylesheet',
+    positions: false,
+  });
+  walk(ast, {
+    visit: 'Rule',
+    enter(node: Rule) {
+      if (node.prelude.type === 'SelectorList') {
+        generate(node.prelude).split(',').forEach((selector) => {
+          selectors.add(selector.trim());
+        });
+      }
+    },
+  });
+  return selectors;
+}
+
+describe('global stylesheet ownership', () => {
+  it('keeps only proven Tailwind and toast legacy ownership in globals.css', () => {
+    const globals = readFileSync('src/app/globals.css', 'utf8');
+    const globalSelectors = selectorsIn('src/app/globals.css');
+    const ownerPaths = [
+      'src/app/styles/base.css',
+      'src/app/styles/ui.css',
+      'src/app/styles/shell.css',
+      'src/app/styles/auth.css',
+      'src/app/styles/schedule-layout.css',
+      'src/app/styles/timetable.css',
+      'src/app/styles/agenda.css',
+      'src/app/styles/booking-surface.css',
+      'src/app/styles/notifications.css',
+      'src/app/styles/my-bookings.css',
+    ];
+    const ownerSelectors = new Set(
+      ownerPaths.flatMap((path) => [...selectorsIn(path)]),
+    );
+
+    expect(globals).toMatch(/^@import "tailwindcss";/);
+    expect([...globalSelectors].sort()).toEqual(['.toast', '.toast svg']);
+    expect([...globalSelectors].filter((selector) =>
+      ownerSelectors.has(selector))).toEqual([]);
+
+    const utilitySources = [
+      'src/app/layout.tsx',
+      'src/components/ui/alert.tsx',
+      'src/components/ui/button.tsx',
+      'src/components/ui/field.tsx',
+    ].map((path) => readFileSync(path, 'utf8')).join('\n');
+    expect(utilitySources).toMatch(
+      /className="[^"]*(?:flex|grid|size-4|text-sm)[^"]*"/,
+    );
   });
 });

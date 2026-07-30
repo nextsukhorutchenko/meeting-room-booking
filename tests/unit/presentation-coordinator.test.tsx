@@ -48,7 +48,7 @@ function CoordinatorHarness(): ReactElement {
                 ref={bookingCancelRef}
                 type="button"
               >
-                Cancel booking
+                Скасувати бронювання
               </button>
             </div>
           </Dialog>
@@ -116,12 +116,16 @@ describe('PresentationCoordinator', () => {
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', {name: 'Open booking'}));
-    await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+    await user.click(screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    }));
 
     expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1);
     expect(screen.getByRole('dialog', {name: 'Скасувати бронювання'}))
       .toBeVisible();
-    expect(screen.getByRole('button', {name: 'Cancel booking'}).parentElement)
+    expect(screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    }).parentElement)
       .toHaveAttribute('data-suspended', 'true');
   });
 
@@ -130,7 +134,9 @@ describe('PresentationCoordinator', () => {
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', {name: 'Open booking'}));
-    const trigger = screen.getByRole('button', {name: 'Cancel booking'});
+    const trigger = screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    });
     await user.click(trigger);
     await user.click(screen.getByRole('button', {name: 'Залишити бронювання'}));
 

@@ -1,10 +1,12 @@
-import {describe, expect, it, vi} from 'vitest';
+import {describe, expect, it} from 'vitest';
+import {
+  createDeterministicPlaywrightConfig,
+  createExploratoryPlaywrightConfig,
+} from '../../test-config/playwright-configs';
 
 const databaseEnvironmentVariables = ['TEST_DATABASE_URL', 'DATABASE_URL'] as const;
 
-async function withoutDatabaseEnvironment(
-  callback: () => Promise<void>,
-): Promise<void> {
+function withoutDatabaseEnvironment(callback: () => void): void {
   const previousValues = new Map(
     databaseEnvironmentVariables.map((name) => [name, process.env[name]]),
   );
@@ -13,8 +15,7 @@ async function withoutDatabaseEnvironment(
     for (const name of databaseEnvironmentVariables) {
       delete process.env[name];
     }
-    vi.resetModules();
-    await callback();
+    callback();
   } finally {
     for (const [name, value] of previousValues) {
       if (value === undefined) {
@@ -23,17 +24,12 @@ async function withoutDatabaseEnvironment(
         process.env[name] = value;
       }
     }
-    vi.resetModules();
   }
 }
 
 describe('Playwright exploratory test boundary', () => {
-  it('constructs deterministic and exploratory configs without process env', async () => {
-    await withoutDatabaseEnvironment(async () => {
-      const {
-        createDeterministicPlaywrightConfig,
-        createExploratoryPlaywrightConfig,
-      } = await import('../../test-config/playwright-configs');
+  it('constructs deterministic and exploratory configs without process env', () => {
+    withoutDatabaseEnvironment(() => {
       const standardConfig = createDeterministicPlaywrightConfig();
       const exploratoryConfig = createExploratoryPlaywrightConfig({
         baseUrl: 'http://127.0.0.1:3106',
@@ -43,10 +39,10 @@ describe('Playwright exploratory test boundary', () => {
 
       expect(standardConfig.testMatch).toBe('**/*.spec.ts');
       expect(standardConfig.testIgnore).toContain('**/exploratory/**');
-      const desktopKyiv = standardConfig.projects?.find(
-        (project) => project.name === 'desktop-kyiv',
+      const expanded = standardConfig.projects?.find(
+        (project) => project.name === 'expanded',
       );
-      expect(desktopKyiv?.testIgnore).toContain('**/exploratory/**');
+      expect(expanded?.testMatch).toContain('**/schedule.spec.ts');
       expect(exploratoryConfig.testDir).toBe('./e2e/exploratory');
       expect(exploratoryConfig.timeout).toBe(90_000);
       expect(exploratoryConfig.retries).toBe(0);

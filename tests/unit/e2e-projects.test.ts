@@ -11,26 +11,35 @@ describe('deterministic Playwright responsive projects', () => {
     const expected = {
       expanded: {
         testMatch: [
+          '**/accessibility.spec.ts',
           '**/booking.spec.ts', '**/cancellation.spec.ts',
+          '**/geometry.spec.ts',
           '**/my-bookings.spec.ts', '**/notifications.spec.ts',
           '**/schedule.spec.ts', '**/transition.spec.ts',
         ],
         viewport: {width: 1440, height: 900},
       },
       medium: {
-        testMatch: ['**/booking.spec.ts', '**/schedule.spec.ts'],
+        testMatch: [
+          '**/accessibility.spec.ts', '**/booking.spec.ts',
+          '**/geometry.spec.ts', '**/schedule.spec.ts',
+        ],
         viewport: {width: 1024, height: 768},
       },
       tablet: {
         testMatch: [
+          '**/accessibility.spec.ts',
           '**/booking.spec.ts', '**/cancellation.spec.ts',
+          '**/geometry.spec.ts',
           '**/schedule.spec.ts', '**/transition.spec.ts',
         ],
         viewport: {width: 768, height: 1024},
       },
       'mobile-lg': {
         testMatch: [
+          '**/accessibility.spec.ts',
           '**/booking.spec.ts', '**/cancellation.spec.ts',
+          '**/geometry.spec.ts',
           '**/mobile.spec.ts', '**/my-bookings.spec.ts',
           '**/notifications.spec.ts', '**/transition.spec.ts',
         ],
@@ -38,13 +47,18 @@ describe('deterministic Playwright responsive projects', () => {
       },
       mobile: {
         testMatch: [
+          '**/accessibility.spec.ts',
           '**/booking.spec.ts', '**/cancellation.spec.ts',
+          '**/geometry.spec.ts',
           '**/mobile.spec.ts', '**/my-bookings.spec.ts',
         ],
         viewport: {width: 360, height: 800},
       },
       reflow: {
-        testMatch: ['**/booking.spec.ts', '**/mobile.spec.ts'],
+        testMatch: [
+          '**/accessibility.spec.ts', '**/booking.spec.ts',
+          '**/geometry.spec.ts', '**/mobile.spec.ts',
+        ],
         viewport: {width: 320, height: 800},
       },
     } as const;
@@ -59,7 +73,12 @@ describe('deterministic Playwright responsive projects', () => {
         viewport: expectedProject.viewport,
       });
     }
-    expect(projects.get('mobile-lg')?.use).toMatchObject({isMobile: true});
+    expect(projects.get('mobile-lg')?.use).toMatchObject({
+      hasTouch: true,
+      isMobile: true,
+    });
+    expect([...projects.keys()].filter((name) => expected[name as keyof typeof expected]))
+      .toEqual(Object.keys(expected));
     expect(projects.has('desktop-kyiv')).toBe(false);
     expect(projects.has('mobile-kyiv')).toBe(false);
   });

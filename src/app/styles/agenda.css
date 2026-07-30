@@ -164,11 +164,11 @@
   .schedule-jump-controls select {
     width: 100%;
     min-width: var(--space-0);
-    min-height: var(--space-5);
+    min-height: var(--control-target-size);
   }
 
   .schedule-jump-button {
-    min-height: var(--space-5);
+    min-height: var(--control-target-size);
     border: var(--border-default) solid var(--color-border-control);
     border-radius: var(--radius-control);
     background: var(--color-surface);
@@ -212,5 +212,13 @@
     border-color: CanvasText;
     background: Canvas;
     color: CanvasText;
+  }
+
+  .day-agenda-own {
+    border-left: var(--border-emphasis) double ButtonText;
+  }
+
+  .day-agenda-highlighted {
+    outline-color: Highlight;
   }
 }

@@ -236,6 +236,24 @@
   margin-top: var(--space-2);
 }
 
+.booking-section-retry {
+  margin-top: var(--space-1);
+}
+
+@media (forced-colors: active) {
+  .booking-list-row,
+  .booking-list-cancel-visual,
+  .booking-status {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .booking-status-upcoming {
+    border-width: var(--border-emphasis);
+  }
+}
+
 @media (max-width: 48rem) {
   .booking-history-page {
     padding: calc(var(--space-2) + var(--space-1) / 2) var(--space-2) var(--space-4);

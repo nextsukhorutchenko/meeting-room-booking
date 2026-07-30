@@ -15,7 +15,7 @@ test.beforeAll(async () => {
   await mkdir(artifactsDirectory, {recursive: true});
 });
 
-test('@timezone non-English browser locale hydrates stable English labels', async ({
+test('@timezone non-English browser locale hydrates stable Ukrainian labels', async ({
   database,
   page,
 }) => {
@@ -36,8 +36,8 @@ test('@timezone non-English browser locale hydrates stable English labels', asyn
     `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${weekStart}`,
   );
   expect(await page.evaluate(() => navigator.language)).toBe('fr-FR');
-  await expect(page.getByText('Mar 2 - Mar 8, 2026')).toBeVisible();
-  await expect(page.getByRole('columnheader', {name: /Mon, Mar 2/}))
+  await expect(page.getByText('бер. 2 - бер. 8, 2026')).toBeVisible();
+  await expect(page.getByRole('columnheader', {name: /понеділок.*2 березня/}))
     .toBeVisible();
   await expect(page).toHaveURL(new RegExp(
     `weekStart=${weekStart}.*day=${weekStart}`,
@@ -99,13 +99,12 @@ test('@timezone unsupported browser alias falls back during hydration', async ({
   await page.goto(
     `/schedule?roomId=${room.id}&weekStart=2026-03-02&day=2026-03-02`,
   );
-  await expect(page.getByRole('columnheader', {name: 'Mon, Mar 2'}))
+  await expect(page.getByRole('columnheader', {name: /понеділок.*2 березня/}))
     .toBeVisible();
   await expect(page.getByText(
-    'Office hours: 09:00–19:00 Europe/Kyiv',
+    'Години офісу: 09:00–19:00 Europe/Kyiv',
     {exact: true},
   )).toHaveCount(0);
-  await expect(page.getByTestId('day-row-clock-2026-03-02').first())
-    .toHaveText('09:00');
+  await expect(page.getByRole('rowheader').first()).toContainText('09:00');
   expect(hydrationErrors).toEqual([]);
 });

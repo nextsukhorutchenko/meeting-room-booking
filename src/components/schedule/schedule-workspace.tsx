@@ -169,6 +169,7 @@ export function ScheduleWorkspace({
   );
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomsError, setRoomsError] = useState('');
+  const [roomsRetryKey, setRoomsRetryKey] = useState(0);
   const [scheduleState, setScheduleState] =
     useState<ScheduleLoadState | null>(null);
   const [bookingState, dispatchBooking] = useReducer(bookingReducer, {
@@ -366,7 +367,7 @@ export function ScheduleWorkspace({
     }
     void loadRooms();
     return () => controller.abort();
-  }, [appliedMinCapacity, updateUrl]);
+  }, [appliedMinCapacity, roomsRetryKey, updateUrl]);
 
   const activeScheduleKey = selectedRoomId ?
     `${selectedRoomId}:${weekStart}:${refreshKey}` :
@@ -1016,6 +1017,12 @@ export function ScheduleWorkspace({
           </button>
         ) : null}
         <div className="schedule-workspace-main">
+          <a
+            className="skip-link schedule-jump-link"
+            href="#schedule-jump-day"
+          >
+            {uiCopy.skipToTimeSearch}
+          </a>
           <ScheduleNavigation
         onDayChange={changeDay}
         onJump={jumpTo}
@@ -1060,6 +1067,13 @@ export function ScheduleWorkspace({
         <div className="schedule-message" role="alert">
           <strong>{uiCopy.roomsUnavailable}</strong>
           <span>{roomsError}</span>
+          <button
+            className="secondary-button"
+            onClick={() => setRoomsRetryKey((key) => key + 1)}
+            type="button"
+          >
+            {uiCopy.retryRooms}
+          </button>
         </div>
       ) : null}
       {!roomsLoading && !roomsError && rooms.length === 0 ? (
@@ -1072,11 +1086,24 @@ export function ScheduleWorkspace({
         <div className="schedule-message" role="alert">
           <strong>{uiCopy.scheduleUnavailable}</strong>
           <span>{scheduleError}</span>
+          <button
+            className="secondary-button"
+            onClick={() => setRefreshKey((key) => key + 1)}
+            type="button"
+          >
+            {uiCopy.retrySchedule}
+          </button>
         </div>
       ) : null}
 
           {selectedRoom ? (
         <div className="schedule-grid-shell">
+          <a
+            className="skip-link schedule-after-link"
+            href="#schedule-after"
+          >
+            {uiCopy.skipSchedule}
+          </a>
           <p className="empty-schedule-note">
             {mode === 'expanded' || mode === 'medium' ?
               schedule?.bookings.length === 0 && !scheduleLoading ?
@@ -1154,6 +1181,13 @@ export function ScheduleWorkspace({
           onTitleChange={(value) => dispatchBooking({type: 'TITLE_CHANGED', value})}
           state={bookingState}
         />
+        <span
+          className="visually-hidden"
+          id="schedule-after"
+          tabIndex={-1}
+        >
+          {uiCopy.skipSchedule}
+        </span>
         {cancellation && modalOwner === 'cancellation' ? (
           <CancellationDialog
             booking={cancellation.booking}

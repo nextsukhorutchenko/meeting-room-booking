@@ -177,6 +177,7 @@ type BookingSectionProps = {
   officeTimeZone: string;
   onCancel?(booking: CancellationSelection, invoker: HTMLElement): void;
   onLoadMore(): void;
+  onRetry(): void;
   state: SectionState;
   userTimeZone: string;
 };
@@ -189,6 +190,7 @@ function BookingSection({
   officeTimeZone,
   onCancel,
   onLoadMore,
+  onRetry,
   state,
   userTimeZone,
 }: BookingSectionProps) {
@@ -205,6 +207,16 @@ function BookingSection({
       ) : null}
       {state.status === 'error' ? (
         <p className="booking-history-error" role="alert">{state.error}</p>
+      ) : null}
+      {state.status === 'error' && state.items.length === 0 ? (
+        <button
+          aria-label={`Повторити ${heading.toLowerCase()}`}
+          className="secondary-button booking-section-retry"
+          onClick={onRetry}
+          type="button"
+        >
+          Повторити
+        </button>
       ) : null}
       {state.status === 'success' && state.items.length === 0 ? (
         <p className="booking-history-state">{emptyText}</p>
@@ -426,6 +438,30 @@ export function BookingList({officeTimeZone}: BookingListProps) {
     }
   }
 
+  async function retryInitial(
+    scope: Scope,
+    update: React.Dispatch<React.SetStateAction<SectionState>>,
+  ) {
+    update({...initialState(), status: 'loading'});
+    const controller = new AbortController();
+    try {
+      const page = await fetchPage(scope, null, controller.signal);
+      if (mounted.current) {
+        update({...initialState(), ...page, status: 'success'});
+      }
+    } catch (error) {
+      if (mounted.current) {
+        update({
+          ...initialState(),
+          error: error instanceof Error ?
+            error.message :
+            'Не вдалося завантажити історію бронювань.',
+          status: 'error',
+        });
+      }
+    }
+  }
+
   function openCancellation(booking: CancellationSelection, invoker: HTMLElement) {
     if (request({
       origin: {invoker, kind: 'history'},
@@ -496,6 +532,7 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         officeTimeZone={officeTimeZone}
         onCancel={openCancellation}
         onLoadMore={() => void loadMore('future', future, setFuture)}
+        onRetry={() => void retryInitial('future', setFuture)}
         state={future}
         userTimeZone={userTimeZone}
       />
@@ -506,6 +543,7 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         loadingText="Завантажуємо минулі бронювання"
         officeTimeZone={officeTimeZone}
         onLoadMore={() => void loadMore('past', past, setPast)}
+        onRetry={() => void retryInitial('past', setPast)}
         state={past}
         userTimeZone={userTimeZone}
       />

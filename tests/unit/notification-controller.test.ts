@@ -226,6 +226,26 @@ describe('NotificationController effects', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it.each([
+    ['a malformed successful payload', response({unexpected: true})],
+    ['a non-OK payload', response([notification], 503)],
+  ])('ignores %s without acknowledgement or presentation', async (
+    _scenario,
+    pollResponse,
+  ) => {
+    fetchMock.mockResolvedValueOnce(pollResponse);
+
+    render(createElement(NotificationHarness));
+
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(postedAckIds(fetchMock)).toEqual([]);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Сповіщення, 0 нових',
+    })).toBeVisible();
+  });
+
   it('aborts an acknowledgement request when the controller unmounts', async () => {
     let acknowledgementSignal: AbortSignal | undefined;
     fetchMock.mockImplementation((

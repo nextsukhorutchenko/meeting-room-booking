@@ -116,6 +116,7 @@ describe('selectImpactedTests', () => {
     'prisma/schema.prisma',
     'prisma/migrations/migration_lock.toml',
     'e2e/fixtures.ts',
+    'src/app/styles/timetable.css',
     'tests/unit/impact-map.test.ts',
     'scripts/select-impacted-tests.ts',
   ])('falls back for cross-cutting path %s', (path) => {

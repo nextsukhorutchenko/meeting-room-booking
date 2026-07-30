@@ -69,6 +69,19 @@ describe('officeWeekBounds', () => {
 });
 
 describe('officeDaySlotStarts', () => {
+  it('covers the complete office day with exact first, last, and count', () => {
+    const slots = officeDaySlotStarts({
+      officeCloseHour: 19,
+      officeDay: '2026-07-29',
+      officeOpenHour: 9,
+      officeTimeZone: 'Europe/Kyiv',
+    }).map((slot) => slot.toUTC().toISO());
+
+    expect(slots).toHaveLength(20);
+    expect(slots[0]).toBe('2026-07-29T06:00:00.000Z');
+    expect(slots.at(-1)).toBe('2026-07-29T15:30:00.000Z');
+  });
+
   it('generates half-hour UTC instants from each Kyiv office day independently', () => {
     expect(officeDaySlotStarts({
       officeCloseHour: 10,

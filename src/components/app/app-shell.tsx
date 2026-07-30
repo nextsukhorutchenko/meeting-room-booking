@@ -47,6 +47,7 @@ function AppShellContent({children, user}: AppShellProps): ReactElement {
         aria-label="Основний вміст"
         className="app-shell-main"
         id="main-content"
+        tabIndex={-1}
       >
         {children}
       </main>

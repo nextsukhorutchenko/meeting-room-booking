@@ -461,7 +461,7 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     );
     expect(screen.getByRole('button', {name: /Чуже бронювання/}))
       .toHaveAttribute('data-highlighted', 'true');
-    expect(screen.queryByRole('dialog', {name: 'Cancel booking'}))
+    expect(screen.queryByRole('dialog', {name: 'Скасувати бронювання'}))
       .not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', {name: /Власне бронювання/}));
@@ -481,7 +481,7 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     );
     expect(screen.getByRole('button', {name: /Власне бронювання/}))
       .toHaveAttribute('data-highlighted', 'true');
-    expect(await screen.findByRole('dialog', {name: 'Cancel booking'}))
+    expect(await screen.findByRole('dialog', {name: 'Скасувати бронювання'}))
       .toBeVisible();
   });
 
@@ -686,14 +686,14 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     const user = userEvent.setup();
     await user.click(block);
     await user.click(
-      screen.getByRole('button', {name: 'Cancel booking'}),
+      screen.getByRole('button', {name: 'Скасувати бронювання'}),
     );
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(2);
     });
 
     expect(
-      screen.queryByRole('dialog', {name: 'Cancel booking'}),
+      screen.queryByRole('dialog', {name: 'Скасувати бронювання'}),
     ).not.toBeInTheDocument();
     expect(block).toBeVisible();
 
@@ -705,6 +705,37 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       expect(screen.queryByText('Cancellation timing'))
         .not.toBeInTheDocument();
     });
+  });
+
+  it('retries an independent schedule load error without reloading rooms', async () => {
+    let scheduleRequests = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/schedule?')) {
+        scheduleRequests += 1;
+        return Promise.resolve(
+          scheduleRequests === 1 ?
+            jsonResponse({error: {message: 'Schedule unavailable'}}, 503) :
+            scheduleResponse('2026-08-03', 'Recovered schedule'),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    expect(await screen.findByText('Schedule unavailable')).toBeVisible();
+
+    await userEvent.setup().click(screen.getByRole('button', {
+      name: 'Повторити завантаження розкладу',
+    }));
+
+    expect(await screen.findByText('Recovered schedule')).toBeVisible();
+    expect(scheduleRequests).toBe(2);
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      requestUrl(input) === '/api/rooms')).toHaveLength(1);
   });
 
   it.each(['success', 'error'] as const)(
@@ -735,7 +766,9 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
         name: /Stale cancellation/,
       });
       await user.click(block);
-      await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+      await user.click(screen.getByRole('button', {
+        name: 'Скасувати бронювання',
+      }));
       await waitFor(() => expect(deleteRequestCount).toBe(1));
 
       navigation.searchParams = new URLSearchParams(
@@ -751,12 +784,14 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
         </PresentationCoordinator>,
       );
       await waitFor(() => {
-        expect(screen.queryByRole('dialog', {name: 'Cancel booking'}))
+        expect(screen.queryByRole('dialog', {name: 'Скасувати бронювання'}))
           .not.toBeInTheDocument();
       });
 
       await user.click(screen.getByRole('button', {name: /Stale cancellation/}));
-      await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+      await user.click(screen.getByRole('button', {
+        name: 'Скасувати бронювання',
+      }));
       await waitFor(() => expect(deleteRequestCount).toBe(2));
 
       await act(async () => {
@@ -767,8 +802,12 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
         }
       });
 
-      expect(screen.getByRole('dialog', {name: 'Cancel booking'})).toBeVisible();
-      expect(screen.getByRole('button', {name: 'Cancel booking'})).toBeDisabled();
+      expect(screen.getByRole('dialog', {
+        name: 'Скасувати бронювання',
+      })).toBeVisible();
+      expect(screen.getByRole('button', {
+        name: 'Скасувати бронювання',
+      })).toBeDisabled();
       expect(screen.queryByText('Не вдалося скасувати бронювання.'))
         .not.toBeInTheDocument();
     },
@@ -839,7 +878,9 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
 
     await user.click(screen.getByRole('button', {name: 'Закрити'}));
     await user.click(block);
-    await user.click(screen.getByRole('button', {name: 'Cancel booking'}));
+    await user.click(screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    }));
     await waitFor(() => {
       expect(scheduleRequestCount).toBe(3);
     });

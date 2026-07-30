@@ -141,6 +141,7 @@ export function ScheduleNavigation({
         <label className="control-field">
           <span>{uiCopy.day}</span>
           <select
+            id="schedule-jump-day"
             onChange={(event) => {
               const nextDay = event.target.value;
               const nextStartsAt = officeDaySlotStarts({
@@ -163,6 +164,7 @@ export function ScheduleNavigation({
         <label className="control-field">
           <span>Час</span>
           <select
+            id="schedule-jump-time"
             onChange={(event) => setJumpStartsAt(event.target.value)}
             value={currentJumpStartsAt}
           >

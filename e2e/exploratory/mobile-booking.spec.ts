@@ -30,9 +30,9 @@ test('mobile booking controls and dialogs remain visually usable', async ({
   const selectedDay = exploratoryTuesday(weekStart);
   await loginAsDemoUser(page);
   await page.goto(exploratoryMobileSchedulePath(room.id, weekStart));
-  await expect(page.getByRole('grid', {name: 'Daily room schedule'}))
+  await expect(page.getByRole('list', {name: /Розклад на Oak/}))
     .toBeVisible();
-  await expect(page.getByLabel('Day', {exact: true})).toHaveValue(selectedDay);
+  await expect(page.getByLabel('День', {exact: true})).toHaveValue(selectedDay);
   const agent = await agentForPage(page);
 
   await agent.aiAssert(
@@ -40,8 +40,8 @@ test('mobile booking controls and dialogs remain visually usable', async ({
     'comfortably reachable, and do not overlap on this mobile screen.',
   );
 
-  await page.getByRole('button', {name: /Book Tuesday.*10:00/i}).click();
-  const bookingDialog = page.getByRole('dialog', {name: 'Book Oak'});
+  await page.getByRole('button', {name: /Забронювати.*10:00/i}).click();
+  const bookingDialog = page.getByRole('dialog', {name: 'Бронювання: Oak'});
   await expect(bookingDialog).toBeVisible();
   await agent.aiAssert(
     'The mobile booking dialog is fully readable within the viewport. Its ' +
@@ -49,33 +49,33 @@ test('mobile booking controls and dialogs remain visually usable', async ({
     'overlapping.',
   );
 
-  await bookingDialog.getByRole('button', {name: 'Create booking'}).click();
-  await expect(bookingDialog.getByText('Title is required')).toBeVisible();
-  await expect(bookingDialog.getByLabel('Title'))
+  await bookingDialog.getByRole('button', {name: 'Забронювати'}).click();
+  await expect(bookingDialog.getByText(/Назва/)).toBeVisible();
+  await expect(bookingDialog.getByLabel('Назва'))
     .toHaveAttribute('aria-invalid', 'true');
   await agent.aiAssert(
     'The required-title error is visually associated with the title field, ' +
     'easy to read, and does not crowd or obscure the dialog actions.',
   );
-  await bookingDialog.getByRole('button', {name: 'Cancel'}).click();
+  await bookingDialog.getByRole('button', {name: 'Закрити'}).click();
 
-  await page.getByRole('link', {name: 'My Bookings'}).click();
+  await page.getByRole('link', {name: 'Мої бронювання'}).click();
   const seededBooking = page.locator(
     '[data-booking-id="demo-future-planning"]',
   );
   await expect(seededBooking).toBeVisible();
   await seededBooking
-    .getByRole('button', {name: 'Cancel Demo planning'})
+    .getByRole('button', {name: 'Скасувати Demo planning'})
     .click();
   const cancellationDialog =
-    page.getByRole('dialog', {name: 'Cancel booking'});
+    page.getByRole('dialog', {name: 'Скасувати бронювання'});
   await expect(cancellationDialog).toBeVisible();
   await agent.aiAssert(
     'The cancellation confirmation is clear on mobile. The booking title, ' +
-    'consequence, Keep booking action, and destructive Cancel booking action ' +
+    'consequence and both cancellation actions ' +
     'are readable, distinct, and fully inside the viewport.',
   );
   await cancellationDialog
-    .getByRole('button', {name: 'Keep booking'})
+    .getByRole('button', {name: 'Залишити бронювання'})
     .click();
 });

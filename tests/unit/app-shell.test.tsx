@@ -56,9 +56,10 @@ describe('AppShell', () => {
     expect(screen.getAllByRole('link', {name: 'Розклад'})).toHaveLength(2);
     expect(screen.getAllByRole('link', {name: 'Мої бронювання'})).toHaveLength(2);
     expect(screen.getByText('Бронювання переговорних')).toBeVisible();
-    expect(screen.getByRole('main', {name: 'Основний вміст'})).toHaveTextContent(
-      'Вміст',
-    );
+    expect(screen.getByRole('main', {name: 'Основний вміст'}))
+      .toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('main', {name: 'Основний вміст'}))
+      .toHaveTextContent('Вміст');
   });
 
   it.each([

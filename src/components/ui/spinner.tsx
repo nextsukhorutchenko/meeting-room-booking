@@ -1,10 +1,11 @@
 import {LoaderCircle} from 'lucide-react';
+import {uiCopy} from '../../lib/i18n/ui-copy';
 
 type SpinnerProps = {
   label?: string;
 };
 
-export function Spinner({label = 'Loading schedule'}: SpinnerProps) {
+export function Spinner({label = uiCopy.loadingSchedule}: SpinnerProps) {
   return (
     <div className="spinner" role="status">
       <LoaderCircle aria-hidden="true" />

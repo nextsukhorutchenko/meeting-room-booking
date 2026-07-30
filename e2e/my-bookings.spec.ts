@@ -230,7 +230,7 @@ test('@booking a history row opens and highlights the correct schedule booking',
     `&day=${startsAt.toISODate()}&bookingId=${id}`;
 
   await expect(page).toHaveURL(expectedUrl);
-  await expect(page.getByRole('article', {name: new RegExp(title)}))
+  await expect(page.getByRole('button', {name: new RegExp(title)}))
     .toHaveAttribute('data-highlighted', 'true');
 
   await page.goBack();
@@ -268,7 +268,7 @@ test('@booking a future history row cancels through the shared dialog', async ({
 
   await page.goto('/my-bookings');
   await page.getByRole('button', {name: `Скасувати ${title}`}).click();
-  const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
+  const dialog = page.getByRole('dialog', {name: 'Скасувати бронювання'});
   await expect(page).toHaveURL('/my-bookings');
   await expect(dialog).toBeVisible();
 
@@ -277,7 +277,7 @@ test('@booking a future history row cancels through the shared dialog', async ({
     response.request().method() === 'DELETE' &&
     response.status() === 204,
   );
-  await dialog.getByRole('button', {name: 'Cancel booking'}).click();
+  await dialog.getByRole('button', {name: 'Скасувати бронювання'}).click();
   await cancellationResponse;
 
   await expect(page.getByText(title)).toHaveCount(0);

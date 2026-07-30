@@ -7,7 +7,7 @@ import {TimezoneLabel} from '../../src/components/schedule/timezone-label';
 describe('TimezoneLabel', () => {
   afterEach(cleanup);
 
-  it('exposes a long differing office zone through the mobile notice hook', () => {
+  it('exposes complete user and office IANA zones when they differ', () => {
     render(
       <TimezoneLabel
         officeCloseHour={19}
@@ -19,6 +19,12 @@ describe('TimezoneLabel', () => {
 
     expect(screen.getByTestId('timezone-notice')).toHaveTextContent(
       'America/Argentina/Buenos_Aires',
+    );
+    expect(screen.getByTestId('timezone-notice')).toHaveTextContent(
+      'Europe/Kyiv',
+    );
+    expect(screen.getByTestId('timezone-notice')).toHaveTextContent(
+      'Ваш час',
     );
 
     const css = readFileSync('src/app/styles/agenda.css', 'utf8');

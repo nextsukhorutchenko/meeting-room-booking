@@ -34,18 +34,30 @@ select:disabled {
   cursor: not-allowed;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: var(--visually-hidden-size);
+  height: var(--visually-hidden-size);
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: var(--motion-none);
-    scroll-behavior: auto;
-    transition-duration: var(--motion-none);
+    scroll-behavior: auto !important;
+    transition-duration: var(--motion-none) !important;
+    animation-duration: var(--motion-none) !important;
   }
 }
 
 @media (forced-colors: active) {
-  :focus-visible {
+  :where(button, input, select, a):focus-visible {
     outline-color: Highlight;
+    outline-style: solid;
+    outline-width: 2px;
+    outline-offset: 2px;
   }
 }

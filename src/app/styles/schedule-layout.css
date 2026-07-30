@@ -112,7 +112,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--space-4);
+  min-height: var(--control-target-size);
   gap: var(--space-1);
   border: var(--border-default) solid var(--color-border-control);
   border-radius: var(--radius-control);
@@ -147,6 +147,7 @@
 .schedule-date-button {
   display: grid;
   width: 100%;
+  min-height: var(--control-target-size);
   gap: var(--space-0);
   border: var(--border-default) solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -259,6 +260,39 @@
 
 .schedule-message strong {
   font-size: var(--type-label);
+}
+
+.schedule-message .secondary-button {
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+
+@media (min-width: 1360px) {
+  .schedule-viewport {
+    max-height: calc(
+      (var(--timetable-row-height) * 12) + var(--space-7)
+    );
+  }
+}
+
+@media (forced-colors: active) {
+  .schedule-date-button,
+  .schedule-message,
+  .schedule-room-rail,
+  .schedule-grid-shell,
+  .room-filter {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .schedule-date-button.current-day {
+    border: var(--border-emphasis) dotted ButtonText;
+  }
+
+  .schedule-date-button[aria-current="date"] {
+    border: var(--border-emphasis) solid Highlight;
+  }
 }
 
 @media (max-width: 899px) {

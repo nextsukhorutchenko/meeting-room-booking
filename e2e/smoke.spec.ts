@@ -107,10 +107,10 @@ test('@auth registers, persists the session, and logs out', async ({
   await page.goto(
     `/schedule?roomId=${room.id}&weekStart=${officeMonday(1)}`,
   );
-  await page.getByRole('button', {name: /^Book /}).first().click();
+  await page.getByRole('button', {name: /^Забронювати /}).first().click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Title').fill('Unverified booking attempt');
-  await dialog.getByRole('button', {name: 'Create booking'}).click();
+  await dialog.getByLabel('Назва').fill('Unverified booking attempt');
+  await dialog.getByRole('button', {name: 'Забронювати'}).click();
   await expect(dialog.getByRole('alert')).toHaveText(
     'Verify your email before booking a room.',
   );
@@ -121,7 +121,7 @@ test('@auth registers, persists the session, and logs out', async ({
     ),
   });
 
-  await dialog.getByRole('button', {name: 'Cancel'}).click();
+  await dialog.getByRole('button', {name: 'Закрити'}).click();
   await page.getByRole('button', {name: 'Вийти'}).click();
   await expect(page).toHaveURL(/\/login$/);
 });
