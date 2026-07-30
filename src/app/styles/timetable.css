@@ -57,7 +57,7 @@
 }
 
 .timetable-current-day-marker {
-  /* @contrast-current-color --color-text --color-surface */
+  /* @contrast-inherited-current-color --color-text --color-surface */
   display: inline-flex;
   align-items: center;
   gap: var(--timetable-status-gap);

@@ -89,11 +89,13 @@ function semanticAuditTokens(): Map<string, string> {
     ['--color-text', '#17202A'],
     ['--color-text-muted', '#475569'],
     ['--color-brand', '#0F766E'],
+    ['--color-danger', '#B42318'],
     ['--color-surface', '#FFFFFF'],
     ['--color-current-soft', '#FFF7ED'],
     ['--color-canvas', '#F7F8FA'],
     ['--color-backdrop-canvas', '#8B9096'],
     ['--color-fg-alias', 'var(--color-text)'],
+    ['--color-danger-alias', 'var(--color-danger)'],
     ['--color-bg-alias', 'var(--color-surface)'],
   ]);
 }
@@ -264,23 +266,242 @@ describe('Roomwork contrast manifest and command', () => {
     }], [pair], semanticAuditTokens())).toEqual([pair]);
   });
 
+  it('rejects a spoofed currentColor foreground claim', () => {
+    const pairs = [
+      {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'non-text',
+        minimum: 3,
+      },
+      {
+        background: '--color-surface',
+        foreground: '--color-danger',
+        kind: 'normal-text',
+        minimum: 4.5,
+      },
+    ] as const satisfies readonly ContrastPair[];
+
+    expect(() => auditStylesheetContrastUsage([{
+      content: `
+        /* @contrast-default --color-surface */
+        .marker {
+          /* @contrast-current-color --color-text --color-surface */
+          color: var(--color-danger);
+          border-color: currentColor;
+        }
+      `,
+      path: 'spoofed-current-color.css',
+    }], pairs, semanticAuditTokens())).toThrow(
+      '@contrast-current-color foreground --color-text does not match ' +
+      'direct color --color-danger',
+    );
+  });
+
+  it('validates currentColor against the effective important direct color',
+    () => {
+      const pairs = [
+        {
+          background: '--color-surface',
+          foreground: '--color-text',
+          kind: 'non-text',
+          minimum: 3,
+        },
+        {
+          background: '--color-surface',
+          foreground: '--color-danger',
+          kind: 'normal-text',
+          minimum: 4.5,
+        },
+        {
+          background: '--color-surface',
+          foreground: '--color-text',
+          kind: 'normal-text',
+          minimum: 4.5,
+        },
+      ] as const satisfies readonly ContrastPair[];
+
+      expect(() => auditStylesheetContrastUsage([{
+        content: `
+          /* @contrast-default --color-surface */
+          .marker {
+            /* @contrast-current-color --color-text --color-surface */
+            color: var(--color-danger) !important;
+            color: var(--color-text);
+            border-color: currentColor;
+          }
+        `,
+        path: 'important-current-color.css',
+      }], pairs, semanticAuditTokens())).toThrow(
+        '@contrast-current-color foreground --color-text does not match ' +
+        'direct color --color-danger',
+      );
+    });
+
+  it('canonicalizes direct and annotated currentColor aliases', () => {
+    const pairs = [
+      {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'non-text',
+        minimum: 3,
+      },
+      {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'normal-text',
+        minimum: 4.5,
+      },
+    ] as const satisfies readonly ContrastPair[];
+
+    expect(auditStylesheetContrastUsage([{
+      content: `
+        /* @contrast-default --color-bg-alias */
+        .marker {
+          /* @contrast-current-color --color-text --color-surface */
+          color: var(--color-fg-alias);
+          border-color: currentColor;
+        }
+      `,
+      path: 'aliased-current-color.css',
+    }], pairs, semanticAuditTokens())).toEqual(pairs);
+  });
+
+  it('rejects a currentColor mismatch hidden behind aliases', () => {
+    const pairs = [
+      {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'non-text',
+        minimum: 3,
+      },
+      {
+        background: '--color-surface',
+        foreground: '--color-danger',
+        kind: 'normal-text',
+        minimum: 4.5,
+      },
+    ] as const satisfies readonly ContrastPair[];
+
+    expect(() => auditStylesheetContrastUsage([{
+      content: `
+        /* @contrast-default --color-bg-alias */
+        .marker {
+          /* @contrast-current-color --color-fg-alias --color-surface */
+          color: var(--color-danger-alias);
+          border-color: currentColor;
+        }
+      `,
+      path: 'alias-mismatch-current-color.css',
+    }], pairs, semanticAuditTokens())).toThrow(
+      '@contrast-current-color foreground --color-text does not match ' +
+      'direct color --color-danger',
+    );
+  });
+
+  it('requires explicit inherited currentColor context without direct color',
+    () => {
+      const pair = {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'non-text',
+        minimum: 3,
+      } as const satisfies ContrastPair;
+
+      expect(() => auditStylesheetContrastUsage([{
+        content: `
+          /* @contrast-default --color-surface */
+          /* @contrast-default-foreground --color-text */
+          .marker {
+            /* @contrast-current-color --color-text --color-surface */
+            border-color: currentColor;
+          }
+        `,
+        path: 'missing-direct-current-color.css',
+      }], [pair], semanticAuditTokens())).toThrow(
+        'requires a direct semantic color; use ' +
+        '@contrast-inherited-current-color for inherited currentColor',
+      );
+    });
+
+  it('validates explicit inherited currentColor against inherited context',
+    () => {
+      const pair = {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'non-text',
+        minimum: 3,
+      } as const satisfies ContrastPair;
+
+      expect(auditStylesheetContrastUsage([{
+        content: `
+          /* @contrast-default --color-bg-alias */
+          /* @contrast-default-foreground --color-fg-alias */
+          .marker {
+            /* @contrast-inherited-current-color --color-text --color-surface */
+            border-color: currentColor;
+          }
+        `,
+        path: 'inherited-current-color.css',
+      }], [pair], semanticAuditTokens())).toEqual([pair]);
+    });
+
+  it('rejects a currentColor background disconnected from its context', () => {
+    const pairs = [
+      {
+        background: '--color-canvas',
+        foreground: '--color-text',
+        kind: 'non-text',
+        minimum: 3,
+      },
+      {
+        background: '--color-surface',
+        foreground: '--color-text',
+        kind: 'normal-text',
+        minimum: 4.5,
+      },
+    ] as const satisfies readonly ContrastPair[];
+
+    expect(() => auditStylesheetContrastUsage([{
+      content: `
+        /* @contrast-default --color-surface */
+        .marker {
+          /* @contrast-current-color --color-text --color-canvas */
+          color: var(--color-text);
+          border-color: currentColor;
+        }
+      `,
+      path: 'disconnected-current-color.css',
+    }], pairs, semanticAuditTokens())).toThrow(
+      '@contrast-current-color background --color-canvas is not an ' +
+      'auditable context for this rule',
+    );
+  });
+
   it('resolves currentColor as a semantic boundary', () => {
-    const pair = {
+    const pairs = [{
       background: '--color-surface',
       foreground: '--color-text',
       kind: 'non-text',
       minimum: 3,
-    } as const satisfies ContrastPair;
+    }, {
+      background: '--color-surface',
+      foreground: '--color-text',
+      kind: 'normal-text',
+      minimum: 4.5,
+    }] as const satisfies readonly ContrastPair[];
 
     expect(auditStylesheetContrastUsage([{
       content: `
+        /* @contrast-default --color-surface */
         .marker {
           /* @contrast-current-color --color-text --color-surface */
+          color: var(--color-text);
           border: 1px solid currentColor;
         }
       `,
       path: 'marker.css',
-    }], [pair], semanticAuditTokens())).toEqual([pair]);
+    }], pairs, semanticAuditTokens())).toEqual(pairs);
   });
 
   it('rejects missing inherited and stale composited context annotations', () => {
