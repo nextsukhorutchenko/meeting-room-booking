@@ -164,7 +164,8 @@
   }
 
   .booking-surface[data-open="true"] .booking-surface-panel {
-    min-height: min(calc(var(--space-8) * 8), 100dvh);
+    min-height: 100dvh;
+    max-height: 100dvh;
     border-width: var(--border-default) 0 0;
     border-radius: 0;
   }

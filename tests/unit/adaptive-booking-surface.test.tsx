@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import {cleanup, render, screen} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {BookingControllerState} from
   '../../src/components/schedule/booking-controller';
@@ -132,5 +133,34 @@ describe('AdaptiveBookingSurface', () => {
 
     expect(screen.getByLabelText('Назва').isSameNode(title)).toBe(true);
     expect(title).toHaveValue('Планування');
+  });
+
+  it('contains the complete compact dialog tab loop in both directions', async () => {
+    render(
+      <AdaptiveBookingSurface
+        mode="mobile"
+        onClose={vi.fn()}
+        onEndChange={vi.fn()}
+        onRetryRefresh={vi.fn()}
+        onSubmit={vi.fn()}
+        onTitleChange={vi.fn()}
+        state={state}
+      />,
+    );
+    const user = userEvent.setup();
+    const dialog = screen.getByRole('dialog', {name: 'Бронювання: Дуб'});
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+    ));
+
+    expect(focusable).toHaveLength(5);
+    for (const expected of focusable) {
+      await user.tab();
+      expect(expected).toHaveFocus();
+    }
+    await user.tab();
+    expect(focusable[0]).toHaveFocus();
+    await user.tab({shift: true});
+    expect(focusable.at(-1)).toHaveFocus();
   });
 });

@@ -20,6 +20,8 @@ export type ContrastResult = ContrastPair & {
 export const contrastPairs = [
   {foreground: '--color-text', background: '--color-surface',
     kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-text', background: '--color-surface-subtle',
+    kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-text', background: '--color-canvas',
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-text-muted', background: '--color-surface',
@@ -31,6 +33,8 @@ export const contrastPairs = [
   {foreground: '--color-text-subtle', background: '--color-canvas',
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-brand', background: '--color-surface',
+    kind: 'normal-text', minimum: 4.5},
+  {foreground: '--color-brand', background: '--color-canvas',
     kind: 'normal-text', minimum: 4.5},
   {foreground: '--color-surface', background: '--color-brand',
     kind: 'normal-text', minimum: 4.5},
@@ -157,9 +161,9 @@ function readTokens(path: string): ReadonlyMap<string, string> {
 function validatePairManifest(pairs: readonly ContrastPair[]): void {
   const keys = pairs.map((pair) =>
     `${pair.foreground}|${pair.background}|${pair.kind}|${pair.minimum}`);
-  if (keys.length !== 34) {
+  if (keys.length !== 36) {
     throw new Error(
-      `Missing contrast pair: expected 34 required pairs, received ${keys.length}`,
+      `Missing contrast pair: expected 36 required pairs, received ${keys.length}`,
     );
   }
   if (new Set(keys).size !== keys.length) {
@@ -179,8 +183,8 @@ function markdown(results: readonly ContrastResult[]): string {
       `${result.ratio.toFixed(2)}:1 | ${result.minimum}:1 | ` +
       `${result.pass ? 'PASS' : 'FAIL'} |`),
     '',
-    'decorative-only exclusions: `--color-surface-subtle` and ' +
-      '`--color-border-subtle` are not meaningful boundaries.',
+    'decorative-only exclusion: `--color-border-subtle` is not a meaningful ' +
+      'boundary.',
     'Disabled control boundaries are exempt from non-text contrast; the ' +
       '`--color-disabled-text` / `--color-disabled-bg` text pair is measured.',
     '',

@@ -113,11 +113,11 @@
 }
 
 .booking-history-group-nearest .booking-list-row-link {
-  background: var(--color-surface-subtle);
+  background: var(--color-canvas);
 }
 
 .booking-list-row-link:hover {
-  background: var(--color-surface-subtle);
+  background: var(--color-canvas);
 }
 
 .booking-list-row-link:hover .booking-list-title {
@@ -170,7 +170,7 @@
   flex: none;
   border: var(--border-default) solid var(--color-border-control);
   border-radius: var(--radius-control);
-  background: var(--color-surface-subtle);
+  background: var(--color-surface);
   padding: calc(var(--space-1) / 2) var(--space-1);
   color: var(--color-text-muted);
   font-size: var(--type-meta);

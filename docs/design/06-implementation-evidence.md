@@ -2,99 +2,122 @@
 
 Date: 2026-07-30
 
-Status: `DONE_WITH_CONCERNS`. The local non-database gates pass. Database-backed
-browser/integration execution, screenshots, actual Chrome 200% zoom, NVDA,
-Windows High Contrast, and physical keyboard walkthroughs were not performed
-because no isolated test database or required manual environment was available.
-Those gates are deferred, not passed.
+Status: `DONE_WITH_CONCERNS`. Non-database static, unit, Chromium-unit,
+configuration, token, contrast, type, lint, and build gates are automated.
+Database-backed Playwright/integration execution and the manual visual,
+assistive-technology, actual zoom, physical keyboard, and Windows High Contrast
+gates are unavailable and are not reported as passed.
 
 ## Automated Evidence
 
-| Gate | Result | Duration / details |
+| Gate | Status | Assertion source |
 | --- | --- | --- |
-| Required token/contrast RED | Expected failure | 15.69s; 34 tests: 32 passed, 2 failed, contrast suite missing. Missing contrast script, 22 governed CSS literal violations, and two missing forced-color focus declarations. |
-| Focused token/contrast GREEN | PASS | 2 files, 39 tests; 12.79s |
-| Final focused contract suite | PASS | 6 files, 105 tests; final rerun 18.85s |
-| `npm ci` | PASS with warnings | 117.278s; 860 packages installed, 861 audited; deprecated `whatwg-encoding`, one Windows cleanup `EPERM`, and npm audit reported 1 moderate and 15 high vulnerabilities. |
-| `npm run db:generate` | PASS after environment correction | Initial 37.745s attempt stopped before generation because `DATABASE_URL` was absent. Rerun with the `.env.example` URL passed in 6.764s; Prisma Client 7.9.1 generated in 485ms. No database connection was made. |
-| `npm run check:source` | PASS | 1.528s |
-| `npm run check:design-tokens -- --include-legacy` | PASS | 7.134s; zero governed literals |
-| `npm run check:contrast` | PASS | 1.646s; 34/34 pairs |
-| `npm run lint` | PASS | 83.093s |
-| `npm run typecheck` | PASS | 32.978s |
-| `npm test` | PASS | 51 files, 450 tests; Vitest 507.89s, command 513.162s |
-| `npm run test:coverage` | PASS | 51 files, 450 tests; Vitest 563.45s, command 570.897s; statements 78.94%, branches 75.88%, functions 74.33%, lines 79.73% |
-| `npm run build` | PASS after environment correction | Initial 38.667s attempt compiled and type-checked, then stopped because required runtime variables were absent. Rerun with exact `.env.example` runtime values passed in 24.401s. Warning: Next.js inferred the parent workspace root because two lockfiles are present. |
-| Docker Compose config | PASS | 0.427s |
-| Contrast Markdown generation | PASS | 1.560s; `test-results/token-contrast.md`, 34/34 pairs |
-| Playwright list/configuration | PASS, execution deferred | 3.749s; 131 tests in 14 files across the exact six responsive projects and auxiliary projects |
+| Focused fix suites | PASS | Vitest localization, focus containment, 96.85px Chromium geometry, contrast-manifest, source-ownership, and responsive-project tests |
+| Source hygiene | PASS | `npm run check:source`; invisible controls, stale source, and stylesheet ownership |
+| Design tokens | PASS | `npm run check:design-tokens -- --include-legacy`; governed CSS literals |
+| Contrast | PASS | `npm run check:contrast`; authoritative ordered 36-pair manifest |
+| Type and lint | PASS | `npm run typecheck`; `npm run lint` |
+| Unit suite | PASS | `npm test`; non-database unit and browser-backed Chromium-unit tests |
+| Configured build | PASS with warning | `npm run build` with `.env.example` runtime values; existing multiple-lockfile root warning |
+| Playwright discovery/config | PASS; execution Deferred | `npm run test:e2e:list` with a syntactically valid non-connected `_test` URL |
+| Integration/E2E execution | DEFERRED | Explicit isolated `TEST_DATABASE_URL` and mutation/reset permission were not available |
 
-The lowest measured normal-text ratio is 4.62:1 for
-`--color-text-subtle` on `--color-canvas`. The lowest measured meaningful
-non-text ratio is 4.75:1 for `--color-other-border` on `--color-info-soft`.
-`--color-surface-subtle` and `--color-border-subtle` are decorative-only
-exclusions. Disabled boundaries are exempt, while disabled text is measured at
-5.10:1.
+`--color-surface-subtle` is a meaningful text background. The manifest measures
+its actual `--color-text` pairing; mixed My Bookings row text uses the measured
+canvas pairings instead. Only `--color-border-subtle` is a decorative-only
+exclusion. Disabled boundaries remain exempt; disabled text on
+`--color-disabled-bg` is measured.
 
-## Acceptance Mapping
+## Acceptance Ledger
 
-| Acceptance criteria | Evidence |
-| --- | --- |
-| AC-001, AC-002, AC-003 | Ukrainian copy unit tests, root-layout tests, locale browser specification, and stale-copy scan |
-| AC-004, AC-035 | Existing service/controller/API suites in the 450-test unit run; no backend, Prisma, migration, route, or domain-service edits |
-| AC-005, AC-006, AC-007, AC-008 | Exact responsive project unit contract and `geometry.spec.ts` 7/3/2/1-day assertions |
-| AC-009, AC-010, AC-034, AC-047 | Geometry browser specification for six-hour visibility, internal scroll, overflow, safe-area clearance, 320px long room, full IANA labels, and `top <=296px` |
-| AC-011, AC-012, AC-013, AC-014, AC-037, AC-042, AC-045, AC-049 | Timetable, agenda, booking-block, projection, and native semantics unit suites; long-title browser-backed unit geometry |
-| AC-015, AC-016, AC-017, AC-018, AC-019, AC-020, AC-038, AC-039, AC-041 | Booking controller, end-time, adaptive surface, schedule request-state, and browser specifications |
-| AC-021, AC-046 | Cancellation dialog/coordinator unit suites and modal ownership/focus browser assertions |
-| AC-022, AC-023, AC-024 | Booking grouping/list pagination, independent state/retry, and deep-link unit suites |
-| AC-025, AC-026, AC-043 | Auth surface, verify page, and exhaustive UI-error unit suites |
-| AC-027, AC-028, AC-040, AC-048 | Notification service/controller/bell unit suites and notification browser suite allocation |
-| AC-029, AC-031 | Accessibility browser specification for 44px targets, keyboard order, visible focus, inertness, containment, and restoration |
-| AC-030 | Automated 320x800, reduced-motion, and Playwright forced-colors assertions exist. Actual Chrome 200%, NVDA, and Windows High Contrast remain manual and deferred. |
-| AC-032 | Calculated 34-pair contrast manifest and zero-literal token contract |
-| AC-033 | 100-character title unit/browser geometry and cancellation containment specifications |
-| AC-036 | Schedule jump controls and keyboard-order tests |
-| AC-044 | Timezone label, timetable, locale, and office-time unit/browser specifications |
+| AC | Status | Assertion / evidence source |
+| --- | --- | --- |
+| AC-001 | PASS (automated) | `ui-errors.test.ts`, visible-copy source scan, schedule/history rendered error tests |
+| AC-002 | PASS (automated) | root-layout, formatter, locale and office-time unit tests |
+| AC-003 | PASS (automated) | metadata, auth, verify and shell unit/source contracts |
+| AC-004 | PASS (static/unit) | No API route, payload, Prisma, migration, or domain-service change; existing API/service unit tests |
+| AC-005 | DEFERRED (browser) | Expanded 7-day/pane assertions exist in `geometry.spec.ts`; DB-backed execution and screenshot unavailable |
+| AC-006 | DEFERRED (browser) | Medium 3-day/non-modal allocation exists in `geometry.spec.ts`; execution unavailable |
+| AC-007 | DEFERRED (browser) | Tablet 2-day table assertion exists in `geometry.spec.ts`; execution unavailable |
+| AC-008 | DEFERRED (browser) | Compact agenda/filter project allocation exists; DB-backed viewport execution unavailable |
+| AC-009 | DEFERRED (browser) | Twelve actual half-hour row bounds are asserted in `geometry.spec.ts`; execution unavailable |
+| AC-010 | DEFERRED (browser) | Internal scroll and document-overflow assertions exist in `geometry.spec.ts`; execution unavailable |
+| AC-011 | PASS (automated) | timetable/day-agenda unit DOM and CSS contracts for visible free-slot actions |
+| AC-012 | PASS (automated) | timetable semantic tests and real Chromium 96.85px title/range/status bounds |
+| AC-013 | PARTIAL | text/icon/shape unit and forced-color emulation assertions exist; physical High Contrast inspection Deferred |
+| AC-014 | PASS (automated) | timetable/agenda/projection tests prove native table/list, rowSpan, full-week validation, and no grid role |
+| AC-015 | PASS (automated) | booking-controller, composer, selection and end-option unit tests |
+| AC-016 | PASS (automated) | end-time option boundary unit tests |
+| AC-017 | PASS (automated) | create/cancel pending and duplicate-request unit tests |
+| AC-018 | PASS (automated) | conflict refresh/retry/start-unavailable reducer and schedule-client tests |
+| AC-019 | PASS (automated) | preserved schedule/draft conflict-error unit tests; route-controlled browser case is listed but Deferred |
+| AC-020 | PARTIAL | success announcement/focus coordinator unit tests pass; browser focus observation Deferred |
+| AC-021 | PASS (automated) | cancellation ownership, confirmation, localization and focus-restoration unit tests |
+| AC-022 | PASS (automated) | booking grouping and nearest-row dedupe unit tests |
+| AC-023 | PASS (automated) | independent history loading/error/empty/pagination/retry unit tests |
+| AC-024 | PASS (automated) | booking deep-link construction and sibling Cancel tab-order unit tests |
+| AC-025 | PASS (automated) | auth validation, autocomplete and localized-error unit contracts |
+| AC-026 | PASS (automated) | verification pending/success/error state tests |
+| AC-027 | PASS (automated) | notification polling/dedupe/ack/visibility reducer and payload tests |
+| AC-028 | PARTIAL | notification focus/state unit tests and browser geometry spec exist; DB-backed overlap execution Deferred |
+| AC-029 | PARTIAL | 44px CSS/unit contracts and keyboard-only Playwright assertions exist; browser execution Deferred |
+| AC-030 | BLOCKED (manual) | 320px/reduced-motion/forced-color automation exists; actual Chrome 200% and Windows High Contrast unavailable |
+| AC-031 | PARTIAL | complete compact focus loop and coordinator restoration unit tests pass; browser walkthrough Deferred |
+| AC-032 | PASS (automated) | ordered 36-pair contrast manifest and zero governed-literal token gate |
+| AC-033 | PASS (automated) | 100-character title unit and real Chromium containment checks |
+| AC-034 | DEFERRED (browser) | all-project horizontal-overflow assertions exist; DB-backed execution unavailable |
+| AC-035 | PARTIAL | complete non-database unit suite passes; DB-backed integration/E2E suites Deferred |
+| AC-036 | PASS (automated contract) | jump-control option/label tests plus actual keyboard order in `accessibility.spec.ts`; browser execution Deferred |
+| AC-037 | PASS (automated) | whole-block trigger, no nested Cancel, details/agenda sibling tests |
+| AC-038 | PASS (automated) | default +30 minute and product-action controller tests |
+| AC-039 | PASS (automated) | typed reducer/request-generation and presentational-form source/unit contracts |
+| AC-040 | PASS (automated) | notification lifecycle and single modal-owner coordinator tests |
+| AC-041 | PASS (automated) | adaptive-surface DOM identity, controlled draft, resize and SSR-mode tests |
+| AC-042 | PASS (automated) | agenda exact 0..19 partition, atomic error and one-position-per-epoch tests |
+| AC-043 | PASS (automated) | exhaustive code/field localization, unknown fallback and safe-return tests |
+| AC-044 | PARTIAL | timezone/DST/date-crossing unit tests pass; DB-backed locale/timezone browser execution Deferred |
+| AC-045 | PASS (automated) | projection tests prove hidden-day filtering and atomic malformed/overlap failure; browser case listed |
+| AC-046 | PASS (automated) | coordinator tests prove one owner and deterministic modal-to-modal restoration |
+| AC-047 | DEFERRED (browser/manual) | 320x800 long-room/IANA/reachable-sheet assertions exist; execution and actual zoom unavailable |
+| AC-048 | PASS (automated) | notification-center-open duplicate/seen/queue/ack reducer tests |
+| AC-049 | PASS (automated) | real Chromium fixture measures 100-character title, status icon/text and range at 96.85px |
 
-## Style Ownership
+## Screenshot Inventory
 
-`src/app/styles/manifest.css` remains the sole application style entry and has
-exactly 12 imports in the approved order. `globals.css` retains Tailwind because
-shared layout, alert, button, field, and icon components still use utilities.
-Its only selectors are `.toast` and `.toast svg`; no selector is duplicated in
-an owner stylesheet. Manifest-owned and legacy styles contain zero governed
-literal violations.
+No file below exists. No placeholder image was created.
 
-## Browser And Database Limitations
+| Filename | Status | Viewport | Zoom | Timezone | Seed | State | Baseline | Assertion source |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `schedule-settled-expanded-1440x900.png` | Deferred | 1440x900 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | settled schedule | approved redesign spec | manual screenshot inspection unavailable |
+| `booking-open-expanded-1440x900.png` | Deferred | 1440x900 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | default booking open | approved redesign spec | manual screenshot inspection unavailable |
+| `schedule-settled-medium-1024x768.png` | Deferred | 1024x768 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | settled schedule | approved redesign spec | manual screenshot inspection unavailable |
+| `booking-open-medium-1024x768.png` | Deferred | 1024x768 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | default booking open | approved redesign spec | manual screenshot inspection unavailable |
+| `schedule-settled-tablet-768x1024.png` | Deferred | 768x1024 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | settled schedule | approved redesign spec | manual screenshot inspection unavailable |
+| `booking-open-tablet-768x1024.png` | Deferred | 768x1024 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | default booking open | approved redesign spec | manual screenshot inspection unavailable |
+| `schedule-settled-mobile-lg-390x844.png` | Deferred | 390x844 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | settled agenda | approved redesign spec | manual screenshot inspection unavailable |
+| `booking-open-mobile-lg-390x844.png` | Deferred | 390x844 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | booking sheet open | approved redesign spec | manual screenshot inspection unavailable |
+| `schedule-settled-mobile-360x800.png` | Deferred | 360x800 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | settled agenda | approved redesign spec | manual screenshot inspection unavailable |
+| `booking-open-mobile-360x800.png` | Deferred | 360x800 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | booking sheet open | approved redesign spec | manual screenshot inspection unavailable |
+| `schedule-settled-reflow-320x800.png` | Deferred | 320x800 | Chrome 100% | America/Argentina/Buenos_Aires | Long-room isolated seed unavailable | settled long-room agenda | approved redesign spec | manual screenshot inspection unavailable |
+| `booking-open-reflow-320x800.png` | Deferred | 320x800 | Chrome 100% | America/Argentina/Buenos_Aires | Long-room isolated seed unavailable | full-screen booking sheet | approved redesign spec | manual screenshot inspection unavailable |
+| `auth-login-expanded-1440x900.png` | Deferred | 1440x900 | Chrome 100% | Europe/Kyiv | N/A | login | approved redesign spec | manual screenshot inspection unavailable |
+| `my-bookings-mobile-lg-390x844.png` | Deferred | 390x844 | Chrome 100% | Europe/Kyiv | Isolated Task 11 seed unavailable | future/past history | approved redesign spec | manual screenshot inspection unavailable |
+| `state-conflict-expanded-1440x900.png` | Deferred | 1440x900 | Chrome 100% | Europe/Kyiv | Conflict seed unavailable | conflict/retry | approved redesign spec | manual screenshot inspection unavailable |
+| `state-notifications-mobile-lg-390x844.png` | Deferred | 390x844 | Chrome 100% | Europe/Kyiv | Notification seed unavailable | notification center | approved redesign spec | manual screenshot inspection unavailable |
 
-`npm run test:integration` and `npm run test:e2e` were not run. Both require an
-explicit isolated `TEST_DATABASE_URL` and can reset or mutate it; no permission
-or isolated database was provided. Playwright was run only in list mode with a
-syntactically valid non-connected test URL.
+## Manual Gate Inventory
 
-No responsive screenshot or state screenshot was captured, and no placeholder
-PNG was created. The following required evidence files remain unavailable:
+| Filename | Status | Viewport | Zoom | Timezone | Seed | State | Baseline | Assertion source |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| N/A - actual zoom record | Blocked | physical 1440x900 window | actual Chrome 200% | Europe/Kyiv | Isolated seed unavailable | auth/schedule/booking/cancel/history | spec section 27 | Chrome UI zoom indicator and observation unavailable |
+| N/A - NVDA record | Blocked | physical 1440x900 and compact | Chrome 100% | Europe/Kyiv | Isolated seed unavailable | table/agenda/slots/dialog/live regions | spec section 27 | NVDA + Chrome versions/spoken results unavailable |
+| N/A - Windows High Contrast record | Blocked | all six categories | Chrome 100% | Europe/Kyiv | Isolated seed unavailable | boundaries/focus/state/modal | token system and spec section 24 | physical Windows High Contrast inspection unavailable |
+| N/A - keyboard walkthrough | Deferred | expanded and compact | Chrome 100% | Europe/Kyiv | Isolated seed unavailable | auth/filter/jump/booking/cancel/notifications/history | spec section 27 | physical keyboard observation unavailable |
+| N/A - responsive visual review | Deferred | 1440x900, 1024x768, 768x1024, 390x844, 360x800, 320x800 | Chrome 100% | specified per screenshot | Isolated seed unavailable | settled and booking-open | approved concept/spec | screenshot set unavailable |
+| N/A - forced-color visual review | Deferred | all six categories | Chrome 100% | Europe/Kyiv | Isolated seed unavailable | own/other/current/selected/conflict/invalid | token system and spec section 24 | Playwright emulation is supplemental; physical review unavailable |
+| N/A - reduced-motion visual review | Deferred | expanded and compact | Chrome 100% | Europe/Kyiv | Isolated seed unavailable | navigation/loading/modal | spec section 24 | computed automation exists; manual observation unavailable |
+| N/A - VoiceOver spot check | Deferred (availability-dependent) | compact | Safari 100% | Europe/Kyiv | Isolated seed unavailable | agenda/dialog/live regions | spec section 27 | Apple environment unavailable |
 
-- `schedule-settled-expanded-1440x900.png`
-- `booking-open-expanded-1440x900.png`
-- `schedule-settled-medium-1024x768.png`
-- `booking-open-medium-1024x768.png`
-- `schedule-settled-tablet-768x1024.png`
-- `booking-open-tablet-768x1024.png`
-- `schedule-settled-mobile-lg-390x844.png`
-- `booking-open-mobile-lg-390x844.png`
-- `schedule-settled-mobile-360x800.png`
-- `booking-open-mobile-360x800.png`
-- `schedule-settled-reflow-320x800.png`
-- `booking-open-reflow-320x800.png`
-- `auth-login-expanded-1440x900.png`
-- `my-bookings-mobile-lg-390x844.png`
-- `state-conflict-expanded-1440x900.png`
-- `state-notifications-mobile-lg-390x844.png`
-
-Actual Chrome 200% from a physical 1440x900 window, NVDA with Chrome, Windows
-High Contrast, physical keyboard walkthroughs, and optional VoiceOver were not
-performed. Playwright's 320x800 normal-zoom project is reflow evidence only and
-is not presented as browser-zoom evidence. Playwright forced-colors emulation
-is supplemental and is not presented as Windows High Contrast evidence.
+The automated `320x800` project is Chrome 100% reflow only, never evidence of
+actual browser zoom. Playwright forced-colors emulation is supplemental and is
+not evidence of Windows High Contrast.

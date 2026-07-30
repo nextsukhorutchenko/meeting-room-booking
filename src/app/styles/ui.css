@@ -172,6 +172,29 @@
   outline-offset: var(--border-emphasis);
 }
 
+.app-toast {
+  position: fixed;
+  z-index: 60;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: var(--border-default) solid var(--color-own-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-success-soft);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-success);
+  font-size: var(--type-compact);
+  font-weight: 700;
+  box-shadow: var(--shadow-popover);
+}
+
+.app-toast svg {
+  width: var(--space-2);
+  height: var(--space-2);
+}
+
 @media (max-width: 48rem) {
   .control-field {
     flex: 1;

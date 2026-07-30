@@ -554,11 +554,14 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
 
     await act(async () => {
       failedSchedule.resolve(jsonResponse({
-        error: {message: 'Session expired'},
+        error: {code: 'AUTH_REQUIRED', message: 'Session expired'},
       }, 401));
     });
 
-    expect(await screen.findByText('Session expired')).toBeVisible();
+    expect(await screen.findByText(
+      'Сесію завершено. Увійдіть знову, щоб продовжити.',
+    )).toBeVisible();
+    expect(screen.queryByText('Session expired')).not.toBeInTheDocument();
     expect(screen.queryByText('Previously loaded')).not.toBeInTheDocument();
     expect(
       screen.queryAllByRole('button', {name: /^Забронювати /}),
@@ -718,7 +721,10 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
         scheduleRequests += 1;
         return Promise.resolve(
           scheduleRequests === 1 ?
-            jsonResponse({error: {message: 'Schedule unavailable'}}, 503) :
+            jsonResponse({error: {
+              code: 'SERVICE_UNAVAILABLE',
+              message: 'Schedule unavailable',
+            }}, 503) :
             scheduleResponse('2026-08-03', 'Recovered schedule'),
         );
       }
@@ -726,7 +732,10 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     });
 
     renderScheduleClient();
-    expect(await screen.findByText('Schedule unavailable')).toBeVisible();
+    expect(await screen.findByText(
+      'Сервіс тимчасово недоступний. Спробуйте ще раз.',
+    )).toBeVisible();
+    expect(screen.queryByText('Schedule unavailable')).not.toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole('button', {
       name: 'Повторити завантаження розкладу',
@@ -736,6 +745,28 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     expect(scheduleRequests).toBe(2);
     expect(fetchMock.mock.calls.filter(([input]) =>
       requestUrl(input) === '/api/rooms')).toHaveLength(1);
+  });
+
+  it('uses the Ukrainian schedule fallback for an unknown error payload', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/schedule?')) {
+        return Promise.resolve(jsonResponse({
+          error: {code: 'UNRECOGNIZED', message: 'Unknown schedule failure'},
+        }, 500));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+
+    expect(await screen.findByText(
+      'Не вдалося завантажити розклад. Спробуйте ще раз.',
+    )).toBeVisible();
+    expect(screen.queryByText('Unknown schedule failure')).not.toBeInTheDocument();
   });
 
   it.each(['success', 'error'] as const)(

@@ -43,6 +43,9 @@ describe('Ukrainian API error localization', () => {
     expect(localizeApiError({code: undefined, fallback: 'auth'})).toBe(
       "Не вдалося увійти. Перевірте з'єднання й повторіть.",
     );
+    expect(localizeApiError({code: 'UNKNOWN', fallback: 'history'})).toBe(
+      'Не вдалося завантажити історію бронювань. Спробуйте ще раз.',
+    );
   });
 
   it('preserves only allowlisted same-origin return URLs and query strings', () => {

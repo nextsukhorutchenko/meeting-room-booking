@@ -14,7 +14,7 @@ import {
 } from 'react';
 import {getBrowserTimeZone} from '../../lib/time/browser-zone';
 import {uiCopy} from '../../lib/i18n/ui-copy';
-import {uiFieldMessage} from '../../lib/i18n/ui-errors';
+import {localizeApiError, uiFieldMessage} from '../../lib/i18n/ui-errors';
 import {buildBookingEndTimeOptions} from '../../modules/bookings/end-time-options';
 import {
   CancellationDialog,
@@ -59,6 +59,8 @@ type ScheduleWorkspaceProps = {
   officeOpenHour: number;
   officeTimeZone: string;
 };
+
+class LocalizedRequestError extends Error {}
 
 type ConflictRefreshTarget = {
   conflictGeneration: number;
@@ -321,7 +323,10 @@ export function ScheduleWorkspace({
         });
         const body = await response.json() as ApiResponse<RoomSummary[]>;
         if (!response.ok || !body.data) {
-          throw new Error(body.error?.message ?? uiCopy.unableToLoadRooms);
+          throw new LocalizedRequestError(localizeApiError({
+            code: body.error?.code,
+            fallback: 'rooms',
+          }));
         }
         if (
           controller.signal.aborted ||
@@ -357,7 +362,9 @@ export function ScheduleWorkspace({
         }
         setRooms([]);
         setRoomsError(
-          error instanceof Error ? error.message : uiCopy.unableToLoadRooms,
+          error instanceof LocalizedRequestError ?
+            error.message :
+            localizeApiError({code: 'UNKNOWN_TRANSPORT', fallback: 'rooms'}),
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -419,9 +426,10 @@ export function ScheduleWorkspace({
           return;
         }
         if (!response.ok || !body.data) {
-          throw new Error(
-              body.error?.message ?? uiCopy.unableToLoadSchedule,
-          );
+          throw new LocalizedRequestError(localizeApiError({
+            code: body.error?.code,
+            fallback: 'schedule',
+          }));
         }
         if (isActiveConflictRefreshRequest()) {
           conflictRefreshRequestRef.current = false;
@@ -470,9 +478,12 @@ export function ScheduleWorkspace({
         }
         setPreservedScheduleKey(null);
         setScheduleState({
-          error: error instanceof Error ?
+          error: error instanceof LocalizedRequestError ?
             error.message :
-            uiCopy.unableToLoadSchedule,
+            localizeApiError({
+              code: 'UNKNOWN_TRANSPORT',
+              fallback: 'schedule',
+            }),
           key: requestKey,
           status: 'error',
         });
@@ -688,16 +699,16 @@ export function ScheduleWorkspace({
         });
         if (activeCancellationRequestIdRef.current !== requestId) return;
         if (!response.ok) {
-          let message = 'Не вдалося скасувати бронювання.';
+          let code: string | undefined;
           try {
             const body = await response.json() as ApiResponse<unknown>;
-            message = body.error?.message ?? message;
+            code = body.error?.code;
           } catch {
             // The localized fallback covers malformed error responses.
           }
           setCancellation((current) => current?.booking.id === bookingId ? {
             ...current,
-            error: message,
+            error: localizeApiError({code, fallback: 'cancellation'}),
             pending: false,
           } : current);
           return;
@@ -709,7 +720,10 @@ export function ScheduleWorkspace({
         if (activeCancellationRequestIdRef.current !== requestId) return;
         setCancellation((current) => current?.booking.id === bookingId ? {
           ...current,
-          error: 'Не вдалося скасувати бронювання.',
+          error: localizeApiError({
+            code: 'UNKNOWN_TRANSPORT',
+            fallback: 'cancellation',
+          }),
           pending: false,
         } : current);
       } finally {
@@ -1083,7 +1097,7 @@ export function ScheduleWorkspace({
         </div>
       ) : null}
       {scheduleError ? (
-        <div className="schedule-message" role="alert">
+        <div aria-live="assertive" className="schedule-message" role="alert">
           <strong>{uiCopy.scheduleUnavailable}</strong>
           <span>{scheduleError}</span>
           <button
@@ -1104,7 +1118,11 @@ export function ScheduleWorkspace({
           >
             {uiCopy.skipSchedule}
           </a>
-          <p className="empty-schedule-note">
+          <p
+            aria-live="polite"
+            className="empty-schedule-note"
+            role="status"
+          >
             {mode === 'expanded' || mode === 'medium' ?
               schedule?.bookings.length === 0 && !scheduleLoading ?
                 uiCopy.noBookingsThisWeek :
@@ -1163,7 +1181,12 @@ export function ScheduleWorkspace({
             visibleTimeAnchor={visibleTimeAnchor}
           />
           {scheduleLoading || roomsLoading ? (
-            <div className="schedule-loading-overlay">
+            <div
+              aria-label={uiCopy.loadingSchedule}
+              aria-live="polite"
+              className="schedule-loading-overlay"
+              role="status"
+            >
               <Spinner />
             </div>
           ) : null}

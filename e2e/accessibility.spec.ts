@@ -4,6 +4,17 @@ import {
   roomByName,
   test,
 } from './fixtures';
+import type {Locator, Page} from '@playwright/test';
+
+async function tabTo(page: Page, target: Locator, limit = 80): Promise<number> {
+  for (let index = 1; index <= limit; index += 1) {
+    await page.keyboard.press('Tab');
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      return index;
+    }
+  }
+  throw new Error(`Keyboard traversal did not reach ${await target.toString()}`);
+}
 
 test('@schedule keyboard entry and schedule semantics remain deterministic', async ({
   database,
@@ -24,8 +35,9 @@ test('@schedule keyboard entry and schedule semantics remain deterministic', asy
   await expect(page.getByRole('main')).toBeFocused();
 
   const scheduleSkip = page.getByRole('link', {name: 'До пошуку часу'});
-  await scheduleSkip.focus();
-  await scheduleSkip.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(scheduleSkip).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(page.getByLabel('День', {exact: true})).toBeFocused();
 
   await page.keyboard.press('Tab');
@@ -72,20 +84,36 @@ test('@booking visible targets, modal containment and restoration are stable', a
     expect(size.width).toBeGreaterThanOrEqual(44);
   }
 
-  await slot.focus();
-  await slot.press('Enter');
+  const traversalCount = await tabTo(page, slot);
+  expect(traversalCount).toBeGreaterThan(3);
+  await page.keyboard.press('Enter');
   if (compact) {
     const dialog = page.getByRole('dialog', {name: /Бронювання:/});
     await expect(dialog).toBeVisible();
     await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
     await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
+    const focusable = dialog.locator(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+    );
+    await expect(focusable).toHaveCount(4);
+    await expect(focusable.nth(0)).toBeFocused();
+    for (let index = 1; index < 4; index += 1) {
+      await page.keyboard.press('Tab');
+      await expect(focusable.nth(index)).toBeFocused();
+    }
+    await page.keyboard.press('Tab');
+    await expect(focusable.nth(0)).toBeFocused();
     await page.keyboard.press('Shift+Tab');
-    await expect(dialog.locator(':focus')).toHaveCount(1);
+    await expect(focusable.nth(3)).toBeFocused();
+    await page.keyboard.press('Escape');
   } else {
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    const close = page.getByRole('button', {
+      name: 'Закрити панель бронювання',
+    });
+    await expect(close).toBeFocused();
+    await close.press('Enter');
   }
-
-  await page.getByRole('button', {name: 'Закрити панель бронювання'}).click();
   await expect(slot).toBeFocused();
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
 });
@@ -97,12 +125,22 @@ test('@schedule independent error retry preserves focus and live-region priority
   const room = await roomByName(database, 'Oak');
   const weekStart = officeMonday(1);
   let scheduleRequests = 0;
+  let releaseError: (() => void) | undefined;
+  const errorGate = new Promise<void>((resolve) => {
+    releaseError = resolve;
+  });
   await page.route(`**/api/rooms/${room.id}/schedule?*`, async (route) => {
     scheduleRequests += 1;
     if (scheduleRequests === 1) {
+      await errorGate;
       await route.fulfill({
         contentType: 'application/json',
-        json: {error: {message: 'Тимчасова помилка розкладу'}},
+        json: {
+          error: {
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'Schedule unavailable',
+          },
+        },
         status: 503,
       });
       return;
@@ -113,13 +151,23 @@ test('@schedule independent error retry preserves focus and live-region priority
   await page.goto(
     `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${weekStart}`,
   );
+  const today = page.getByRole('button', {name: 'Сьогодні'});
+  await tabTo(page, today);
+  await expect(today).toBeFocused();
+  releaseError?.();
   const alert = page.getByRole('alert');
-  await expect(alert).toContainText('Тимчасова помилка розкладу');
+  await expect(alert).toContainText(
+    'Сервіс тимчасово недоступний. Спробуйте ще раз.',
+  );
+  await expect(alert).toHaveAttribute('aria-live', 'assertive');
+  await expect(today).toBeFocused();
+  await expect(page.getByText('Schedule unavailable')).toHaveCount(0);
   const retry = page.getByRole('button', {
     name: 'Повторити завантаження розкладу',
   });
-  await retry.focus();
-  await retry.click();
+  await tabTo(page, retry);
+  await expect(retry).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(page.locator('.schedule-viewport')).not.toHaveAttribute(
     'aria-busy',
     'true',

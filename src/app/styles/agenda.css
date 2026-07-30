@@ -71,7 +71,7 @@
 }
 
 .day-agenda-past {
-  background: var(--color-surface-subtle);
+  background: var(--color-disabled-bg);
 }
 
 .day-agenda-past .day-agenda-slot-button {

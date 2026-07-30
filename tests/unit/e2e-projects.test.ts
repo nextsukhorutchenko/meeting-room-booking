@@ -42,6 +42,7 @@ describe('deterministic Playwright responsive projects', () => {
           '**/geometry.spec.ts',
           '**/mobile.spec.ts', '**/my-bookings.spec.ts',
           '**/notifications.spec.ts', '**/transition.spec.ts',
+          '**/state-matrix.spec.ts',
         ],
         viewport: {width: 390, height: 844},
       },

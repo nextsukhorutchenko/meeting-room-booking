@@ -20,6 +20,7 @@ import {
   formatDateShort,
   formatTimeRange,
 } from '../../lib/i18n/formatters';
+import {localizeApiError} from '../../lib/i18n/ui-errors';
 import type {
   BookingListItem,
   BookingPage,
@@ -47,8 +48,10 @@ type SectionState = {
 
 type ApiResponse = {
   data?: unknown;
-  error?: {message?: unknown};
+  error?: {code?: unknown; message?: unknown};
 };
+
+class LocalizedRequestError extends Error {}
 
 const pageSize = 20;
 
@@ -99,10 +102,8 @@ function isBookingPage(value: unknown): value is BookingPage {
   );
 }
 
-function errorMessage(body: ApiResponse, fallback: string): string {
-  return typeof body.error?.message === 'string' ?
-    body.error.message :
-    fallback;
+function errorCode(body: ApiResponse): string | undefined {
+  return typeof body.error?.code === 'string' ? body.error.code : undefined;
 }
 
 function bookingUrl(
@@ -162,9 +163,20 @@ async function fetchPage(
   const response = await fetch(`/api/me/bookings?${parameters.toString()}`, {
     signal,
   });
-  const body = await response.json() as ApiResponse;
+  let body: ApiResponse;
+  try {
+    body = await response.json() as ApiResponse;
+  } catch {
+    throw new LocalizedRequestError(localizeApiError({
+      code: undefined,
+      fallback: 'history',
+    }));
+  }
   if (!response.ok || !isBookingPage(body.data)) {
-    throw new Error(errorMessage(body, 'Unable to load booking history.'));
+    throw new LocalizedRequestError(localizeApiError({
+      code: errorCode(body),
+      fallback: 'history',
+    }));
   }
   return body.data;
 }
@@ -200,7 +212,11 @@ function BookingSection({
         <h2>{heading}</h2>
       </div>
       {state.status === 'loading' ? (
-        <p className="booking-history-state">
+        <p
+          aria-live="polite"
+          className="booking-history-state"
+          role="status"
+        >
           <LoaderCircle aria-hidden="true" />
           {loadingText}
         </p>
@@ -219,7 +235,13 @@ function BookingSection({
         </button>
       ) : null}
       {state.status === 'success' && state.items.length === 0 ? (
-        <p className="booking-history-state">{emptyText}</p>
+        <p
+          aria-live="polite"
+          className="booking-history-state"
+          role="status"
+        >
+          {emptyText}
+        </p>
       ) : null}
       {state.items.length > 0 ? (
         groups.map((group) => (
@@ -367,9 +389,12 @@ export function BookingList({officeTimeZone}: BookingListProps) {
           update({
             ...initialState(),
             status: 'error',
-            error: error instanceof Error ?
+            error: error instanceof LocalizedRequestError ?
               error.message :
-              'Unable to load booking history.',
+              localizeApiError({
+                code: 'UNKNOWN_TRANSPORT',
+                fallback: 'history',
+              }),
           });
         }
       }
@@ -426,9 +451,12 @@ export function BookingList({officeTimeZone}: BookingListProps) {
       if (mounted.current) {
         update((current) => ({
           ...current,
-          error: error instanceof Error ?
+          error: error instanceof LocalizedRequestError ?
             error.message :
-            'Unable to load booking history.',
+            localizeApiError({
+              code: 'UNKNOWN_TRANSPORT',
+              fallback: 'history',
+            }),
           loadingMore: false,
           status: 'error',
         }));
@@ -453,9 +481,12 @@ export function BookingList({officeTimeZone}: BookingListProps) {
       if (mounted.current) {
         update({
           ...initialState(),
-          error: error instanceof Error ?
+          error: error instanceof LocalizedRequestError ?
             error.message :
-            'Не вдалося завантажити історію бронювань.',
+            localizeApiError({
+              code: 'UNKNOWN_TRANSPORT',
+              fallback: 'history',
+            }),
           status: 'error',
         });
       }
@@ -492,9 +523,15 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         });
         if (activeCancellationRequestIdRef.current !== requestId) return;
         if (!response.ok) {
+          let code: string | undefined;
+          try {
+            code = errorCode(await response.json() as ApiResponse);
+          } catch {
+            // The localized fallback covers malformed error responses.
+          }
           setCancellation((current) => current?.booking.id === bookingId ? {
             ...current,
-            error: 'Не вдалося скасувати бронювання.',
+            error: localizeApiError({code, fallback: 'cancellation'}),
             pending: false,
           } : current);
           return;
@@ -511,7 +548,10 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         if (activeCancellationRequestIdRef.current !== requestId) return;
         setCancellation((current) => current?.booking.id === bookingId ? {
           ...current,
-          error: 'Не вдалося скасувати бронювання.',
+          error: localizeApiError({
+            code: 'UNKNOWN_TRANSPORT',
+            fallback: 'cancellation',
+          }),
           pending: false,
         } : current);
       } finally {

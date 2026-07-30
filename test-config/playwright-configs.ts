@@ -41,6 +41,7 @@ const responsiveProjectMatches = {
     '**/my-bookings.spec.ts',
     '**/notifications.spec.ts',
     '**/transition.spec.ts',
+    '**/state-matrix.spec.ts',
   ],
   mobile: [
     '**/accessibility.spec.ts',

@@ -42,10 +42,11 @@ function deferred<T>(): Deferred<T> {
 function response(
   data: {items: BookingItem[]; nextCursor: string | null} | undefined,
   status = 200,
+  error = {code: 'SERVICE_UNAVAILABLE', message: 'History unavailable'},
 ): Response {
   return {
     json: vi.fn().mockResolvedValue(
-      data ? {data} : {error: {message: 'History unavailable'}},
+      data ? {data} : {error},
     ),
     ok: status >= 200 && status < 300,
     status,
@@ -104,12 +105,16 @@ describe('BookingList', () => {
     renderBookingList();
     expect(
       within(screen.getByRole('region', {name: 'Майбутні'}))
-        .getByText('Завантажуємо майбутні бронювання'),
-    ).toBeVisible();
+        .getByRole('status'),
+    ).toHaveTextContent('Завантажуємо майбутні бронювання');
+    expect(
+      within(screen.getByRole('region', {name: 'Майбутні'}))
+        .getByRole('status'),
+    ).toHaveAttribute('aria-live', 'polite');
     expect(
       within(screen.getByRole('region', {name: 'Минулі'}))
-        .getByText('Завантажуємо минулі бронювання'),
-    ).toBeVisible();
+        .getByRole('status'),
+    ).toHaveTextContent('Завантажуємо минулі бронювання');
 
     await act(async () => {
       future.resolve(response({items: [], nextCursor: null}));
@@ -133,9 +138,31 @@ describe('BookingList', () => {
     renderBookingList();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'History unavailable',
+      'Сервіс тимчасово недоступний. Спробуйте ще раз.',
     );
+    expect(screen.queryByText('History unavailable')).not.toBeInTheDocument();
     expect(screen.getByText('Історія бронювань порожня')).toBeVisible();
+  });
+
+  it('uses the Ukrainian history fallback for an unknown error payload', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const scope = requestUrl(input).searchParams.get('scope');
+      return Promise.resolve(
+        scope === 'future' ?
+          response(undefined, 500, {
+            code: 'UNRECOGNIZED',
+            message: 'Unknown history failure',
+          }) :
+          response({items: [], nextCursor: null}),
+      );
+    });
+
+    renderBookingList();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не вдалося завантажити історію бронювань. Спробуйте ще раз.',
+    );
+    expect(screen.queryByText('Unknown history failure')).not.toBeInTheDocument();
   });
 
   it('retries only the failed initial history section', async () => {
@@ -241,7 +268,7 @@ describe('BookingList', () => {
     });
     await userEvent.setup().click(loadMore);
     expect(await within(past).findByRole('alert')).toHaveTextContent(
-      'History unavailable',
+      'Сервіс тимчасово недоступний. Спробуйте ще раз.',
     );
 
     await userEvent.setup().click(loadMore);
@@ -328,6 +355,46 @@ describe('BookingList', () => {
     await waitFor(() => {
       expect(screen.queryByText('Cancel me')).not.toBeInTheDocument();
     });
-    expect(screen.getByRole('status')).toHaveTextContent('Бронювання скасовано');
+    expect(screen.getByText('Бронювання скасовано').closest('[role="status"]'))
+      .toHaveTextContent('Бронювання скасовано');
+  });
+
+  it('localizes cancellation API codes without exposing server messages', async () => {
+    const cancellable = booking('cancel-error', {title: 'Помилка скасування'});
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url.pathname === '/api/bookings/cancel-error' &&
+          init?.method === 'DELETE') {
+        return Promise.resolve(response(
+          undefined,
+          503,
+          {code: 'SERVICE_UNAVAILABLE', message: 'Cancellation failed'},
+        ));
+      }
+      return Promise.resolve(response({
+        items: url.searchParams.get('scope') === 'future' ? [cancellable] : [],
+        nextCursor: null,
+      }));
+    });
+
+    renderBookingList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: 'Скасувати Помилка скасування',
+    }));
+    await user.click(screen.getByRole('button', {
+      name: 'Скасувати бронювання',
+    }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Сервіс тимчасово недоступний. Спробуйте ще раз.',
+    );
+    expect(screen.getByRole('button', {
+      name: 'Залишити бронювання',
+    })).toHaveFocus();
+    expect(screen.queryByText('Cancellation failed')).not.toBeInTheDocument();
   });
 });

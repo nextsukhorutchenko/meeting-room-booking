@@ -83,6 +83,7 @@ const fallbackByContext = {
   auth: "Не вдалося увійти. Перевірте з'єднання й повторіть.",
   booking: 'Не вдалося створити бронювання. Спробуйте ще раз.',
   cancellation: 'Не вдалося скасувати бронювання. Спробуйте ще раз.',
+  history: 'Не вдалося завантажити історію бронювань. Спробуйте ще раз.',
   rooms: 'Не вдалося завантажити переговорні. Спробуйте ще раз.',
   schedule: 'Не вдалося завантажити розклад. Спробуйте ще раз.',
 } as const;
@@ -93,7 +94,13 @@ function isUiErrorCode(code: string): code is UiErrorCode {
 
 export function localizeApiError(input: {
   code: string | undefined;
-  fallback: 'auth' | 'booking' | 'cancellation' | 'rooms' | 'schedule';
+  fallback:
+    | 'auth'
+    | 'booking'
+    | 'cancellation'
+    | 'history'
+    | 'rooms'
+    | 'schedule';
 }): string {
   if (input.code && isUiErrorCode(input.code)) {
     return uiErrorByCode[input.code];

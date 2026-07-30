@@ -99,54 +99,41 @@ describe('Timetable', () => {
     expect(trigger.querySelector('[aria-label^="Скасувати"]')).toBeNull();
   });
 
-  it('contains the compact title, status, icon and full range at the token-derived seven-day width', async () => {
+  it('contains a 100-character title, status, icon and range at 96.85px', async () => {
     const baseCss = readFileSync('src/app/styles/base.css', 'utf8');
     const timetableCss = readFileSync('src/app/styles/timetable.css', 'utf8');
     const tokensCss = readFileSync('src/app/styles/tokens.css', 'utf8');
-    const tokenValue = (name: string) => {
-      const match = tokensCss.match(new RegExp(`--${name}:\\s*([\\d.]+)px;`));
-      if (!match) throw new Error(`Missing pixel token: ${name}`);
-      return Number(match[1]);
-    };
-    const tableWidth = tokenValue('timetable-min-width');
+    const longTitle = 'П'.repeat(100);
     const browser = await chromium.launch();
 
     try {
       const page = await browser.newPage({
-        viewport: {height: 320, width: tableWidth},
+        viewport: {height: 320, width: 320},
       });
       await page.setContent(`
         <style>${tokensCss}\n${baseCss}\n${timetableCss}</style>
-        <table class="timetable">
-          <thead><tr><th>Час</th>${sevenDays.map((day) =>
-            `<th>${day}</th>`).join('')}</tr></thead>
-          <tbody><tr><th>09:00</th>
-            <td data-compact-day-cell>
-              <button class="booking-block" type="button">
-                <span class="booking-block-heading">
-                  <span data-booking-title>Плануваннябезперервногозаголовкадляперевіркикомпактногоосередку</span>
-                  <span class="booking-other-label"><svg></svg>Зайнято</span>
-                </span>
-                <span class="booking-block-meta">
-                  <span class="booking-time-label">09:00–09:30</span>
-                </span>
-              </button>
-            </td>
-            ${sevenDays.slice(1).map(() => '<td></td>').join('')}
-          </tr></tbody>
-        </table>
+        <div data-compact-day-cell style="width:96.85px">
+          <button class="booking-block" type="button">
+            <span class="booking-block-heading">
+              <span data-booking-title>${longTitle}</span>
+              <span class="booking-other-label"><svg></svg>Зайнято</span>
+            </span>
+            <span class="booking-block-meta">
+              <span class="booking-time-label">09:00–09:30</span>
+            </span>
+          </button>
+        </div>
       `);
 
       const geometry = await page.evaluate(() => {
         const trigger = document.querySelector<HTMLElement>('.booking-block');
         const cell = document.querySelector<HTMLElement>('[data-compact-day-cell]');
-        const table = document.querySelector<HTMLElement>('.timetable');
         const heading = document.querySelector<HTMLElement>('.booking-block-heading');
         const title = document.querySelector<HTMLElement>('[data-booking-title]');
         const status = document.querySelector<HTMLElement>('.booking-other-label');
         const icon = status?.querySelector<HTMLElement>('svg');
         const time = document.querySelector<HTMLElement>('.booking-time-label');
-        if (!trigger || !cell || !table || !heading || !title || !status || !icon || !time) {
+        if (!trigger || !cell || !heading || !title || !status || !icon || !time) {
           throw new Error('Compact booking fixture is incomplete.');
         }
         const triggerStyle = getComputedStyle(trigger);
@@ -169,7 +156,6 @@ describe('Timetable', () => {
           inner,
           status: {...rect(status).toJSON(), clientWidth: status.clientWidth, scrollWidth: status.scrollWidth},
           time: {...rect(time).toJSON(), clientWidth: time.clientWidth, scrollWidth: time.scrollWidth},
-          table: rect(table).toJSON(),
           title: rect(title).toJSON(),
           trigger: {
             ...triggerRect.toJSON(),
@@ -181,11 +167,13 @@ describe('Timetable', () => {
       });
 
       expect(baseCss).toMatch(/\*\s*,[\s\S]*box-sizing: border-box;/);
-      expect(timetableCss).toMatch(/border-collapse: collapse;/);
-      expect(timetableCss).toMatch(/table-layout: fixed;/);
       expect(geometry.trigger.boxSizing).toBe('border-box');
-      expect(geometry.table.width).toBeCloseTo(tableWidth, 1);
-      expect(geometry.cell.width).toBeGreaterThan(0);
+      expect(geometry.cell.width).toBeCloseTo(96.85, 1);
+      expect(geometry.trigger.width).toBeCloseTo(geometry.cell.width, 1);
+      expect(geometry.trigger.height).toBe(48);
+      expect(geometry.inner.right - geometry.inner.left).toBeCloseTo(85.85, 1);
+      expect(geometry.inner.bottom - geometry.inner.top).toBe(38);
+      expect(geometry.title.width).toBeGreaterThanOrEqual(24);
       expect(geometry.trigger.left).toBeGreaterThanOrEqual(geometry.cell.left);
       expect(geometry.trigger.right).toBeLessThanOrEqual(geometry.cell.right);
       expect(geometry.title.left).toBeGreaterThanOrEqual(geometry.inner.left);

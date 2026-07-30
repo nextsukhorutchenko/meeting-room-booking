@@ -2,7 +2,7 @@
 
 import {X} from 'lucide-react';
 import {createPortal} from 'react-dom';
-import {useCallback, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import {
   usePresentationCoordinatorAvailable,
   usePresentationSurface,
@@ -16,6 +16,15 @@ type AdaptiveBookingSurfaceProps = Omit<BookingComposerProps, 'state'> & {
   mode: ResponsiveMode;
   state: BookingControllerState;
 };
+
+const focusableSelector = [
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 function isBookingDraft(
   state: BookingControllerState,
@@ -44,6 +53,38 @@ export function AdaptiveBookingSurface({
   const setPanelRef = useCallback((element: HTMLElement | null) => {
     setPanel((current) => current === element ? current : element);
   }, []);
+  useEffect(() => {
+    if (!modalActive || !panel) return;
+
+    function containFocus(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(
+        panel?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', containFocus);
+    return () => document.removeEventListener('keydown', containFocus);
+  }, [modalActive, onClose, panel]);
   const surface = (
     <div
       aria-hidden={hidden || (compact && isOpen && !modalActive) || undefined}

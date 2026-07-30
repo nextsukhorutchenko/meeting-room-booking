@@ -145,4 +145,16 @@ describe('findDesignTokenViolations', () => {
       'outline-offset: 2px;',
     ]);
   });
+
+  it('uses measured semantic backgrounds for meaningful disabled and status text', () => {
+    const agenda = readFileSync('src/app/styles/agenda.css', 'utf8');
+    const bookings = readFileSync('src/app/styles/my-bookings.css', 'utf8');
+
+    expect(agenda).toMatch(
+      /\.day-agenda-past\s*\{[\s\S]*?background:\s*var\(--color-disabled-bg\)/,
+    );
+    expect(bookings).toMatch(
+      /\.booking-status\s*\{[\s\S]*?background:\s*var\(--color-surface\)/,
+    );
+  });
 });

@@ -9,12 +9,14 @@ import {
 
 const requiredPairs = [
   ['--color-text', '--color-surface', 'normal-text', 4.5],
+  ['--color-text', '--color-surface-subtle', 'normal-text', 4.5],
   ['--color-text', '--color-canvas', 'normal-text', 4.5],
   ['--color-text-muted', '--color-surface', 'normal-text', 4.5],
   ['--color-text-muted', '--color-canvas', 'normal-text', 4.5],
   ['--color-text-subtle', '--color-surface', 'normal-text', 4.5],
   ['--color-text-subtle', '--color-canvas', 'normal-text', 4.5],
   ['--color-brand', '--color-surface', 'normal-text', 4.5],
+  ['--color-brand', '--color-canvas', 'normal-text', 4.5],
   ['--color-surface', '--color-brand', 'normal-text', 4.5],
   ['--color-surface', '--color-brand-hover', 'normal-text', 4.5],
   ['--color-surface', '--color-brand-pressed', 'normal-text', 4.5],
@@ -119,7 +121,7 @@ describe('Roomwork contrast manifest and command', () => {
     ])).toEqual(requiredPairs);
   });
 
-  it('prints an auditable markdown table and decorative exclusions', () => {
+  it('prints an auditable markdown table and truthful decorative exclusions', () => {
     const result = spawnSync(
       process.execPath,
       [
@@ -136,8 +138,13 @@ describe('Roomwork contrast manifest and command', () => {
     expect(result.stdout).toContain('| Foreground | Background | Kind |');
     expect(result.stdout).toContain('--color-text');
     expect(result.stdout).toContain('--color-surface-subtle');
-    expect(result.stdout).toContain('decorative-only');
+    expect(result.stdout).toContain(
+      'decorative-only exclusion: `--color-border-subtle`',
+    );
+    expect(result.stdout).not.toContain(
+      'decorative-only exclusions: `--color-surface-subtle`',
+    );
     expect(result.stdout).toContain('--color-border-subtle');
-    expect(result.stdout).toContain('34/34 pairs pass');
+    expect(result.stdout).toContain('36/36 pairs pass');
   });
 });

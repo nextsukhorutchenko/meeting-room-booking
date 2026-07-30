@@ -1,7 +1,7 @@
 'use client';
 
 import {CalendarX2, LoaderCircle} from 'lucide-react';
-import {useRef, type FormEvent} from 'react';
+import {useEffect, useRef, type FormEvent} from 'react';
 import {Dialog} from '../ui/dialog';
 import {uiCopy} from '../../lib/i18n/ui-copy';
 
@@ -26,6 +26,10 @@ export function CancellationDialog({
 }: CancellationDialogProps) {
   const keepButtonRef = useRef<HTMLButtonElement>(null);
   const close = error ? onCloseError : onKeep;
+
+  useEffect(() => {
+    if (error) keepButtonRef.current?.focus();
+  }, [error]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

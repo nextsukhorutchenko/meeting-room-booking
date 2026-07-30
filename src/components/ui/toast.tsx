@@ -6,7 +6,7 @@ type ToastProps = {
 
 export function Toast({message}: ToastProps) {
   return (
-    <div className="toast" role="status">
+    <div className="app-toast" role="status">
       <CircleCheck aria-hidden="true" />
       {message}
     </div>

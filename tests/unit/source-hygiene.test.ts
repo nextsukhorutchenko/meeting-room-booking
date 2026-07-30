@@ -1,4 +1,5 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync, readdirSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {generate, parse, walk, type Rule} from 'css-tree';
 import {describe, expect, it, vi} from 'vitest';
 import {
@@ -160,7 +161,7 @@ function selectorsIn(path: string): Set<string> {
 }
 
 describe('global stylesheet ownership', () => {
-  it('keeps only proven Tailwind and toast legacy ownership in globals.css', () => {
+  it('keeps Tailwind global and requires consumers for retained class selectors', () => {
     const globals = readFileSync('src/app/globals.css', 'utf8');
     const globalSelectors = selectorsIn('src/app/globals.css');
     const ownerPaths = [
@@ -180,7 +181,26 @@ describe('global stylesheet ownership', () => {
     );
 
     expect(globals).toMatch(/^@import "tailwindcss";/);
-    expect([...globalSelectors].sort()).toEqual(['.toast', '.toast svg']);
+    const componentSource = [
+      ...readdirSync('src/components', {recursive: true}),
+    ]
+      .filter((path) => path.toString().endsWith('.tsx'))
+      .map((path) => readFileSync(
+        resolve('src/components', path.toString()),
+        'utf8',
+      ))
+      .join('\n');
+    for (const selector of globalSelectors) {
+      const className = selector.match(/\.([a-z][\w-]*)/)?.[1];
+      expect(
+        className && componentSource.includes(className),
+        `${selector} must have a component consumer`,
+      ).toBe(true);
+    }
+    expect([...globalSelectors]).toEqual([]);
+    expect(ownerSelectors).toContain('.app-toast');
+    expect(componentSource).toContain('className="app-toast"');
+    expect(componentSource).not.toContain('className="toast"');
     expect([...globalSelectors].filter((selector) =>
       ownerSelectors.has(selector))).toEqual([]);
 
