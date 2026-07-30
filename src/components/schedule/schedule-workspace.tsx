@@ -6,6 +6,7 @@ import {useRouter, useSearchParams} from 'next/navigation';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -70,6 +71,16 @@ type ConflictRefreshTarget = {
   conflictGeneration: number;
   requestId: number;
   roomId: string;
+  weekStart: string;
+};
+
+type CreatedBookingFocusTarget = {
+  bookingId: string;
+  focusGeneration: number;
+  officeDay: string;
+  requestId: number;
+  roomId: string;
+  scheduleKey: string;
   weekStart: string;
 };
 
@@ -219,9 +230,16 @@ export function ScheduleWorkspace({
   const conflictRefreshTargetRef = useRef<ConflictRefreshTarget | null>(null);
   const bookingStateRef = useRef(bookingState);
   const createRequestIdRef = useRef(0);
+  const createFocusGenerationRef = useRef(0);
+  const createdBookingFocusRef = useRef<CreatedBookingFocusTarget | null>(null);
   const linkedBookingIdRef = useRef(linkedBookingId);
   const cancellationRequestIdRef = useRef(0);
   const activeCancellationRequestIdRef = useRef<number | null>(null);
+
+  const invalidateCreatedBookingFocus = useCallback(() => {
+    createFocusGenerationRef.current += 1;
+    createdBookingFocusRef.current = null;
+  }, []);
 
   function invalidateCancellationRequest() {
     cancellationRequestIdRef.current += 1;
@@ -236,6 +254,7 @@ export function ScheduleWorkspace({
     conflictRefreshRequestRef.current = false;
     conflictRefreshTargetRef.current = null;
     preserveScheduleOnRefreshRef.current = false;
+    invalidateCreatedBookingFocus();
     invalidateCancellationRequest();
     setRooms([]);
     setRoomsError('');
@@ -246,7 +265,7 @@ export function ScheduleWorkspace({
     dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     request({type: 'ROUTE_NAVIGATION'});
     return true;
-  }, [request]);
+  }, [invalidateCreatedBookingFocus, request]);
 
   const updateUrl = useCallback((
     roomId: string,
@@ -341,12 +360,18 @@ export function ScheduleWorkspace({
       setScheduleState(null);
     }
     if (roomChanged || weekChanged || dayChanged) {
+      invalidateCreatedBookingFocus();
       invalidateCancellationRequest();
       setCancellation(null);
       request({type: 'ROUTE_NAVIGATION'});
       dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     }
-  }, [officeTimeZone, request, searchParams]);
+  }, [
+    invalidateCreatedBookingFocus,
+    officeTimeZone,
+    request,
+    searchParams,
+  ]);
 
   useEffect(() => () => {
     invalidateCancellationRequest();
@@ -395,6 +420,7 @@ export function ScheduleWorkspace({
           setPreservedScheduleKey(null);
           scheduleRequestSequence.current += 1;
           setScheduleState(null);
+          invalidateCreatedBookingFocus();
           dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
         }
         updateUrl(
@@ -421,7 +447,13 @@ export function ScheduleWorkspace({
     }
     void loadRooms();
     return () => controller.abort();
-  }, [appliedMinCapacity, handleAuthRequired, roomsRetryKey, updateUrl]);
+  }, [
+    appliedMinCapacity,
+    handleAuthRequired,
+    invalidateCreatedBookingFocus,
+    roomsRetryKey,
+    updateUrl,
+  ]);
 
   const activeScheduleKey = selectedRoomId ?
     `${selectedRoomId}:${weekStart}:${refreshKey}` :
@@ -610,6 +642,33 @@ export function ScheduleWorkspace({
   const isRoomFilterVisible = isCompactMode && isRoomFilterOpen &&
     modalOwner === 'filter';
 
+  useLayoutEffect(() => {
+    const target = createdBookingFocusRef.current;
+    if (
+      !target ||
+      target.focusGeneration !== createFocusGenerationRef.current ||
+      target.requestId !== createRequestIdRef.current ||
+      target.roomId !== selectedRoomId ||
+      target.weekStart !== weekStart ||
+      scheduleState?.status !== 'success' ||
+      scheduleState.key !== target.scheduleKey
+    ) {
+      return;
+    }
+
+    const bookingRoot = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-booking-id]'),
+    ).find((element) => element.dataset.bookingId === target.bookingId);
+    const bookingTarget = bookingRoot?.matches('button') ?
+      bookingRoot :
+      bookingRoot?.querySelector<HTMLElement>('.day-agenda-details');
+    const dayHeading =
+      document.getElementById(`day-${target.officeDay}`) ??
+      document.getElementById(`day-agenda-${target.officeDay}`);
+    (bookingTarget ?? dayHeading)?.focus();
+    createdBookingFocusRef.current = null;
+  }, [scheduleState, selectedRoomId, weekStart]);
+
   useEffect(() => {
     if (roomsLoading || !restoreRoomRetryFocusRef.current) return;
     const target = roomsError ?
@@ -649,7 +708,10 @@ export function ScheduleWorkspace({
   useEffect(() => {
     if (isCompactMode && isBookingSurfaceOpen && modalOwner === 'none') {
       request({type: 'OPEN_BOOKING'});
-    } else if (!isCompactMode && modalOwner === 'booking') {
+    } else if (
+      modalOwner === 'booking' &&
+      (!isCompactMode || !isBookingSurfaceOpen)
+    ) {
       request({type: 'CLOSE_BOOKING'});
     }
   }, [isBookingSurfaceOpen, isCompactMode, modalOwner, request]);
@@ -684,6 +746,7 @@ export function ScheduleWorkspace({
     setPreservedScheduleKey(null);
     setCancellation(null);
     setAgendaJumpStartsAt(null);
+    invalidateCreatedBookingFocus();
     dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     setSelectedRoomId(roomId);
     updateUrl(roomId, weekStart, selectedDay, 'push');
@@ -703,6 +766,7 @@ export function ScheduleWorkspace({
     setPreservedScheduleKey(null);
     setCancellation(null);
     setAgendaJumpStartsAt(null);
+    invalidateCreatedBookingFocus();
     dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     setWeekStart(nextWeek);
     setSelectedDay(nextDay);
@@ -726,6 +790,7 @@ export function ScheduleWorkspace({
     preserveScheduleOnRefreshRef.current = false;
     setCancellation(null);
     setAgendaJumpStartsAt(null);
+    invalidateCreatedBookingFocus();
     dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     setWeekStart(nextWeek);
     setSelectedDay(nextDay);
@@ -753,6 +818,7 @@ export function ScheduleWorkspace({
     }
     setCancellation(null);
     setAgendaJumpStartsAt(null);
+    invalidateCreatedBookingFocus();
     dispatchBooking({type: 'NAVIGATE_ROOM_WEEK_DAY'});
     setWeekStart(currentWeek);
     setSelectedDay(today);
@@ -843,6 +909,7 @@ export function ScheduleWorkspace({
     conflictRefreshGenerationRef.current += 1;
     conflictRefreshRequestRef.current = false;
     conflictRefreshTargetRef.current = null;
+    invalidateCreatedBookingFocus();
     if (!isCompactMode && bookingStateRef.current.status === 'details') {
       restoreBookingDetailsFocusRef.current = true;
     }
@@ -918,6 +985,7 @@ export function ScheduleWorkspace({
     }
     if (!schedule) return;
     if (isCompactMode && request({type: 'OPEN_BOOKING'}) === 'DENIED') return;
+    invalidateCreatedBookingFocus();
     dispatchBooking({
       options: buildBookingEndTimeOptions({
         bookings: schedule.bookings,
@@ -950,6 +1018,9 @@ export function ScheduleWorkspace({
       return;
     }
     const requestId = ++createRequestIdRef.current;
+    const focusGeneration = createFocusGenerationRef.current + 1;
+    createFocusGenerationRef.current = focusGeneration;
+    createdBookingFocusRef.current = null;
     const conflictTarget: ConflictRefreshTarget = {
       conflictGeneration: state.conflictGeneration + 1,
       requestId,
@@ -1003,26 +1074,44 @@ export function ScheduleWorkspace({
           });
           return;
         }
-        dispatchBooking({
-          booking: body.data ?? {
+        const createdBooking = body.data ?? {
             author: {id: '', name: ''},
             endsAt: state.endsAt,
             id: '',
             isOwn: true,
             startsAt: state.selection.startsAt,
             title,
-          },
+        };
+        dispatchBooking({
+          booking: createdBooking,
           requestId,
           type: 'CREATE_OK',
         });
         if (
+          focusGeneration === createFocusGenerationRef.current &&
+          requestId === createRequestIdRef.current &&
           bookingStateRef.current.status === 'submitting' &&
-          bookingStateRef.current.createRequestId === requestId
+          bookingStateRef.current.createRequestId === requestId &&
+          capturedRoomId === selectedRoomIdRef.current &&
+          capturedWeekStart === weekStartRef.current
         ) {
+          const nextRefreshKey = refreshKey + 1;
+          createdBookingFocusRef.current = {
+            bookingId: createdBooking.id,
+            focusGeneration,
+            officeDay: DateTime.fromISO(createdBooking.startsAt, {setZone: true})
+              .setZone(schedule?.officeTimeZone ?? officeTimeZone)
+              .toFormat('yyyy-LL-dd'),
+            requestId,
+            roomId: capturedRoomId,
+            scheduleKey:
+              `${capturedRoomId}:${capturedWeekStart}:${nextRefreshKey}`,
+            weekStart: capturedWeekStart,
+          };
           preserveScheduleOnRefreshRef.current = false;
           setPreservedScheduleKey(null);
           setToastMessage(uiCopy.bookingCreated);
-          setRefreshKey((key) => key + 1);
+          setRefreshKey(nextRefreshKey);
         } else {
           void revalidateCapturedSchedule(capturedRoomId, capturedWeekStart);
         }
@@ -1172,6 +1261,7 @@ export function ScheduleWorkspace({
           </aside>
         ) : null}
         <div className="schedule-workspace-main">
+          <div className="schedule-toolbar">
           <ScheduleNavigation
         mode={mode}
         onDayChange={changeDay}
@@ -1232,6 +1322,7 @@ export function ScheduleWorkspace({
           userTimeZone={userTimeZone}
         />
       </div>
+          </div>
 
       {roomsError ? (
         <div aria-live="assertive" className="schedule-message" role="alert">

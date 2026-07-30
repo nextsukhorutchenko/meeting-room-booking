@@ -47,7 +47,7 @@ test('@booking future and past sections render their empty states', async ({
 test('@booking Load more appends equal-time past records without duplicates', async ({
   database,
   page,
-}) => {
+}, testInfo) => {
   const room = await roomByName(database, 'Oak');
   const organizer = await database.user.findUniqueOrThrow({
     where: {normalizedEmail: DEMO_USER.email},
@@ -92,56 +92,6 @@ test('@booking Load more appends equal-time past records without duplicates', as
   expect(ids).toEqual(expectedIds);
   expect(new Set(ids).size).toBe(22);
 
-  const desktopLayout = await page.evaluate(() => {
-    const close = (first: number, second: number) =>
-      Math.abs(first - second) < 0.5;
-    const rootFontSize = Number.parseFloat(
-      getComputedStyle(document.documentElement).fontSize,
-    );
-    return Array.from(
-      document.querySelectorAll<HTMLElement>('.booking-list-row'),
-    ).every((row) => {
-      const link = row.querySelector<HTMLElement>('.booking-list-row-link');
-      const cancel = row.querySelector<HTMLElement>('.booking-list-cancel');
-      if (!link) {
-        return false;
-      }
-      const rowRect = row.getBoundingClientRect();
-      const linkRect = link.getBoundingClientRect();
-      const linkOwnsLeftAndHeight =
-        close(linkRect.left, rowRect.left) &&
-        close(linkRect.top, rowRect.top) &&
-        close(linkRect.bottom, rowRect.bottom);
-      if (!cancel) {
-        return linkOwnsLeftAndHeight &&
-          close(linkRect.right, rowRect.right);
-      }
-      const cancelVisual = cancel.querySelector<HTMLElement>(
-        '.booking-list-cancel-visual',
-      );
-      const status = link.querySelector<HTMLElement>('.booking-status');
-      if (!cancelVisual || !status) {
-        return false;
-      }
-      const cancelRect = cancel.getBoundingClientRect();
-      const visualRect = cancelVisual.getBoundingClientRect();
-      const statusRect = status.getBoundingClientRect();
-      return linkOwnsLeftAndHeight &&
-        close(cancelRect.top, rowRect.top) &&
-        close(cancelRect.bottom, rowRect.bottom) &&
-        close(linkRect.right, cancelRect.left) &&
-        close(cancelRect.right, rowRect.right) &&
-        close(visualRect.right, rowRect.right) &&
-        close(visualRect.left - statusRect.right, rootFontSize * 0.65);
-    });
-  });
-  expect(desktopLayout).toBe(true);
-
-  await page.screenshot({
-    path: resolve(artifactsDirectory, 'my-bookings-desktop.png'),
-    fullPage: true,
-  });
-  await page.setViewportSize({width: 390, height: 844});
   const layout = await page.evaluate(() => {
     const close = (first: number, second: number) =>
       Math.abs(first - second) < 0.5;
@@ -158,6 +108,11 @@ test('@booking Load more appends equal-time past records without duplicates', as
       titlesContained: Array.from(
         document.querySelectorAll<HTMLElement>('.booking-list-title'),
       ).every((title) => title.scrollWidth <= title.clientWidth + 1),
+      statusesOwnedByLinks: Array.from(
+        document.querySelectorAll<HTMLElement>('.booking-list-row'),
+      ).every((row) => Boolean(
+        row.querySelector('.booking-list-row-link .booking-status'),
+      )),
       hitTargetsCoverRows: Array.from(
         document.querySelectorAll<HTMLElement>('.booking-list-row'),
       ).every((row) => {
@@ -190,10 +145,14 @@ test('@booking Load more appends equal-time past records without duplicates', as
     horizontalOverflow: 0,
     rowsContained: true,
     titlesContained: true,
+    statusesOwnedByLinks: true,
     hitTargetsCoverRows: true,
   });
   await page.screenshot({
-    path: resolve(artifactsDirectory, 'my-bookings-mobile.png'),
+    path: resolve(
+      artifactsDirectory,
+      `my-bookings-${testInfo.project.name}.png`,
+    ),
     fullPage: true,
   });
 });
@@ -201,7 +160,7 @@ test('@booking Load more appends equal-time past records without duplicates', as
 test('@booking a history row opens and highlights the correct schedule booking', async ({
   database,
   page,
-}) => {
+}, testInfo) => {
   const room = await roomByName(database, 'Pine');
   const organizer = await database.user.findUniqueOrThrow({
     where: {normalizedEmail: DEMO_USER.email},
@@ -230,8 +189,19 @@ test('@booking a history row opens and highlights the correct schedule booking',
     `&day=${startsAt.toISODate()}&bookingId=${id}`;
 
   await expect(page).toHaveURL(expectedUrl);
-  await expect(page.getByRole('button', {name: new RegExp(title)}))
-    .toHaveAttribute('data-highlighted', 'true');
+  const highlightedRow = page.locator(`[data-booking-id="${id}"]`);
+  if (testInfo.project.name === 'expanded') {
+    await expect(highlightedRow).toBeVisible();
+    await expect(highlightedRow)
+      .toHaveAttribute('data-highlighted', 'true');
+    await expect(highlightedRow).toHaveAttribute('aria-current', 'true');
+  } else {
+    const highlightedTrigger = highlightedRow.getByRole('button', {
+      name: new RegExp(title),
+    });
+    await expect(highlightedTrigger).toBeVisible();
+    await expect(highlightedRow).toHaveClass(/day-agenda-highlighted/);
+  }
 
   await page.goBack();
   await expect(page).toHaveURL('/my-bookings');

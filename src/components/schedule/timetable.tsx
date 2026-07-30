@@ -94,6 +94,33 @@ function dayHeaderLabel(input: {
   ].join('; ');
 }
 
+function userDayHeaderText(input: {
+  day: string;
+  officeCloseHour: number;
+  officeOpenHour: number;
+  officeTimeZone: string;
+  userTimeZone: string;
+}): string {
+  const start = officeSlotInstant({...input, slotIndex: 0});
+  const end = DateTime.fromISO(start, {setZone: true})
+    .setZone(input.officeTimeZone)
+    .startOf('day')
+    .set({hour: input.officeCloseHour})
+    .toUTC()
+    .toISO() ?? '';
+  const userDay = DateTime.fromISO(start, {setZone: true})
+    .setZone(input.userTimeZone)
+    .toFormat('yyyy-LL-dd');
+  const dateContext = userDay === input.day ?
+    '' :
+    `${formatDateShort(start, input.userTimeZone)}, `;
+  return `${dateContext}${formatTimeRange(
+    start,
+    end,
+    input.userTimeZone,
+  )} ${zoneAbbreviation(start, input.userTimeZone)}`;
+}
+
 function cellClassName(kind: TimetableCell['kind'], isCurrentDay: boolean): string {
   return [
     'timetable-cell',
@@ -154,6 +181,7 @@ export function Timetable({
               id={`day-${day}`}
               key={day}
               scope="col"
+              tabIndex={-1}
             >
               <span className="timetable-day-office">
                 {formatDateShort(
@@ -176,26 +204,13 @@ export function Timetable({
               ) : null}
               {!sameZone ? (
                 <span className="timetable-day-user">
-                  {formatDateShort(officeSlotInstant({
+                  {userDayHeaderText({
                     day,
                     officeCloseHour,
                     officeOpenHour,
                     officeTimeZone,
-                    slotIndex: 0,
-                  }), userTimeZone)}, {formatTimeRange(
-                    officeSlotInstant({
-                      day,
-                      officeCloseHour,
-                      officeOpenHour,
-                      officeTimeZone,
-                      slotIndex: 0,
-                    }),
-                    DateTime.fromISO(day, {zone: officeTimeZone})
-                      .set({hour: officeCloseHour})
-                      .toUTC()
-                      .toISO() ?? '',
                     userTimeZone,
-                  )} {userTimeZone}
+                  })}
                 </span>
               ) : null}
               <span className="visually-hidden">

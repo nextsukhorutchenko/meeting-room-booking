@@ -1,9 +1,10 @@
 import type {Locator, Page, Route} from '@playwright/test';
+import {DateTime} from 'luxon';
 import {expect, test} from './fixtures';
 
 const room = {capacity: 6, floor: 1, id: 'state-room', name: 'Стан'};
 const initialWeek = '2026-08-03';
-const selectedDay = '2026-08-04';
+const selectedDay = '2026-08-09';
 
 type MatrixBooking = {
   author: {id: string; name: string};
@@ -14,16 +15,30 @@ type MatrixBooking = {
   title: string;
 };
 
+function officeInstant(
+  officeDay: string,
+  hour: number,
+  minute = 0,
+): string {
+  const instant = DateTime.fromISO(officeDay, {zone: 'Europe/Kyiv'})
+    .set({hour, minute, second: 0, millisecond: 0})
+    .toUTC()
+    .toISO();
+  if (!instant) throw new Error(`Invalid office day: ${officeDay}`);
+  return instant;
+}
+
 function booking(
   title: string,
   options: Partial<MatrixBooking> = {},
+  officeDay = selectedDay,
 ): MatrixBooking {
   return {
     author: {id: 'organizer', name: 'Demo Organizer'},
-    endsAt: `${selectedDay}T09:30:00+03:00`,
+    endsAt: officeInstant(officeDay, 9, 30),
     id: title.toLowerCase().replaceAll(' ', '-'),
     isOwn: true,
-    startsAt: `${selectedDay}T09:00:00+03:00`,
+    startsAt: officeInstant(officeDay, 9),
     title,
     ...options,
   };
@@ -52,10 +67,10 @@ function schedule(
 
 function historyItem(title: string) {
   return {
-    endsAt: `${selectedDay}T10:30:00+03:00`,
+    endsAt: officeInstant(selectedDay, 10, 30),
     id: title.toLowerCase().replaceAll(' ', '-'),
     room: {id: room.id, name: room.name},
-    startsAt: `${selectedDay}T10:00:00+03:00`,
+    startsAt: officeInstant(selectedDay, 10),
     status: 'upcoming',
     title,
   };
@@ -93,6 +108,17 @@ function scheduleUrl(weekStart = initialWeek, day = selectedDay): string {
   return `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${day}`;
 }
 
+function scheduleMessage(page: Page, heading: string): Locator {
+  return page.locator('.schedule-message[role="alert"]')
+    .filter({hasText: heading});
+}
+
+function firstAvailableSlot(page: Page): Locator {
+  return page.getByRole('list', {name: `Розклад на ${room.name}`})
+    .getByRole('button', {name: /^Забронювати/})
+    .first();
+}
+
 test('@schedule first load, empty, retry and malformed states are atomic', async ({
   page,
 }) => {
@@ -101,29 +127,31 @@ test('@schedule first load, empty, retry and malformed states are atomic', async
   const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
-  let requests = 0;
+  let phase: 'initial' | 'error' | 'recovered' | 'malformed' = 'initial';
   await page.route(`**/api/rooms/${room.id}/schedule?*`, async (route) => {
-    requests += 1;
     const url = new URL(route.request().url());
     const weekStart = url.searchParams.get('weekStart') ?? initialWeek;
-    if (requests === 1) {
+    if (phase === 'initial') {
       await firstGate;
       await fulfill(route, schedule(weekStart));
-    } else if (requests === 2) {
+    } else if (phase === 'error') {
       await fulfill(route, {
         error: {code: 'SERVICE_UNAVAILABLE', message: 'Schedule unavailable'},
       }, 503);
-    } else if (requests === 3) {
-      await fulfill(route, schedule(weekStart, [booking('Відновлений розклад')]));
+    } else if (phase === 'recovered') {
+      await fulfill(route, schedule(weekStart, [
+        booking('Відновлений розклад', {}, weekStart),
+      ]));
     } else {
       await fulfill(route, schedule(weekStart, [booking('Partial data', {
         startsAt: 'malformed',
-      })]));
+      }, weekStart)]));
     }
   });
 
   await page.goto(scheduleUrl());
-  const loading = page.getByRole('status', {name: 'Завантажуємо розклад'});
+  const loading = page.locator('.schedule-loading-overlay')
+    .getByRole('status', {name: 'Завантажуємо розклад'});
   await expect(loading).toBeVisible();
   await expect(loading).toHaveAttribute('aria-live', 'polite');
   releaseFirst?.();
@@ -131,23 +159,31 @@ test('@schedule first load, empty, retry and malformed states are atomic', async
   await expect(empty).toHaveAttribute('role', 'status');
   await expect(empty).toContainText('Немає бронювань цього дня');
 
-  await page.getByRole('button', {name: 'Наступний тиждень'}).click();
-  const alert = page.getByRole('alert');
+  phase = 'error';
+  await page.getByRole('button', {name: 'Наступний день'}).click();
+  const alert = scheduleMessage(page, 'Розклад недоступний');
   await expect(alert).toContainText(
     'Сервіс тимчасово недоступний. Спробуйте ще раз.',
   );
-  await expect(page.getByLabel('Переговорна')).toHaveValue(room.id);
+  await expect(page.locator('.room-meta strong')).toHaveText(room.name);
   await expect(page.getByText('Schedule unavailable')).toHaveCount(0);
   const retry = page.getByRole('button', {
     name: 'Повторити завантаження розкладу',
   });
+  phase = 'recovered';
   await tabTo(page, retry);
   await page.keyboard.press('Enter');
   await expect(page.getByText('Відновлений розклад')).toBeVisible();
   await expect(alert).toHaveCount(0);
 
-  await page.getByRole('button', {name: 'Наступний тиждень'}).click();
-  await expect(page.getByRole('alert')).toHaveText('Розклад недоступний.');
+  phase = 'malformed';
+  const recoveredWeek = DateTime.fromISO(initialWeek).plus({weeks: 1});
+  const recoveredSunday = recoveredWeek.plus({days: 6}).toISODate() ?? '';
+  await page.getByRole('combobox', {name: 'День'})
+    .selectOption(recoveredSunday);
+  await page.getByRole('button', {name: 'Наступний день'}).click();
+  await expect(page.locator('.day-agenda-error[role="alert"]'))
+    .toHaveText('Розклад недоступний.');
   await expect(page.getByText('Partial data')).toHaveCount(0);
   await expect(page.getByRole('list', {name: /Розклад на/})).toHaveCount(0);
 });
@@ -183,7 +219,7 @@ test('@schedule room retry preserves usable schedule state independently', async
   });
 
   await page.goto(scheduleUrl());
-  const alert = page.getByRole('alert');
+  const alert = scheduleMessage(page, 'Переговорні недоступні');
   await expect(alert).toHaveAttribute('aria-live', 'assertive');
   await expect(alert).toContainText(
     'Сервіс тимчасово недоступний. Спробуйте ще раз.',
@@ -194,15 +230,18 @@ test('@schedule room retry preserves usable schedule state independently', async
   const retry = page.getByRole('button', {
     name: 'Повторити завантаження переговорних',
   });
+  const roomRequestsBeforeRetry = roomRequests;
+  const scheduleRequestsBeforeRetry = scheduleRequests;
   await tabTo(page, retry);
   await page.keyboard.press('Enter');
   const loading = page.getByRole('status', {name: 'Завантажуємо переговорні'});
   await expect(loading).toHaveAttribute('aria-live', 'polite');
-  await expect(page.getByRole('status', {name: 'Завантажуємо розклад'}))
+  await expect(page.locator('.schedule-loading-overlay')
+    .getByRole('status', {name: 'Завантажуємо розклад'}))
     .toHaveCount(0);
   await expect(page.getByText('Збережений розклад кімнати')).toBeVisible();
-  expect(roomRequests).toBe(2);
-  expect(scheduleRequests).toBe(1);
+  expect(roomRequests).toBe(roomRequestsBeforeRetry + 1);
+  expect(scheduleRequests).toBe(scheduleRequestsBeforeRetry);
 
   releaseRooms?.();
   await expect(alert).toHaveCount(0);
@@ -210,58 +249,73 @@ test('@schedule room retry preserves usable schedule state independently', async
     name: 'Відкрити фільтри переговорних',
   })).toBeFocused();
   await expect(page.getByText('Збережений розклад кімнати')).toBeVisible();
-  expect(roomRequests).toBe(2);
-  expect(scheduleRequests).toBe(1);
+  expect(roomRequests).toBe(roomRequestsBeforeRetry + 1);
+  expect(scheduleRequests).toBe(scheduleRequestsBeforeRetry);
 });
 
-test('@schedule preserved refresh retains data and announces progress', async ({
-  page,
-}) => {
+test('@schedule preserved conflict refresh exposes progress', async ({page}) => {
   await mockCommon(page);
   const retainedTitle = 'Збережене бронювання';
   let releaseRefresh: (() => void) | undefined;
   const refreshGate = new Promise<void>((resolve) => {
     releaseRefresh = resolve;
   });
-  let requests = 0;
+  let markRefreshRequested: (() => void) | undefined;
+  const refreshRequested = new Promise<void>((resolve) => {
+    markRefreshRequested = resolve;
+  });
+  let conflictReturned = false;
   await page.route(`**/api/rooms/${room.id}/schedule?*`, async (route) => {
-    requests += 1;
-    if (requests === 1) {
+    if (!conflictReturned) {
       await fulfill(route, schedule(initialWeek, [booking(retainedTitle)]));
     } else {
+      markRefreshRequested?.();
       await refreshGate;
       await fulfill(route, schedule(initialWeek));
     }
   });
-  await page.route('**/api/bookings/*', (route) =>
-    route.request().method() === 'DELETE' ?
-      route.fulfill({status: 204}) :
-      route.continue());
+  await page.route('**/api/bookings', (route) => {
+    conflictReturned = true;
+    return fulfill(route, {
+      error: {code: 'BOOKING_CONFLICT', message: 'Conflict'},
+    }, 409);
+  });
 
   await page.goto(scheduleUrl());
-  const cancel = page.getByRole('button', {name: 'Скасувати'});
-  await expect(cancel).toBeVisible();
-  await cancel.click();
-  const dialog = page.getByRole('dialog', {name: 'Скасувати бронювання'});
-  await dialog.getByRole('button', {name: 'Скасувати бронювання'}).click();
-
-  const overlay = page.getByRole('status', {name: 'Завантажуємо розклад'});
-  await expect(overlay).toHaveAttribute('aria-live', 'polite');
   await expect(page.getByText(retainedTitle)).toBeVisible();
-  await expect(page.getByRole('main')).toBeFocused();
+  await firstAvailableSlot(page).click();
+  const dialog = page.getByRole('dialog', {name: /Бронювання:/});
+  const title = dialog.getByLabel('Назва');
+  await title.fill('Чернетка під час оновлення');
+  await dialog.getByRole('button', {name: 'Забронювати'}).click();
+  await refreshRequested;
+
+  const overlay = page.locator('.schedule-loading-overlay');
+  const loadingStatus = overlay.locator('.spinner[role="status"]');
+  await expect(overlay).toBeVisible();
+  await expect(loadingStatus).toHaveAttribute(
+    'aria-label',
+    'Завантажуємо розклад',
+  );
+  await expect(loadingStatus).toHaveAttribute('aria-live', 'polite');
+  await expect(page.getByText(retainedTitle)).toBeVisible();
+  await expect(dialog.locator('form')).toHaveAttribute('aria-busy', 'true');
+  await expect(title).toHaveValue('Чернетка під час оновлення');
   releaseRefresh?.();
   await expect(page.getByText(retainedTitle)).toHaveCount(0);
-  await expect(overlay).toHaveCount(0);
+  await expect(loadingStatus).toHaveCount(0);
+  await expect(dialog.locator('form')).not.toHaveAttribute('aria-busy', 'true');
+  await expect(title).toHaveValue('Чернетка під час оновлення');
+  await expect(dialog.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
 });
 
 test('@booking conflict retry retains the draft and recovers independently', async ({
   page,
 }) => {
   await mockCommon(page);
-  let requests = 0;
+  let refreshPhase: 'initial' | 'failed' | 'recovered' = 'initial';
   await page.route(`**/api/rooms/${room.id}/schedule?*`, async (route) => {
-    requests += 1;
-    if (requests === 1 || requests === 3) {
+    if (refreshPhase === 'initial' || refreshPhase === 'recovered') {
       await fulfill(route, schedule(initialWeek));
     } else {
       await fulfill(route, {
@@ -269,13 +323,17 @@ test('@booking conflict retry retains the draft and recovers independently', asy
       }, 503);
     }
   });
-  await page.route('**/api/bookings', (route) => fulfill(route, {
-    error: {code: 'BOOKING_CONFLICT', message: 'Conflict'},
-  }, 409));
+  await page.route('**/api/bookings', (route) => {
+    refreshPhase = 'failed';
+    return fulfill(route, {
+      error: {code: 'BOOKING_CONFLICT', message: 'Conflict'},
+    }, 409);
+  });
 
   await page.goto(scheduleUrl());
-  await page.locator('.day-agenda-slot-button:not([disabled])').first().click();
+  await firstAvailableSlot(page).click();
   const dialog = page.getByRole('dialog', {name: /Бронювання:/});
+  await expect(dialog).toBeVisible();
   const title = dialog.getByLabel('Назва');
   await title.fill('Чернетка конфлікту');
   await dialog.getByRole('button', {name: 'Забронювати'}).click();
@@ -286,6 +344,7 @@ test('@booking conflict retry retains the draft and recovers independently', asy
   await expect(title).toHaveValue('Чернетка конфлікту');
   await expect(page.getByText('Refresh failed')).toHaveCount(0);
   const retry = dialog.getByRole('button', {name: 'Оновити доступність'});
+  refreshPhase = 'recovered';
   await tabTo(page, retry);
   await page.keyboard.press('Enter');
   await expect(retry).toHaveCount(0);
@@ -297,26 +356,29 @@ test('@booking conflict marks the selected start unavailable atomically', async 
   page,
 }) => {
   await mockCommon(page);
-  let requests = 0;
+  let conflictReturned = false;
   await page.route(`**/api/rooms/${room.id}/schedule?*`, async (route) => {
-    requests += 1;
     await fulfill(
       route,
-      requests === 1 ?
+      !conflictReturned ?
         schedule(initialWeek) :
         schedule(initialWeek, [booking('Вже зайнято', {
           author: {id: 'other', name: 'Інший користувач'},
           isOwn: false,
-        })]),
+      })]),
     );
   });
-  await page.route('**/api/bookings', (route) => fulfill(route, {
-    error: {code: 'BOOKING_CONFLICT', message: 'Conflict'},
-  }, 409));
+  await page.route('**/api/bookings', (route) => {
+    conflictReturned = true;
+    return fulfill(route, {
+      error: {code: 'BOOKING_CONFLICT', message: 'Conflict'},
+    }, 409);
+  });
 
   await page.goto(scheduleUrl());
-  await page.locator('.day-agenda-slot-button:not([disabled])').first().click();
+  await firstAvailableSlot(page).click();
   const dialog = page.getByRole('dialog', {name: /Бронювання:/});
+  await expect(dialog).toBeVisible();
   const title = dialog.getByLabel('Назва');
   await title.fill('Чернетка недоступного старту');
   await dialog.getByRole('button', {name: 'Забронювати'}).click();
@@ -341,7 +403,11 @@ test('@booking cancellation error stays localized and restores exact focus', asy
   }, 503));
 
   await page.goto(scheduleUrl());
-  const cancel = page.getByRole('button', {name: 'Скасувати'});
+  const failedCancellation = booking(title);
+  const cancel = page.locator(
+    `[data-booking-id="${failedCancellation.id}"]`,
+  ).getByRole('button', {name: 'Скасувати'});
+  await expect(cancel).toBeVisible();
   await cancel.click();
   const dialog = page.getByRole('dialog', {name: 'Скасувати бронювання'});
   await dialog.getByRole('button', {name: 'Скасувати бронювання'}).click();

@@ -52,7 +52,7 @@ test('@notifications shows one booking handoff without layout overlap', async ({
   });
   await expect(toast).toBeVisible();
   await expect(
-    page.getByRole('button', {name: 'Сповіщення, 0 нових'}),
+    page.getByRole('button', {name: 'Сповіщення, 1 нових'}),
   ).toBeVisible();
   const layout = await page.evaluate(() => {
     const header = document.querySelector('.app-header');

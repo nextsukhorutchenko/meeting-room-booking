@@ -45,7 +45,7 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
     `&day=${day.toISODate()}`,
   );
-  await expect(page.getByLabel('День', {exact: true})).toBeVisible();
+  await expect(page.getByRole('combobox', {name: 'День'})).toBeVisible();
   const browserTimeZone = await page.evaluate(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
@@ -61,7 +61,7 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     .setZone(browserTimeZone)
     .toFormat('HH:mm');
   const booking = page.getByRole('button', {name: new RegExp(title)});
-  await expect(booking).toContainText(`${expectedStart}-${expectedEnd}`);
+  await expect(booking).toContainText(`${expectedStart}–${expectedEnd}`);
   await expect(page.getByTestId('timezone-notice'))
     .toContainText('Europe/Kyiv');
   await expect(page.getByTestId('timezone-notice'))
@@ -100,15 +100,26 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
     }
     await route.continue();
   });
-  await page.getByRole('button', {
+  const selectedDayColumn = page.locator(
+    `td[headers~="day-${day.toISODate()}"]`,
+  );
+  const nextSlotButton = selectedDayColumn.getByRole('button', {
     name: new RegExp(`Забронювати.*${nextSlotLabel}`, 'i'),
-  }).click();
-  const dialog = page.getByRole('dialog', {name: 'Бронювання: Oak'});
-  await expect(dialog).toContainText(
+  });
+  await expect(nextSlotButton).toHaveCount(1);
+  await nextSlotButton.click();
+  const compact = testInfo.project.name === 'tablet' ||
+    testInfo.project.name === 'mobile-lg' ||
+    testInfo.project.name === 'mobile' ||
+    testInfo.project.name === 'reflow';
+  const bookingSurface = page.getByRole(compact ? 'dialog' : 'region', {
+    name: 'Бронювання: Oak',
+  });
+  await expect(bookingSurface).toContainText(
     `${nextSlotLabel}-${nextSlotEndLabel}`,
   );
-  await dialog.getByLabel('Назва').fill(createdTitle);
-  await dialog.getByRole('button', {name: 'Забронювати'}).click();
+  await bookingSurface.getByLabel('Назва').fill(createdTitle);
+  await bookingSurface.getByRole('button', {name: 'Забронювати'}).click();
   await expect(createPayload).resolves.toEqual({
     endsAt: expectedEndsAt,
     roomId: room.id,
@@ -120,7 +131,7 @@ test('@timezone @critical creates an exact browser-zone booking', async ({
   ).toBeVisible();
   const createdBooking = page.getByRole('button', {name: new RegExp(createdTitle)});
   await expect(createdBooking)
-    .toContainText(`${nextSlotLabel}-${nextSlotEndLabel}`);
+    .toContainText(`${nextSlotLabel}–${nextSlotEndLabel}`);
   const persistedBooking =
     await database.booking.findFirstOrThrow({where: {title: createdTitle}});
   expect(persistedBooking.startsAt.toISOString()).toBe(expectedStartsAt);

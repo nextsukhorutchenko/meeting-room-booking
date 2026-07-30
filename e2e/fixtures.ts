@@ -41,9 +41,9 @@ export function createE2eDatabase(): PrismaClient {
 
 export async function loginAsDemoUser(page: Page): Promise<void> {
   await page.goto('/login');
-  await page.getByLabel('Email').fill(DEMO_USER.email);
-  await page.getByLabel('Password').fill(DEMO_USER.password);
-  await page.getByRole('button', {name: 'Sign in'}).click();
+  await page.getByLabel('Електронна пошта').fill(DEMO_USER.email);
+  await page.getByLabel('Пароль').fill(DEMO_USER.password);
+  await page.getByRole('button', {name: 'Увійти'}).click();
   await expect(page).toHaveURL(/\/schedule(?:\?.*)?$/);
 }
 

@@ -53,7 +53,7 @@ test('@timezone non-English browser locale hydrates stable Ukrainian labels', as
   });
 });
 
-test('@timezone unsupported browser alias falls back during hydration', async ({
+test('@timezone browser alias canonicalizes during hydration', async ({
   database,
   page,
 }) => {
@@ -65,9 +65,6 @@ test('@timezone unsupported browser alias falls back during hydration', async ({
       locales?: Intl.LocalesArgument,
       options?: Intl.DateTimeFormatOptions,
     ): Intl.DateTimeFormat {
-      if (options?.timeZone === 'Europe/Kiev') {
-        throw new RangeError('Unsupported timezone alias');
-      }
       const formatter = new NativeDateTimeFormat(locales, options);
       if (!options?.timeZone) {
         const nativeResolvedOptions =
@@ -75,7 +72,7 @@ test('@timezone unsupported browser alias falls back during hydration', async ({
         Object.defineProperty(formatter, 'resolvedOptions', {
           value: () => ({
             ...nativeResolvedOptions(),
-            timeZone: 'Europe/Kiev',
+            timeZone: 'America/Argentina/Buenos_Aires',
           }),
         });
       }
@@ -101,10 +98,17 @@ test('@timezone unsupported browser alias falls back during hydration', async ({
   );
   await expect(page.getByRole('columnheader', {name: /понеділок.*2 березня/}))
     .toBeVisible();
-  await expect(page.getByText(
-    'Години офісу: 09:00–19:00 Europe/Kyiv',
-    {exact: true},
-  )).toHaveCount(0);
+  const canonicalBrowserTimeZone = await page.evaluate(() =>
+    new Intl.DateTimeFormat('uk-UA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+    }).resolvedOptions().timeZone,
+  );
+  expect(canonicalBrowserTimeZone).toBe('America/Buenos_Aires');
+  const timezoneNotice = page.getByTestId('timezone-notice');
+  await expect(timezoneNotice)
+    .toContainText(`Ваш час: ${canonicalBrowserTimeZone}`);
+  await expect(timezoneNotice)
+    .toContainText('Години офісу: 09:00–19:00 Europe/Kyiv');
   await expect(page.getByRole('rowheader').first()).toContainText('09:00');
   expect(hydrationErrors).toEqual([]);
 });

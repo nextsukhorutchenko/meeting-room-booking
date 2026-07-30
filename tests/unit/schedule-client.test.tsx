@@ -691,6 +691,55 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
       .not.toBeInTheDocument();
   });
 
+  it('releases compact booking ownership after successful creation', async () => {
+    setViewportWidth(320);
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
+    );
+    const createdBooking =
+      scheduleBody('2026-08-03', 'Created booking', 11).data.bookings[0];
+    let scheduleRequests = 0;
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequests += 1;
+        return Promise.resolve(scheduleResponse(
+          '2026-08-03',
+          scheduleRequests === 1 ? 'Existing booking' : 'Created booking',
+          scheduleRequests === 1 ? 10 : 11,
+        ));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({data: createdBooking}, 201));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const owners: ModalOwner[] = [];
+
+    renderScheduleClient(owners);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Created booking');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+
+    await waitFor(() => expect(scheduleRequests).toBe(2));
+    await waitFor(() => expect(owners.at(-1)).toBe('none'));
+    expect(screen.queryByRole('dialog', {name: 'Бронювання: Oak'}))
+      .not.toBeInTheDocument();
+    const createdBlock =
+      await screen.findByRole('button', {name: /Created booking/});
+    expect(createdBlock).toBeVisible();
+    await waitFor(() => expect(createdBlock).toHaveFocus());
+  });
+
   it('preserves one draft while reconciling booking ownership across modes', async () => {
     setViewportWidth(1024);
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
@@ -1521,10 +1570,22 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
     await user.click(await screen.findByRole('button', {
       name: /Забронювати вівторок.*11:00/i,
     }));
+    const title = screen.getByLabelText('Назва');
 
-    expect(screen.getByLabelText('Назва')).toBeVisible();
+    expect(title).toBeVisible();
+    expect(title).toHaveFocus();
     expect(screen.getByLabelText('Час завершення').querySelectorAll('option').length)
       .toBeGreaterThan(1);
+
+    await user.type(title, 'Чернетка');
+    const titleNode = title;
+    await user.click(screen.getByRole('button', {
+      name: /Забронювати вівторок.*13:00/i,
+    }));
+
+    expect(screen.getByLabelText('Назва').isSameNode(titleNode)).toBe(true);
+    expect(titleNode).toHaveValue('');
+    expect(titleNode).toHaveFocus();
   });
 
   it('preserves the schedule and recomputes end times after a conflict refresh', async () => {
@@ -1945,10 +2006,101 @@ describe('ScheduleWorkspace request state', {timeout: 60_000}, () => {
 
     expect(screen.getByText('Назва має містити від 1 до 100 символів.'))
       .toBeVisible();
+    expect(screen.getByLabelText('Назва')).toHaveFocus();
     expect(screen.getByRole('button', {name: 'Забронювати'})).toBeEnabled();
     expect(fetchMock.mock.calls.filter(([, init]) =>
       (init as RequestInit | undefined)?.method === 'POST',
     )).toHaveLength(0);
+  });
+
+  it('focuses the created day heading when the refreshed block cannot mount', async () => {
+    navigation.searchParams = new URLSearchParams(
+      'roomId=oak&weekStart=2026-08-03&day=2026-08-04',
+    );
+    const createdBooking =
+      scheduleBody('2026-08-03', 'Created outside refresh', 11).data.bookings[0];
+    let scheduleRequests = 0;
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        scheduleRequests += 1;
+        return Promise.resolve(scheduleResponse(
+          '2026-08-03',
+          scheduleRequests === 1 ? 'Existing booking' : 'Different refresh',
+          scheduleRequests === 1 ? 10 : 12,
+        ));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({data: createdBooking}, 201));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Created outside refresh');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+
+    await waitFor(() => expect(scheduleRequests).toBe(2));
+    expect(await screen.findByText('Different refresh')).toBeVisible();
+    const dayHeading = document.getElementById('day-2026-08-04');
+    expect(dayHeading).not.toBeNull();
+    await waitFor(() => expect(dayHeading).toHaveFocus());
+  });
+
+  it('does not move focus for a stale successful create request', async () => {
+    const createResponse = deferred<Response>();
+    const createdBooking =
+      scheduleBody('2026-08-03', 'Stale created booking', 11).data.bookings[0];
+    let oakScheduleRequests = 0;
+    fetchMock.mockImplementation((
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = requestUrl(input);
+      if (url === '/api/rooms') {
+        return Promise.resolve(jsonResponse({data: rooms}));
+      }
+      if (url.includes('/api/rooms/oak/schedule')) {
+        oakScheduleRequests += 1;
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Oak schedule'));
+      }
+      if (url.includes('/api/rooms/pine/schedule')) {
+        return Promise.resolve(scheduleResponse('2026-08-03', 'Pine schedule'));
+      }
+      if (url === '/api/bookings' && init?.method === 'POST') {
+        return createResponse.promise;
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderScheduleClient();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', {
+      name: /Забронювати вівторок.*11:00/i,
+    }));
+    await user.type(screen.getByLabelText('Назва'), 'Stale created booking');
+    await user.click(screen.getByRole('button', {name: 'Забронювати'}));
+    const roomPicker = screen.getByLabelText('Переговорна');
+    await user.selectOptions(roomPicker, 'pine');
+    await screen.findByText('Pine schedule');
+
+    await act(async () => {
+      createResponse.resolve(jsonResponse({data: createdBooking}, 201));
+    });
+
+    await waitFor(() => expect(oakScheduleRequests).toBe(2));
+    expect(roomPicker).toHaveFocus();
+    expect(screen.queryByText('Stale created booking')).not.toBeInTheDocument();
   });
 
   it('keeps the submitted draft when another desktop slot is clicked', async () => {

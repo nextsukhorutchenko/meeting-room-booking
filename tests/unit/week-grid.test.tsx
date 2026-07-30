@@ -155,6 +155,22 @@ describe('Timetable timezone semantics', () => {
     })).toBeVisible();
   });
 
+  it('shows a date-prefixed browser-zone clock in a visible crossing header', () => {
+    renderTimetable({
+      bookings: [],
+      userTimeZone: 'America/Los_Angeles',
+      visibleDays: ['2026-07-29'],
+      weekStart: '2026-07-27',
+    });
+
+    const dayHeader = screen.getAllByRole('columnheader')[1];
+    const browserDayHeader = dayHeader.querySelector('.timetable-day-user');
+    expect(browserDayHeader).not.toBeNull();
+    expect(browserDayHeader).toBeVisible();
+    expect(browserDayHeader).toHaveTextContent(/^вт, 28 лип\., 23:00-09:00 /);
+    expect(browserDayHeader).toHaveTextContent('GMT-7');
+  });
+
   it('keeps the native one-day agenda layout outside global styles', () => {
     const css = readFileSync('src/app/styles/agenda.css', 'utf8');
     const globals = readFileSync('src/app/globals.css', 'utf8');

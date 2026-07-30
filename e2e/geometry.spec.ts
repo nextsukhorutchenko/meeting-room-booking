@@ -25,7 +25,9 @@ const expectedDays = new Map([
   ['tablet', 2],
 ] as const);
 
-test.use({timezoneId: 'America/Argentina/Buenos_Aires'});
+const requestedBrowserTimeZone = 'America/Argentina/Buenos_Aires';
+
+test.use({timezoneId: requestedBrowserTimeZone});
 
 test('@schedule @mobile responsive schedule geometry stays within its viewport', async ({
   database,
@@ -51,12 +53,43 @@ test('@schedule @mobile responsive schedule geometry stays within its viewport',
   await page.goto(
     `/schedule?roomId=${room.id}&weekStart=${weekStart}&day=${weekStart}`,
   );
-  await expect(page.getByTestId('timezone-notice')).toContainText(
-    'America/Argentina/Buenos_Aires',
+  const browserTimeZone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
-  await expect(page.getByTestId('timezone-notice')).toContainText(
-    'Europe/Kyiv',
-  );
+  expect([
+    requestedBrowserTimeZone,
+    'America/Buenos_Aires',
+  ]).toContain(browserTimeZone);
+  const timezoneNotice = page.getByTestId('timezone-notice');
+  await expect(timezoneNotice).toBeVisible();
+  await expect(timezoneNotice).toContainText(browserTimeZone);
+  await expect(timezoneNotice).toContainText('Europe/Kyiv');
+  await timezoneNotice.scrollIntoViewIfNeeded();
+  const timezoneNoticeGeometry = await timezoneNotice.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return {
+      bottom: box.bottom,
+      clientHeight: element.clientHeight,
+      clientWidth: element.clientWidth,
+      left: box.left,
+      right: box.right,
+      scrollHeight: element.scrollHeight,
+      scrollWidth: element.scrollWidth,
+      top: box.top,
+    };
+  });
+  expect(timezoneNoticeGeometry.clientHeight).toBeGreaterThan(0);
+  expect(timezoneNoticeGeometry.clientWidth).toBeGreaterThan(0);
+  expect(timezoneNoticeGeometry.scrollHeight)
+    .toBeLessThanOrEqual(timezoneNoticeGeometry.clientHeight);
+  expect(timezoneNoticeGeometry.scrollWidth)
+    .toBeLessThanOrEqual(timezoneNoticeGeometry.clientWidth);
+  expect(timezoneNoticeGeometry.left).toBeGreaterThanOrEqual(0);
+  expect(timezoneNoticeGeometry.top).toBeGreaterThanOrEqual(0);
+  expect(timezoneNoticeGeometry.right)
+    .toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+  expect(timezoneNoticeGeometry.bottom)
+    .toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
 
   if (isAgenda) {
     const agenda = page.getByRole('list', {name: /Розклад на/});
@@ -69,6 +102,23 @@ test('@schedule @mobile responsive schedule geometry stays within its viewport',
     );
     expect(documentRelativeTop)
       .toBeLessThanOrEqual(296);
+    const lastAgendaItem = agenda.getByRole('listitem').last();
+    await lastAgendaItem.scrollIntoViewIfNeeded();
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight));
+    const lastAgendaItemBox = await lastAgendaItem.boundingBox();
+    const bottomNavigationBox = await page.locator('.bottom-nav').boundingBox();
+    expect(lastAgendaItemBox).not.toBeNull();
+    expect(bottomNavigationBox).not.toBeNull();
+    expect(lastAgendaItemBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect(
+      (lastAgendaItemBox?.x ?? 0) + (lastAgendaItemBox?.width ?? 0),
+    ).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+    expect(lastAgendaItemBox?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect(
+      (lastAgendaItemBox?.y ?? Number.POSITIVE_INFINITY) +
+      (lastAgendaItemBox?.height ?? 0),
+    ).toBeLessThanOrEqual(bottomNavigationBox?.y ?? 0);
   } else {
     const table = page.getByRole('table');
     const dayCount = expectedDays.get(
@@ -82,47 +132,67 @@ test('@schedule @mobile responsive schedule geometry stays within its viewport',
 
   const geometry = await page.evaluate(() => {
     const viewport = document.querySelector<HTMLElement>('.schedule-viewport');
-    const bottomNavigation =
-      document.querySelector<HTMLElement>('.bottom-nav');
-    const main = document.querySelector<HTMLElement>('.app-shell-main');
-    const navigationHeight =
-      bottomNavigation?.getBoundingClientRect().height ?? 0;
-    const mainBottomPadding = main ?
-      Number.parseFloat(getComputedStyle(main).paddingBottom) :
-      0;
     return {
+      documentClientHeight: document.documentElement.clientHeight,
       documentOverflow:
         document.documentElement.scrollWidth - innerWidth,
-      safeAreaClearance: mainBottomPadding >= navigationHeight,
+      documentScrollHeight: document.documentElement.scrollHeight,
+      pageScrollY: window.scrollY,
       viewportClientHeight: viewport?.clientHeight ?? 0,
+      viewportOverflowY: viewport ? getComputedStyle(viewport).overflowY : '',
+      viewportScrollTop: viewport?.scrollTop ?? -1,
       viewportScrollHeight: viewport?.scrollHeight ?? 0,
     };
   });
 
   expect(geometry.documentOverflow).toBeLessThanOrEqual(0);
-  expect(geometry.safeAreaClearance).toBe(true);
-  if (projectName === 'expanded') {
-    const viewportBox = await page.locator('.schedule-viewport').boundingBox();
-    const rows = page.getByRole('rowheader');
-    const firstSlot = await rows.nth(0).boundingBox();
-    const twelfthSlot = await rows.nth(11).boundingBox();
-    expect(viewportBox).not.toBeNull();
-    expect(firstSlot).not.toBeNull();
-    expect(twelfthSlot).not.toBeNull();
-    expect(
-      (twelfthSlot?.y ?? 0) +
-      (twelfthSlot?.height ?? 0) -
-      (firstSlot?.y ?? 0),
-    )
-      .toBeGreaterThanOrEqual(624);
-    expect(firstSlot?.y ?? -1).toBeGreaterThanOrEqual(viewportBox?.y ?? 0);
-    expect(
-      (twelfthSlot?.y ?? Number.POSITIVE_INFINITY) +
-      (twelfthSlot?.height ?? 0),
-    )
-      .toBeLessThanOrEqual((viewportBox?.y ?? 0) + (viewportBox?.height ?? 0));
+  if (!isAgenda) {
+    expect(['auto', 'scroll']).toContain(geometry.viewportOverflowY);
     expect(geometry.viewportScrollHeight)
       .toBeGreaterThan(geometry.viewportClientHeight);
+    const viewportBox = await page.locator('.schedule-viewport').boundingBox();
+    expect(viewportBox).not.toBeNull();
+    if (projectName !== 'expanded') {
+      expect(
+        (viewportBox?.y ?? Number.POSITIVE_INFINITY) +
+        (viewportBox?.height ?? 0),
+      ).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
+    }
+  }
+  if (projectName === 'expanded') {
+    const viewport = page.locator('.schedule-viewport');
+    const viewportBox = await viewport.boundingBox();
+    const rows = page.getByRole('rowheader');
+    const firstTwelveRows = await rows.evaluateAll((elements) =>
+      elements.slice(0, 12).map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          bottom: box.bottom,
+          height: box.height,
+          top: box.top,
+        };
+      }));
+    const firstSlot = firstTwelveRows[0];
+    const twelfthSlot = firstTwelveRows[11];
+    const browserHeight = await page.evaluate(() => innerHeight);
+    expect(viewportBox).not.toBeNull();
+    expect(firstTwelveRows).toHaveLength(12);
+    expect(geometry.viewportScrollTop).toBe(0);
+    for (const row of firstTwelveRows) {
+      expect(row.height).toBeGreaterThanOrEqual(51.5);
+      expect(row.height).toBeLessThanOrEqual(52.5);
+      expect(row.top).toBeGreaterThanOrEqual(viewportBox?.y ?? 0);
+      expect(row.bottom).toBeLessThanOrEqual(
+        (viewportBox?.y ?? 0) + (viewportBox?.height ?? 0),
+      );
+    }
+    expect(twelfthSlot.bottom - firstSlot.top).toBeGreaterThanOrEqual(624);
+    expect(twelfthSlot.bottom).toBeLessThanOrEqual(browserHeight);
+  }
+  if (!isAgenda) {
+    expect(geometry.documentScrollHeight)
+      .toBeLessThanOrEqual(geometry.documentClientHeight);
+    expect(geometry.pageScrollY).toBe(0);
   }
 });
 
@@ -157,10 +227,32 @@ test('@schedule medium room and booking panes use exact swap geometry', async ({
     await slot.click();
     await expect(workspace).toHaveAttribute('data-medium-pane', 'booking');
     expect((await main.boundingBox())?.width).toBe(bookingWidth);
+    const panel = page.getByRole('region', {name: 'Бронювання: Oak'});
+    const panelGeometry = await panel.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        bottom: box.bottom,
+        overflowY: getComputedStyle(element).overflowY,
+        top: box.top,
+      };
+    });
+    expect(panelGeometry.top).toBeGreaterThanOrEqual(0);
+    expect(panelGeometry.bottom)
+      .toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
+    expect(['auto', 'scroll']).toContain(panelGeometry.overflowY);
+    await expect(panel.getByRole('button', {
+      exact: true,
+      name: 'Забронювати',
+    })).toBeVisible();
     expect(await page.evaluate(() =>
       document.documentElement.scrollWidth -
       document.documentElement.clientWidth,
     )).toBeLessThanOrEqual(0);
+    expect(await page.evaluate(() =>
+      document.documentElement.scrollHeight -
+      document.documentElement.clientHeight,
+    )).toBeLessThanOrEqual(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
   }
 });
 
@@ -188,6 +280,20 @@ test('@booking booking surfaces retain one deterministic modal owner', async ({
     .toHaveCount(compact ? 1 : 0);
   if (compact) {
     await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
+    if (testInfo.project.name === 'tablet') {
+      const panel = page.locator('.booking-surface-panel');
+      const sheet = await panel.boundingBox();
+      const viewport = await page.evaluate(() => ({
+        height: innerHeight,
+        width: innerWidth,
+      }));
+      const expectedWidth = Math.min(384, viewport.width);
+      expect(sheet).not.toBeNull();
+      expect(sheet?.x).toBeCloseTo(viewport.width - expectedWidth, 1);
+      expect(sheet?.y).toBeCloseTo(0, 1);
+      expect(sheet?.width).toBeCloseTo(expectedWidth, 1);
+      expect(sheet?.height).toBeCloseTo(viewport.height, 1);
+    }
     if (testInfo.project.name === 'reflow') {
       const panel = page.locator('.booking-surface-panel');
       const sheet = await panel.boundingBox();
@@ -349,16 +455,10 @@ test('@schedule forced colors and reduced motion keep every state boundary visib
   );
   const ownStyles = await stateStyles(own);
   const otherStyles = await stateStyles(other);
-  expect(ownStyles.backgroundColor).toBe(systemColors.canvas);
-  expect(otherStyles.backgroundColor).toBe(systemColors.canvas);
-  expect(ownStyles.color).toBe(systemColors.canvasText);
-  expect(otherStyles.color).toBe(systemColors.canvasText);
   expect(ownStyles.borderLeftStyle).toBe('double');
   expect(otherStyles.borderLeftStyle).toBe('solid');
-  expect([systemColors.buttonText, systemColors.canvasText])
-    .toContain(ownStyles.borderLeftColor);
-  expect(otherStyles.borderLeftColor).toBe(systemColors.canvasText);
   expect(ownStyles.outlineColor).toBe(systemColors.highlight);
+  expect(ownStyles.outlineStyle).toBe('solid');
   expect(ownStyles.outlineWidth).toBe('2px');
 
   const ownControl = agenda ? own.getByRole('button').first() : own;
@@ -371,6 +471,13 @@ test('@schedule forced colors and reduced motion keep every state boundary visib
     expect(focusStyles.outlineStyle).toBe('solid');
     expect(focusStyles.outlineWidth).toBe('2px');
   }
+  expect(ownStyles.backgroundColor).toBe(systemColors.canvas);
+  expect(otherStyles.backgroundColor).toBe(systemColors.canvas);
+  expect(ownStyles.color).toBe(systemColors.canvasText);
+  expect(otherStyles.color).toBe(systemColors.canvasText);
+  expect([systemColors.buttonText, systemColors.canvasText])
+    .toContain(ownStyles.borderLeftColor);
+  expect(otherStyles.borderLeftColor).toBe(systemColors.canvasText);
 
   if (agenda) {
     const highlightedBooking = page.locator(
@@ -397,6 +504,7 @@ test('@schedule forced colors and reduced motion keep every state boundary visib
     const focusStyles = await stateStyles(selectedDate);
     expect(focusStyles.outlineColor).toBe(systemColors.highlight);
     expect(focusStyles.outlineStyle).toBe('solid');
+    expect(focusStyles.outlineWidth).toBe('2px');
   } else {
     const current = page.locator('.timetable-current-day-marker');
     await expect(current).toHaveText('Сьогодні');
@@ -436,8 +544,16 @@ test('@schedule forced colors and reduced motion keep every state boundary visib
   expect(invalidStyles.borderColor).toBe(systemColors.highlight);
   expect(invalidStyles.outlineColor).toBe(systemColors.highlight);
   expect(invalidStyles.outlineStyle).toBe('solid');
-  await expect(panel.getByRole('alert')).toContainText(
-    'Вкажіть назву зустрічі.',
+  expect(invalidStyles.outlineWidth).toBe('2px');
+  await expect(panel.getByRole('alert')).toHaveText(
+    'Перевірте введені дані.',
+  );
+  await expect(title).toHaveAttribute(
+    'aria-describedby',
+    'booking-title-error',
+  );
+  await expect(panel.locator('#booking-title-error')).toHaveText(
+    'Назва має містити від 1 до 100 символів.',
   );
 
   await title.fill('Конфліктний стан');
@@ -447,17 +563,87 @@ test('@schedule forced colors and reduced motion keep every state boundary visib
   const conflictStyles = await stateStyles(conflict);
   expect(conflictStyles.borderLeftStyle).toBe('dashed');
   expect(conflictStyles.borderLeftColor).toBe(systemColors.highlight);
-  const panelAfter = await panel.boundingBox();
-  expect(panelAfter?.x).toBeGreaterThanOrEqual(0);
-  expect(panelAfter?.y).toBeGreaterThanOrEqual(0);
-  expect((panelAfter?.x ?? 0) + (panelAfter?.width ?? 0))
-    .toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
-  expect((panelAfter?.y ?? 0) + (panelAfter?.height ?? 0))
-    .toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
-  await expect(submit).toBeVisible();
-
   const compact = ['tablet', 'mobile-lg', 'mobile', 'reflow']
     .includes(testInfo.project.name);
+  const panelAfter = await panel.boundingBox();
+  expect(panelAfter).not.toBeNull();
+  expect(panelAfter?.x).toBeGreaterThanOrEqual(0);
+  expect((panelAfter?.x ?? 0) + (panelAfter?.width ?? 0))
+    .toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+  if (compact) {
+    expect(panelAfter?.y).toBeGreaterThanOrEqual(0);
+    expect((panelAfter?.y ?? 0) + (panelAfter?.height ?? 0))
+      .toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
+    const compactScroll = await panel.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(['auto', 'scroll']).toContain(compactScroll.overflowY);
+    if (compactScroll.scrollHeight > compactScroll.clientHeight) {
+      const compactScrollAfter = await panel.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        return {
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+          scrollTop: element.scrollTop,
+        };
+      });
+      expect(compactScrollAfter.scrollTop).toBeGreaterThan(0);
+      expect(
+        compactScrollAfter.scrollTop + compactScrollAfter.clientHeight,
+      ).toBeGreaterThanOrEqual(compactScrollAfter.scrollHeight);
+    }
+    await submit.scrollIntoViewIfNeeded();
+    await expect(submit).toBeVisible();
+    const compactPanelAfterScroll = await panel.boundingBox();
+    const compactSubmit = await submit.boundingBox();
+    expect(compactPanelAfterScroll).not.toBeNull();
+    expect(compactSubmit).not.toBeNull();
+    expect(compactSubmit?.y ?? -1)
+      .toBeGreaterThanOrEqual(compactPanelAfterScroll?.y ?? 0);
+    expect(
+      (compactSubmit?.y ?? Number.POSITIVE_INFINITY) +
+      (compactSubmit?.height ?? 0),
+    ).toBeLessThanOrEqual(
+      (compactPanelAfterScroll?.y ?? 0) +
+      (compactPanelAfterScroll?.height ?? 0),
+    );
+  } else {
+    const nonModalGeometry = await panel.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        documentClientHeight: document.documentElement.clientHeight,
+        documentScrollHeight: document.documentElement.scrollHeight,
+        overflowY: getComputedStyle(element).overflowY,
+        panelBottom: box.bottom,
+        panelTop: box.top,
+        pageScrollY: window.scrollY,
+      };
+    });
+    expect(nonModalGeometry.documentScrollHeight)
+      .toBeLessThanOrEqual(nonModalGeometry.documentClientHeight);
+    expect(nonModalGeometry.pageScrollY).toBe(0);
+    expect(nonModalGeometry.panelTop).toBeGreaterThanOrEqual(0);
+    expect(nonModalGeometry.panelBottom)
+      .toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
+    expect(['auto', 'scroll']).toContain(nonModalGeometry.overflowY);
+    await submit.scrollIntoViewIfNeeded();
+    await expect(submit).toBeVisible();
+    const submitAfterScroll = await submit.boundingBox();
+    const panelAfterScroll = await panel.boundingBox();
+    expect(submitAfterScroll).not.toBeNull();
+    expect(panelAfterScroll).not.toBeNull();
+    expect(submitAfterScroll?.y ?? -1)
+      .toBeGreaterThanOrEqual(panelAfterScroll?.y ?? 0);
+    expect(
+      (submitAfterScroll?.y ?? Number.POSITIVE_INFINITY) +
+      (submitAfterScroll?.height ?? 0),
+    ).toBeLessThanOrEqual(
+      (panelAfterScroll?.y ?? 0) + (panelAfterScroll?.height ?? 0),
+    );
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  }
   await expect(page.locator('[aria-modal="true"]'))
     .toHaveCount(compact ? 1 : 0);
   if (compact) {

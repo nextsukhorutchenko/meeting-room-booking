@@ -108,11 +108,11 @@ test('@auth registers, persists the session, and logs out', async ({
     `/schedule?roomId=${room.id}&weekStart=${officeMonday(1)}`,
   );
   await page.getByRole('button', {name: /^Забронювати /}).first().click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Назва').fill('Unverified booking attempt');
-  await dialog.getByRole('button', {name: 'Забронювати'}).click();
-  await expect(dialog.getByRole('alert')).toHaveText(
-    'Verify your email before booking a room.',
+  const composer = page.locator('.booking-surface-panel');
+  await composer.getByLabel('Назва').fill('Unverified booking attempt');
+  await composer.getByRole('button', {name: 'Забронювати'}).click();
+  await expect(composer.getByRole('alert')).toHaveText(
+    'Підтвердьте email, щоб бронювати переговорні.',
   );
   await page.screenshot({
     path: resolve(
@@ -121,7 +121,7 @@ test('@auth registers, persists the session, and logs out', async ({
     ),
   });
 
-  await dialog.getByRole('button', {name: 'Закрити'}).click();
+  await composer.getByRole('button', {name: 'Закрити', exact: true}).click();
   await page.getByRole('button', {name: 'Вийти'}).click();
   await expect(page).toHaveURL(/\/login$/);
 });

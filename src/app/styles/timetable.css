@@ -19,6 +19,7 @@
   position: sticky;
   z-index: 2;
   top: var(--space-0);
+  height: var(--space-7);
   background: var(--color-surface);
   padding: var(--space-1);
   color: var(--color-text);
@@ -82,6 +83,17 @@
 .timetable-cell {
   min-width: var(--space-0);
   background: var(--color-surface);
+}
+
+.timetable-cell-booking-start {
+  position: relative;
+}
+
+.timetable-cell-booking-start > .booking-block {
+  position: absolute;
+  inset: var(--space-0);
+  width: auto;
+  min-height: var(--space-0);
 }
 
 .timetable-cell-current-day {
@@ -229,6 +241,13 @@
     color: CanvasText;
   }
 
+  .booking-block.booking-own {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .booking-block:focus-visible,
   .booking-block.booking-highlighted {
     outline-color: Highlight;
   }

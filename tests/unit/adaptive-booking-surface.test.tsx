@@ -210,6 +210,64 @@ describe('AdaptiveBookingSurface', () => {
     expect(title).toHaveValue('Планування');
   });
 
+  it.each(['expanded', 'medium', 'tablet', 'mobile'] as const)(
+    'focuses the title when a slot opens the %s surface',
+    async (mode) => {
+      render(
+        <AdaptiveBookingSurface
+          detailsContext={detailsContext}
+          mode={mode}
+          onCancelDetails={vi.fn()}
+          onClose={vi.fn()}
+          onEndChange={vi.fn()}
+          onRetryRefresh={vi.fn()}
+          onSubmit={vi.fn()}
+          onTitleChange={vi.fn()}
+          state={state}
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByLabelText('Назва')).toHaveFocus());
+    },
+  );
+
+  it('refocuses the same title node when a different slot is selected', async () => {
+    const props = {
+      detailsContext,
+      mode: 'expanded' as const,
+      onCancelDetails: vi.fn(),
+      onClose: vi.fn(),
+      onEndChange: vi.fn(),
+      onRetryRefresh: vi.fn(),
+      onSubmit: vi.fn(),
+      onTitleChange: vi.fn(),
+    };
+    const {rerender} = render(
+      <AdaptiveBookingSurface {...props} state={state} />,
+    );
+    const title = screen.getByLabelText('Назва');
+    screen.getByLabelText('Час завершення').focus();
+
+    rerender(
+      <AdaptiveBookingSurface
+        {...props}
+        state={{
+          ...state,
+          selection: {
+            ...state.selection,
+            startsAt: '2026-08-04T09:00:00.000Z',
+            startTimeLabel: '12:00',
+          },
+          selectionGeneration: 2,
+          title: '',
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText('Назва').isSameNode(title)).toBe(true);
+    await waitFor(() => expect(title).toHaveFocus());
+  });
+
   it('contains the complete compact dialog tab loop in both directions', async () => {
     render(
       <AdaptiveBookingSurface
@@ -226,19 +284,25 @@ describe('AdaptiveBookingSurface', () => {
     );
     const user = userEvent.setup();
     const dialog = screen.getByRole('dialog', {name: 'Бронювання: Дуб'});
-    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled])',
-    ));
+    const title = within(dialog).getByLabelText('Назва');
+    const end = within(dialog).getByLabelText('Час завершення');
+    const close = within(dialog).getByRole('button', {
+      name: /^Закрити$/,
+    });
+    const submit = within(dialog).getByRole('button', {name: 'Забронювати'});
+    const closePanel = within(dialog).getByRole('button', {
+      name: 'Закрити панель бронювання',
+    });
 
-    expect(focusable).toHaveLength(5);
-    for (const expected of focusable) {
+    await waitFor(() => expect(title).toHaveFocus());
+    for (const expected of [end, close, submit, closePanel, title]) {
       await user.tab();
       expect(expected).toHaveFocus();
     }
-    await user.tab();
-    expect(focusable[0]).toHaveFocus();
-    await user.tab({shift: true});
-    expect(focusable.at(-1)).toHaveFocus();
+    for (const expected of [closePanel, submit, close, end, title]) {
+      await user.tab({shift: true});
+      expect(expected).toHaveFocus();
+    }
   });
 
   it('contains complete other-booking details and restores its invoker', async () => {

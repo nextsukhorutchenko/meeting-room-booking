@@ -113,7 +113,7 @@ export function DayAgenda({
   const headingId = `day-agenda-${officeDay}`;
   return (
     <section aria-labelledby={headingId} className="day-agenda">
-      <h2 id={headingId} ref={headingRef}>
+      <h2 id={headingId} ref={headingRef} tabIndex={-1}>
         Розклад на {formatDateLong(
           projection.value.items[0]?.kind === 'busy' ?
             projection.value.items[0].booking.startsAt :

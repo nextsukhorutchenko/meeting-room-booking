@@ -1,6 +1,7 @@
 'use client';
 
 import {CalendarDays, Clock3, MapPin} from 'lucide-react';
+import {useLayoutEffect, useRef} from 'react';
 import {uiCopy} from '../../lib/i18n/ui-copy';
 import {Button} from '../ui/button';
 import type {BookingControllerState} from './booking-controller';
@@ -22,12 +23,17 @@ export function BookingComposer({
   onTitleChange,
   state,
 }: BookingComposerProps) {
+  const titleRef = useRef<HTMLInputElement>(null);
   const selectedEndTime = state.endOptions.find(
     (option) => option.endsAt === state.endsAt,
   );
   const pending = state.status === 'submitting' ||
     state.status === 'conflictRefreshing';
   const canSubmit = state.status === 'editing' && Boolean(selectedEndTime);
+
+  useLayoutEffect(() => {
+    titleRef.current?.focus();
+  }, [state.selectionGeneration]);
 
   return (
     <form
@@ -38,6 +44,9 @@ export function BookingComposer({
         event.preventDefault();
         if (!selectedEndTime) return;
         onSubmit();
+        if (!state.title.trim()) {
+          titleRef.current?.focus();
+        }
       }}
     >
       <div className="booking-summary">
@@ -71,6 +80,7 @@ export function BookingComposer({
           maxLength={100}
           name="title"
           onChange={(event) => onTitleChange(event.target.value)}
+          ref={titleRef}
           type="text"
           value={state.title}
         />

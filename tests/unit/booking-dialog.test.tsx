@@ -117,4 +117,25 @@ describe('BookingComposer', () => {
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('button', {name: 'Забронювати'})).toBeDisabled();
   });
+
+  it('focuses the title whenever an empty title is submitted', () => {
+    const onSubmit = vi.fn();
+    renderComposer({...state, title: ''}, {
+      onClose: vi.fn(),
+      onEndChange: vi.fn(),
+      onRetryRefresh: vi.fn(),
+      onSubmit,
+      onTitleChange: vi.fn(),
+    });
+    const title = screen.getByLabelText('Назва');
+    screen.getByLabelText('Час завершення').focus();
+
+    fireEvent.submit(
+      (screen.getByRole('button', {name: 'Забронювати'}) as HTMLButtonElement)
+        .form!,
+    );
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(title).toHaveFocus();
+  });
 });
