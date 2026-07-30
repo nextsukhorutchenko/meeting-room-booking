@@ -51,6 +51,15 @@ describe('CI dependency bootstrap contract', () => {
     expect(packageJson.scripts['test:coverage']).toBe(
       'vitest run --coverage --config vitest.config.ts',
     );
+    expect(packageJson.scripts.pretest).toBe('npm run db:generate');
+    expect(packageJson.scripts['pretest:unit']).toBe('npm run db:generate');
+    expect(packageJson.scripts['pretest:coverage']).toBe(
+      'npm run db:generate',
+    );
+    expect(packageJson.scripts['db:generate']).toBe(
+      'tsx scripts/generate-prisma-client.ts',
+    );
+    expect(packageJson.scripts.postinstall).toBeUndefined();
     expect(packageJson.scripts['test:integration']).toMatch(
       /^tsx scripts\/check-test-database-url\.ts integration && /,
     );
