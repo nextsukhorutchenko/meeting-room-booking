@@ -180,7 +180,7 @@
   display: grid;
   grid-template-columns: minmax(var(--timetable-title-min-width), 1fr) auto;
   align-items: center;
-  gap: var(--timetable-inline-gap);
+  gap: var(--timetable-status-gap);
   min-width: var(--space-0);
 }
 

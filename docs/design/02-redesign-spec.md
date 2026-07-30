@@ -987,13 +987,13 @@ solid single border і `Зайнято`. Відмінність не залеж�
 
 Bounding-box gate на expanded lower bound `1360px`: day content width
 `96.85px`, trigger width дорівнює cell width, trigger height `48px`,
-padding `4px`, inner width `88.85px`, inner height `40px`. Compact layout:
+padding `4px`, inner width `85.85px`, inner height `38px`. Compact layout:
 
-- line 1 `16px`: grid `minmax(24px,1fr) auto`; ellipsized title + `4px` gap +
+- line 1 `16px`: grid `minmax(24px,1fr) auto`; ellipsized title + `2px` gap +
   status group;
-- status group має icon `12x12px`, gap `2px`, visible text
+- status group має font-size `10px`, icon `10x10px`, gap `2px`, visible text
   `Ваше|Зайнято`, max width `60px`, line-height `14px`, no shrink;
-- line 2 `14px`: full `09:00-09:30` range; remaining `10px` є internal
+- line 2 `16px`: full `09:00-09:30` range; remaining `4px` є internal
   block spacing/alignment reserve.
 
 Gate fixture використовує 100-character unbroken title і ширший status
