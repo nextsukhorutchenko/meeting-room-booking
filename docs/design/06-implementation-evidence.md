@@ -50,6 +50,10 @@ The host `D:` drive had reached zero free space. Generated worktree artifacts
 were relocated without deleting source or user data, restoring free space, but
 Docker remained unable to start after normal restart, full Docker Desktop
 stop/start, Docker-only process restart, and `docker-desktop` WSL termination.
+The configured application build passed normally before relocation. Because
+the ignored `.next` cache now resides on `C:` through a local junction, its
+repeat build also passed with `NODE_PATH` set to this worktree's physical
+`node_modules`; a normal clean checkout does not require that workaround.
 Docker VM diagnostics show `I/O error, dev sdd`, an aborted ext4 journal, and
 `Remounting filesystem read-only`. Logs also reference an unrelated
 `datahub` Docker environment, so factory reset, data-disk deletion, or manual
