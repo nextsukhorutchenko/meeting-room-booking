@@ -103,12 +103,12 @@ describe('BookingList', () => {
 
     renderBookingList();
     expect(
-      within(screen.getByRole('region', {name: 'Upcoming bookings'}))
-        .getByText('Loading upcoming bookings'),
+      within(screen.getByRole('region', {name: 'Майбутні'}))
+        .getByText('Завантажуємо майбутні бронювання'),
     ).toBeVisible();
     expect(
-      within(screen.getByRole('region', {name: 'Past bookings'}))
-        .getByText('Loading past bookings'),
+      within(screen.getByRole('region', {name: 'Минулі'}))
+        .getByText('Завантажуємо минулі бронювання'),
     ).toBeVisible();
 
     await act(async () => {
@@ -116,8 +116,8 @@ describe('BookingList', () => {
       past.resolve(response({items: [], nextCursor: null}));
     });
 
-    expect(await screen.findByText('No upcoming bookings')).toBeVisible();
-    expect(screen.getByText('No past bookings')).toBeVisible();
+    expect(await screen.findByText('Немає майбутніх бронювань')).toBeVisible();
+    expect(screen.getByText('Історія бронювань порожня')).toBeVisible();
   });
 
   it('shows a stable section error without hiding the other section', async () => {
@@ -135,7 +135,7 @@ describe('BookingList', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'History unavailable',
     );
-    expect(screen.getByText('No past bookings')).toBeVisible();
+    expect(screen.getByText('Історія бронювань порожня')).toBeVisible();
   });
 
   it('appends the next past page in cursor order without duplicate rows', async () => {
@@ -163,16 +163,16 @@ describe('BookingList', () => {
     });
 
     renderBookingList();
-    const past = screen.getByRole('region', {name: 'Past bookings'});
+    const past = screen.getByRole('region', {name: 'Минулі'});
     expect(await within(past).findByText('Booking past-1')).toBeVisible();
 
     await userEvent.setup().click(
-      within(past).getByRole('button', {name: 'Load more past bookings'}),
+      within(past).getByRole('button', {name: 'Показати ще минулі'}),
     );
 
     expect(await within(past).findByText('Booking past-3')).toBeVisible();
     expect(within(past).getAllByText('Booking past-2')).toHaveLength(1);
-    expect(within(past).getByText('Cancelled')).toBeVisible();
+    expect(within(past).getByText('Скасовано')).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/me/bookings?scope=past&limit=20&cursor=next-past',
       expect.objectContaining({signal: expect.any(AbortSignal)}),
@@ -204,9 +204,9 @@ describe('BookingList', () => {
     });
 
     renderBookingList();
-    const past = screen.getByRole('region', {name: 'Past bookings'});
+    const past = screen.getByRole('region', {name: 'Минулі'});
     const loadMore = await within(past).findByRole('button', {
-      name: 'Load more past bookings',
+      name: 'Показати ще минулі',
     });
     await userEvent.setup().click(loadMore);
     expect(await within(past).findByRole('alert')).toHaveTextContent(
@@ -219,7 +219,7 @@ describe('BookingList', () => {
     expect(within(past).queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('renders the row link before a separate cancel control', async () => {
+  it('renders grouped row link and Cancel as siblings in tab order', async () => {
     const linked = booking('linked-booking', {title: 'Roadmap review'});
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const scope = requestUrl(input).searchParams.get('scope');
@@ -231,15 +231,13 @@ describe('BookingList', () => {
 
     renderBookingList();
     const user = userEvent.setup();
-    const link = await screen.findByRole('link', {
-      name: 'Open Roadmap review in schedule',
-    });
+    const row = await screen.findByTestId('booking-row-linked-booking');
+    const link = row.children[0];
     const cancel = screen.getByRole('button', {
-      name: 'Cancel Roadmap review',
+      name: 'Скасувати Roadmap review',
     });
-    const row = link.closest('li');
 
-    expect(row).not.toBeNull();
+    expect(screen.getByRole('heading', {name: 'Найближче'})).toBeVisible();
     expect(link).toHaveAttribute(
       'href',
       '/schedule?roomId=oak&weekStart=2026-08-03&day=2026-08-04' +
@@ -247,7 +245,7 @@ describe('BookingList', () => {
     );
     expect(link).toContainElement(screen.getByText('Roadmap review'));
     expect(link).toContainElement(screen.getByText('Oak'));
-    expect(link).toContainElement(screen.getByText('Upcoming'));
+    expect(link).toContainElement(screen.getByText('Майбутнє'));
     expect(link.parentElement).toBe(row);
     expect(cancel.parentElement).toBe(row);
     expect(
@@ -282,11 +280,11 @@ describe('BookingList', () => {
     renderBookingList();
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole('button', {name: 'Cancel Cancel me'}),
+      await screen.findByRole('button', {name: 'Скасувати Cancel me'}),
     );
     const dialog = screen.getByRole('dialog', {name: 'Cancel booking'});
     const link = screen.getByRole('link', {
-      name: 'Open Cancel me in schedule',
+      name: 'Відкрити Cancel me у розкладі',
     });
     const row = link.closest('li');
     expect(dialog).toBeVisible();
@@ -297,6 +295,6 @@ describe('BookingList', () => {
     await waitFor(() => {
       expect(screen.queryByText('Cancel me')).not.toBeInTheDocument();
     });
-    expect(screen.getByRole('status')).toHaveTextContent('Booking cancelled');
+    expect(screen.getByRole('status')).toHaveTextContent('Бронювання скасовано');
   });
 });

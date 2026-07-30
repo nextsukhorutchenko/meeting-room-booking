@@ -34,9 +34,9 @@ test('@booking future and past sections render their empty states', async ({
   try {
     await page.goto('/my-bookings');
 
-    await expect(page.getByRole('heading', {name: 'My Bookings'})).toBeVisible();
-    await expect(page.getByText('No upcoming bookings')).toBeVisible();
-    await expect(page.getByText('No past bookings')).toBeVisible();
+    await expect(page.getByRole('heading', {name: 'Мої бронювання'})).toBeVisible();
+    await expect(page.getByText('Немає майбутніх бронювань')).toBeVisible();
+    await expect(page.getByText('Історія бронювань порожня')).toBeVisible();
   } finally {
     if (existing.length > 0) {
       await database.booking.createMany({data: existing});
@@ -73,7 +73,7 @@ test('@booking Load more appends equal-time past records without duplicates', as
   });
 
   await page.goto('/my-bookings');
-  const past = page.getByRole('region', {name: 'Past bookings'});
+  const past = page.getByRole('region', {name: 'Минулі'});
   const taskRows = past.locator(
     `[data-booking-id^="${TASK_11_BOOKING_PREFIX}"]`,
   );
@@ -83,7 +83,7 @@ test('@booking Load more appends equal-time past records without duplicates', as
   );
   expect(firstPageIds).toEqual(expectedIds.slice(0, 20));
 
-  await past.getByRole('button', {name: 'Load more past bookings'}).click();
+  await past.getByRole('button', {name: 'Показати ще минулі'}).click();
 
   await expect(taskRows).toHaveCount(22);
   const ids = await taskRows.evaluateAll((rows) =>
@@ -223,7 +223,7 @@ test('@booking a history row opens and highlights the correct schedule booking',
 
   await page.goto('/my-bookings');
   const row = page.locator(`[data-booking-id="${id}"]`);
-  await row.getByText('Upcoming', {exact: true}).click();
+  await row.getByText('Майбутнє', {exact: true}).click();
 
   const expectedUrl =
     `/schedule?roomId=${room.id}&weekStart=${weekStart}` +
@@ -236,7 +236,7 @@ test('@booking a history row opens and highlights the correct schedule booking',
   await page.goBack();
   await expect(page).toHaveURL('/my-bookings');
   const rowLink = page.getByRole('link', {
-    name: `Open ${title} in schedule`,
+    name: `Відкрити ${title} у розкладі`,
   });
   await rowLink.focus();
   await expect(rowLink).toBeFocused();
@@ -267,7 +267,7 @@ test('@booking a future history row cancels through the shared dialog', async ({
   });
 
   await page.goto('/my-bookings');
-  await page.getByRole('button', {name: `Cancel ${title}`}).click();
+  await page.getByRole('button', {name: `Скасувати ${title}`}).click();
   const dialog = page.getByRole('dialog', {name: 'Cancel booking'});
   await expect(page).toHaveURL('/my-bookings');
   await expect(dialog).toBeVisible();
@@ -282,7 +282,7 @@ test('@booking a future history row cancels through the shared dialog', async ({
 
   await expect(page.getByText(title)).toHaveCount(0);
   await expect(
-    page.getByRole('status').filter({hasText: 'Booking cancelled'}),
+    page.getByRole('status').filter({hasText: 'Бронювання скасовано'}),
   ).toBeVisible();
   await expect(database.booking.findUniqueOrThrow({where: {id}}))
     .resolves.toMatchObject({cancelledAt: expect.any(Date)});

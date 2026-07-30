@@ -14,9 +14,12 @@ import {
   useSyncExternalStore,
 } from 'react';
 import {
-  formatInUserZone,
   getBrowserTimeZone,
 } from '../../lib/time/browser-zone';
+import {
+  formatDateShort,
+  formatTimeRange,
+} from '../../lib/i18n/formatters';
 import type {
   BookingListItem,
   BookingPage,
@@ -25,6 +28,10 @@ import {
   CancellationDialog,
   type CancellationSelection,
 } from './cancellation-dialog';
+import {
+  groupBookings,
+  type BookingGroup,
+} from './booking-groups';
 import {usePresentationCoordinator} from '../app/presentation-coordinator';
 import {Toast} from '../ui/toast';
 
@@ -120,40 +127,24 @@ function bookingUrl(
 function formattedTime(
   booking: BookingListItem,
   userTimeZone: string,
-  officeTimeZone: string,
 ): {
   date: string;
   time: string;
 } {
   return {
-    date: formatInUserZone(booking.startsAt, userTimeZone, {
-      day: 'numeric',
-      month: 'short',
-      weekday: 'short',
-    }, officeTimeZone),
-    time:
-      formatInUserZone(booking.startsAt, userTimeZone, {
-        hour: '2-digit',
-        hourCycle: 'h23',
-        minute: '2-digit',
-      }, officeTimeZone) +
-      '-' +
-      formatInUserZone(booking.endsAt, userTimeZone, {
-        hour: '2-digit',
-        hourCycle: 'h23',
-        minute: '2-digit',
-      }, officeTimeZone),
+    date: formatDateShort(booking.startsAt, userTimeZone),
+    time: formatTimeRange(booking.startsAt, booking.endsAt, userTimeZone),
   };
 }
 
 function statusLabel(status: BookingListItem['status']): string {
   if (status === 'upcoming') {
-    return 'Upcoming';
+    return 'Майбутнє';
   }
   if (status === 'completed') {
-    return 'Completed';
+    return 'Завершено';
   }
-  return 'Cancelled';
+  return 'Скасовано';
 }
 
 async function fetchPage(
@@ -180,6 +171,7 @@ async function fetchPage(
 
 type BookingSectionProps = {
   emptyText: string;
+  groups: readonly BookingGroup[];
   heading: string;
   loadingText: string;
   officeTimeZone: string;
@@ -191,6 +183,7 @@ type BookingSectionProps = {
 
 function BookingSection({
   emptyText,
+  groups,
   heading,
   loadingText,
   officeTimeZone,
@@ -203,9 +196,6 @@ function BookingSection({
     <section aria-label={heading} className="booking-history-section">
       <div className="booking-history-section-heading">
         <h2>{heading}</h2>
-        {state.status === 'success' && state.items.length > 0 ? (
-          <span>{state.items.length} shown</span>
-        ) : null}
       </div>
       {state.status === 'loading' ? (
         <p className="booking-history-state">
@@ -220,73 +210,80 @@ function BookingSection({
         <p className="booking-history-state">{emptyText}</p>
       ) : null}
       {state.items.length > 0 ? (
-        <ul className="booking-list">
-          {state.items.map((booking) => {
-            const time = formattedTime(
-              booking,
-              userTimeZone,
-              officeTimeZone,
-            );
-            return (
-              <li
-                className={
-                  onCancel && booking.status === 'upcoming' ?
-                    'booking-list-row booking-list-row-cancellable' :
-                    'booking-list-row'
-                }
-                data-booking-id={booking.id}
-                key={booking.id}
-              >
-                <Link
-                  aria-label={`Open ${booking.title} in schedule`}
-                  className="booking-list-row-link"
-                  href={bookingUrl(booking, officeTimeZone)}
-                >
-                  <div className="booking-list-content">
-                    <time dateTime={booking.startsAt}>
-                      <strong>{time.date}</strong>
-                      <span>{time.time}</span>
-                    </time>
-                    <div className="booking-list-details">
-                      <strong className="booking-list-title">
-                        {booking.title}
-                      </strong>
-                      <span>{booking.room.name}</span>
-                    </div>
-                  </div>
-                  <span
-                    className={`booking-status booking-status-${booking.status}`}
+        groups.map((group) => (
+          <div
+            className={`booking-history-group booking-history-group-${group.kind}`}
+            key={`${group.kind}-${group.heading}`}
+          >
+            <h3>{group.heading}</h3>
+            <ul className="booking-list">
+              {group.items.map((booking) => {
+                const time = formattedTime(booking, userTimeZone);
+                return (
+                  <li
+                    className={
+                      onCancel && booking.status === 'upcoming' ?
+                        'booking-list-row booking-list-row-cancellable' :
+                        'booking-list-row'
+                    }
+                    data-booking-id={booking.id}
+                    data-testid={`booking-row-${booking.id}`}
+                    key={booking.id}
                   >
-                    {statusLabel(booking.status)}
-                  </span>
-                </Link>
-                {onCancel && booking.status === 'upcoming' ? (
-                  <button
-                    aria-label={`Cancel ${booking.title}`}
-                    className="booking-list-cancel"
-                    onClick={(event) => onCancel({
-                      id: booking.id,
-                      title: booking.title,
-                    }, event.currentTarget)}
-                    title="Cancel booking"
-                    type="button"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="booking-list-cancel-visual"
+                    <Link
+                      aria-label={`Відкрити ${booking.title} у розкладі`}
+                      className="booking-list-row-link"
+                      href={bookingUrl(booking, officeTimeZone)}
                     >
-                      <CalendarX2 />
-                    </span>
-                  </button>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                      <div className="booking-list-content">
+                        <time dateTime={booking.startsAt}>
+                          <strong>{time.date}</strong>
+                          <span>{time.time}</span>
+                        </time>
+                        <div className="booking-list-details">
+                          <strong className="booking-list-title">
+                            {booking.title}
+                          </strong>
+                          <span>{booking.room.name}</span>
+                        </div>
+                      </div>
+                      <span
+                        className={`booking-status booking-status-${booking.status}`}
+                      >
+                        {statusLabel(booking.status)}
+                      </span>
+                    </Link>
+                    {onCancel && booking.status === 'upcoming' ? (
+                      <button
+                        aria-label={`Скасувати ${booking.title}`}
+                        className="booking-list-cancel"
+                        onClick={(event) => onCancel({
+                          id: booking.id,
+                          title: booking.title,
+                        }, event.currentTarget)}
+                        title="Скасувати бронювання"
+                        type="button"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="booking-list-cancel-visual"
+                        >
+                          <CalendarX2 />
+                        </span>
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))
       ) : null}
       {state.nextCursor ? (
         <button
-          aria-label={`Load more ${heading.toLowerCase()}`}
+          aria-label={state.status === 'error' ?
+            `Повторити ${heading.toLowerCase()}` :
+            `Показати ще ${heading.toLowerCase()}`}
           className="secondary-button booking-load-more"
           disabled={state.loadingMore}
           onClick={onLoadMore}
@@ -295,7 +292,7 @@ function BookingSection({
           {state.loadingMore ? (
             <LoaderCircle aria-hidden="true" />
           ) : null}
-          Load more
+          {state.status === 'error' ? 'Повторити' : 'Показати ще'}
         </button>
       ) : null}
     </section>
@@ -325,6 +322,11 @@ export function BookingList({officeTimeZone}: BookingListProps) {
     readBrowserTimeZone,
     () => officeTimeZone,
   );
+  const groups = groupBookings({
+    future: future.items,
+    past: past.items,
+    userTimeZone,
+  });
   const loadMorePending = useRef<Record<Scope, boolean>>({
     future: false,
     past: false,
@@ -468,7 +470,7 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         }));
         setCancellation(null);
         request({type: 'CANCEL_SUCCESS'});
-        setToastMessage('Booking cancelled');
+        setToastMessage('Бронювання скасовано');
       } catch {
         if (activeCancellationRequestIdRef.current !== requestId) return;
         setCancellation((current) => current?.booking.id === bookingId ? {
@@ -487,9 +489,10 @@ export function BookingList({officeTimeZone}: BookingListProps) {
   return (
     <div className="booking-history">
       <BookingSection
-        emptyText="No upcoming bookings"
-        heading="Upcoming bookings"
-        loadingText="Loading upcoming bookings"
+        emptyText="Немає майбутніх бронювань"
+        groups={groups.filter((group) => group.kind !== 'month')}
+        heading="Майбутні"
+        loadingText="Завантажуємо майбутні бронювання"
         officeTimeZone={officeTimeZone}
         onCancel={openCancellation}
         onLoadMore={() => void loadMore('future', future, setFuture)}
@@ -497,9 +500,10 @@ export function BookingList({officeTimeZone}: BookingListProps) {
         userTimeZone={userTimeZone}
       />
       <BookingSection
-        emptyText="No past bookings"
-        heading="Past bookings"
-        loadingText="Loading past bookings"
+        emptyText="Історія бронювань порожня"
+        groups={groups.filter((group) => group.kind === 'month')}
+        heading="Минулі"
+        loadingText="Завантажуємо минулі бронювання"
         officeTimeZone={officeTimeZone}
         onLoadMore={() => void loadMore('past', past, setPast)}
         state={past}
